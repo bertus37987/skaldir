@@ -1448,6 +1448,12 @@ def run_action_list(
     lease: Any | None = None
     lease_generation = 0
     desktop_payload: dict[str, Any] = {}
+    # DESK-01 — the lease is not an opt-in. When the run drives the real host desktop and
+    # the caller did not hand in a store, the service takes one itself. Otherwise every
+    # caller would have to remember to pass it, and one that forgot would move the user's
+    # mouse unattended — the exact bypass the requirement forbids.
+    if desktop_lease is None and _needs_desktop_lease(runner_kind=runner_kind, runner=runner):
+        desktop_lease = _default_desktop_store()
     if desktop_lease is not None:
         try:
             lease = desktop_lease.acquire(
@@ -1512,6 +1518,44 @@ def run_action_list(
         desktop_payload["released"] = released
         record["desktop"] = desktop_payload
     return record
+
+
+def _needs_desktop_lease(*, runner_kind: str, runner: Any | None) -> bool:
+    """Does this run drive the *real* host desktop and therefore have to hold the lease?
+
+    The runner knows best: a runner that says ``requires_input_fence`` is the live one. The
+    ``runner_kind`` is the fallback for callers that resolve the runner later. Isolated
+    containers and isolated host sessions are deliberately excluded — they are not the
+    shared desktop and must not queue behind it.
+    """
+    if bool(getattr(runner, "requires_input_fence", False)):
+        return True
+    return str(runner_kind or "") == "live-desktop"
+
+
+_DEFAULT_STORE: dict[str, Any] = {}
+
+
+def _default_desktop_store() -> Any:
+    """One shared :class:`~skaldir.desktop_lease.DesktopLeaseStore` for this home.
+
+    The desktop is a per-machine resource, so the state file lives outside any single run's
+    runtime directory — two runs must contend for the *same* file or the lease means
+    nothing. Instances are cached per state path so runs in one process share an object,
+    and the file itself is the authority between processes.
+    """
+    from .desktop_lease import DesktopLeaseStore
+
+    base = (
+        os.environ.get("SKALDIR_HOME")
+        or os.environ.get("GODSV_HOME")
+        or str(Path.home() / ".skaldir")
+    )
+    path = str(Path(base) / "state" / "desktop-lease.json")
+    store = _DEFAULT_STORE.get(path)
+    if store is None:
+        store = _DEFAULT_STORE[path] = DesktopLeaseStore(path)
+    return store
 
 
 def _bind_desktop_fence(runner: Any, store: Any, run_id: str, generation: int) -> bool:

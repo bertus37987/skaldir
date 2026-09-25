@@ -566,6 +566,82 @@ def test_an_isolated_runner_does_not_need_the_host_lease():
     assert runner.requires_input_fence is False
 
 
+def test_a_live_desktop_run_takes_the_lease_even_when_the_caller_forgets(tmp_path, monkeypatch):
+    """GOAL §2: the lease is not an opt-in.
+
+    Every caller would have to remember to pass a DesktopLeaseStore. One that forgot would
+    drive the user's desktop unattended. So the service takes the lease itself for a run
+    that drives the real host desktop, and binds the fence to it.
+    """
+    from skaldir import act_service as A
+
+    monkeypatch.setenv("SKALDIR_HOME", str(tmp_path / "home"))
+    A._DEFAULT_STORE.clear()                      # a fresh home has its own state file
+
+    bound: list = []
+
+    class LiveSpy:
+        isolation = "live-desktop"
+        display = ":0"
+        attach_to_session = True
+        target = "win"
+        # what the real HostSessionRunner exposes for a live-desktop runner
+        requires_input_fence = True
+        is_isolated = False
+        target_scope = ""
+
+        def bind_input_fence(self, fence):
+            bound.append(fence)
+
+        def act(self, action):
+            from skaldir.cu_host_session import ActionResult
+
+            return ActionResult(ok=True, stdout="OK", detail="dry")
+
+        def observe(self):
+            from skaldir.cu_host_session import Observation
+
+            return Observation(text="OK", detail="dry")
+
+        def cleanup_record(self):
+            return {"container": "", "prefix": "", "closed": True, "still_present": False}
+
+        def close(self):
+            return None
+
+    spy = LiveSpy()
+    assert spy.requires_input_fence is True
+
+    record = A.run_action_list(
+        [{"kind": "cli", "channel": "vision", "argv": ["sh", "-c", "echo OK"],
+          "verify": {"expect_stdout_contains": "OK"}}],
+        runner_kind="live-desktop",
+        runner=spy,
+        session_id="run-auto",
+        write_record=False,
+    )
+    desktop = record.get("desktop") or {}
+    assert desktop.get("acquired") is True, (
+        f"a live-desktop run did not take the desktop lease automatically: {desktop}")
+    assert desktop.get("owner_run") == "run-auto"
+    assert bound, "the fence was not bound even though the lease was taken"
+    assert desktop.get("released") is True, "the lease was not released at teardown"
+
+    # and the state file really is outside the run's runtime dir, shared across runs
+    assert (tmp_path / "home" / "state" / "desktop-lease.json").exists()
+
+
+def test_an_isolated_run_does_not_queue_behind_the_desktop_lease(tmp_path, monkeypatch):
+    """Containers and isolated sessions must not be blocked by the host lease."""
+    from skaldir import act_service as A
+
+    monkeypatch.setenv("SKALDIR_HOME", str(tmp_path / "home"))
+    A._DEFAULT_STORE.clear()
+    assert A._needs_desktop_lease(runner_kind="container-gui", runner=None) is False
+    assert A._needs_desktop_lease(runner_kind="dry_run", runner=None) is False
+    assert A._needs_desktop_lease(runner_kind="live-desktop", runner=None) is True
+
+
 def test_no_temporary_file_is_left_behind(store):
     store.acquire("run-1", now=1.0)
     store.request_stop(now=2.0)
