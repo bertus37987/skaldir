@@ -7,6 +7,8 @@ asserts the drop rather than trusting a boolean.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from skaldir.desktop_lease import (
@@ -640,6 +642,79 @@ def test_an_isolated_run_does_not_queue_behind_the_desktop_lease(tmp_path, monke
     assert A._needs_desktop_lease(runner_kind="container-gui", runner=None) is False
     assert A._needs_desktop_lease(runner_kind="dry_run", runner=None) is False
     assert A._needs_desktop_lease(runner_kind="live-desktop", runner=None) is True
+
+
+def test_the_cu_agent_entry_also_takes_the_desktop_lease(tmp_path, monkeypatch):
+    """GOAL §2 — close the bypass, not only the main path.
+
+    ``run_cu_request`` drives the same input path as ``run_action_list`` but did not go
+    through it, so it skipped the desktop lease entirely: a caller asking for the live
+    desktop could move the user's mouse with nobody holding the desktop. This asserts the
+    agent entry is covered too.
+    """
+    from skaldir import act_service as A
+    from skaldir.computer_use import run_cu_request
+
+    monkeypatch.setenv("SKALDIR_HOME", str(tmp_path / "home"))
+    A._DEFAULT_STORE.clear()
+
+    class LiveSpy:
+        isolation = "live-desktop"
+        display = ":0"
+        attach_to_session = True
+        target = "win"
+        requires_input_fence = True
+        is_isolated = False
+        target_scope = ""
+
+        def bind_input_fence(self, fence):
+            self._fence = fence
+
+        def act(self, action):
+            from skaldir.cu_host_session import ActionResult
+
+            return ActionResult(ok=True, stdout="OK", detail="dry")
+
+        def observe(self):
+            from skaldir.cu_host_session import Observation
+
+            return Observation(text="OK", detail="dry")
+
+        def cleanup_record(self):
+            return {"container": "", "prefix": "", "closed": True, "still_present": False}
+
+        def close(self):
+            return None
+
+    # a scripted plan, so the request actually reaches execution (and therefore input)
+    from skaldir.llm import ScriptedLLM
+
+    draft = json.dumps({
+        "attempts": [{
+            "channel": "api",
+            "description": "act on the desktop",
+            "action": {"kind": "cli", "argv": ["deploy", "--api"]},
+            "verify": {"expect_stdout_contains": "deployed"},
+        }]
+    })
+    client = ScriptedLLM(responses={"cu_step_plan": draft})
+
+    spy = LiveSpy()
+    outcome = run_cu_request(
+        goal="a live desktop action",
+        runtime=tmp_path,
+        client=client,
+        runner=spy,
+        runner_kind="live-desktop",
+        session_id="run-cu-entry",
+    )
+    desktop = outcome.get("desktop") or {}
+    assert desktop.get("acquired") is True, (
+        f"run_cu_request drove the live desktop without taking the lease: {outcome.get('status')} "
+        f"{outcome.get('reason', '')[:120]}"
+    )
+    assert desktop.get("owner_run") == "run-cu-entry"
+    assert getattr(spy, "_fence", None) is not None, "the input fence was not bound"
 
 
 def test_no_temporary_file_is_left_behind(store):

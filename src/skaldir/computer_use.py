@@ -1375,6 +1375,64 @@ def run_cu_request(
                 session_id=session_id,
                 extra={"subtool": subtool_decision.as_dict()},
             )
+    # DESK-01/DESK-02 — this entry drives the same input path as run_action_list but was
+    # not going through it, so it skipped the desktop lease entirely. A caller that asked
+    # for the live desktop could move the user's mouse with nobody holding the desktop.
+    # Lazy import: act_service imports this module at import time.
+    from .act_service import (
+        _bind_desktop_fence,
+        _default_desktop_store,
+        _needs_desktop_lease,
+    )
+    from .desktop_lease import LeaseRefused
+
+    desktop_store = None
+    desktop_lease = None
+    desktop_payload: dict = {}
+    if _needs_desktop_lease(runner_kind=runner_kind, runner=runner):
+        desktop_store = _default_desktop_store()
+        try:
+            desktop_lease = desktop_store.acquire(session_id, task=goal or session_id)
+        except LeaseRefused as exc:
+            result = {
+                "status": "blocked",
+                "verified": False,
+                "goal": goal,
+                "reason": f"DESK-01: the host desktop is not available to this run — {exc}",
+                "runner": runner.isolation,
+                "runners": availability,
+            }
+            _record_cu_run(
+                runtime_dir / "cu_runs.jsonl",
+                {"ts": time.time(), "step": run_key, "status": "blocked", "goal": goal,
+                 "kind": runner.isolation, "detail": result["reason"]},
+            )
+            return result
+        generation = int(getattr(desktop_lease, "generation", 0) or 0)
+        if not _bind_desktop_fence(runner, desktop_store, session_id, generation):
+            # the fence must reach the adapter; without it the actions below would run
+            # uncontrolled even though the lease was taken
+            desktop_store.release(session_id, reason="fence not bindable")
+            result = {
+                "status": "blocked",
+                "verified": False,
+                "goal": goal,
+                "reason": "DESK-02: the desktop lease was taken but the input fence could "
+                          "not be bound to the runner — refusing to act uncontrolled",
+                "runner": runner.isolation,
+                "runners": availability,
+            }
+            _record_cu_run(
+                runtime_dir / "cu_runs.jsonl",
+                {"ts": time.time(), "step": run_key, "status": "blocked", "goal": goal,
+                 "kind": runner.isolation, "detail": result["reason"]},
+            )
+            return result
+        desktop_payload = {
+            "acquired": True, "owner_run": session_id,
+            "fencing_token": getattr(desktop_lease, "owner_token", ""),
+            "generation": generation,
+        }
     try:
         run_result = CUExecutor(policy or CUPolicy(), events=events, session_id=session_id).run(
             run_key, attempts, runner
@@ -1387,6 +1445,7 @@ def run_cu_request(
             "goal": goal,
             "runner": runner.isolation,
             "runners": availability,
+            "desktop": desktop_payload,
         }
         _record_cu_run(
             runtime_dir / "cu_runs.jsonl",
@@ -1394,6 +1453,10 @@ def run_cu_request(
              "kind": runner.isolation, "detail": result["reason"]},
         )
         return result
+    finally:
+        if desktop_store is not None and desktop_lease is not None:
+            released = desktop_store.release(session_id, reason="run finished")
+            desktop_payload["released"] = bool(released)
     post_gate = system_one_guistate_gate(
         flags=flags,
         evaluation=evaluation,
