@@ -29,8 +29,8 @@ Repository: <https://github.com/bertus37987/Skylia-Agent> (**privat**, verifizie
 - Zwischenstand nach den Altlasten-Fixes: `3 failed / 7642 passed / 33 skipped / 1 xfailed`.
   Diese drei waren **von dieser Sitzung** und sind behoben (`VALIDATION.md` §3.2 erklärt den
   einen, bei dem zwei Verträge bewusst auseinandergehen).
-- **Abschluss-Volltestsuite: `7646 passed, 33 skipped, 1 xfailed, 2 warnings` in 1496 s,
-  `PYTEST_EXIT=0`** (`logs/final-suite2.log`; `VALIDATION.md` §6).
+- **Abschluss-Volltestsuite: `7648 passed, 33 skipped, 2 warnings` in 1524 s,
+  `PYTEST_EXIT=0` — 0 Fehler, 0 xfail** (`logs/final-suite3.log`; `VALIDATION.md` §6).
 
 ## Was unsicher bleibt
 

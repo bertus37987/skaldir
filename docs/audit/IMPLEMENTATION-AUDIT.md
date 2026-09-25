@@ -84,6 +84,27 @@ und belegt. Diese Sitzung hat `skaldir selftest --json` ausgeführt: **8 Layer, 
 | CTX | CTX-01..05 | `context_manager.py` | implementiert-unbestätigt | T-44 |
 | PERF | PERF-01..05 | `telemetry.py`, `perf_runtime.py`, `perf_progress.py` | implementiert-unbestätigt | Baseline p50/p95 unter Last |
 
+## C2. Abgleich der bekannten Fehler (01-MASTERPLAN §2.2)
+
+Der Masterplan sagt: „Diese Punkte anhand aktueller Reproducer prüfen: Sie können
+inzwischen repariert sein. Keine bereits behobene Lücke erneut implementieren." Das ist
+hier geschehen — geprüft gegen den **aktuellen** Code, nicht gegen den Plan.
+
+| Bekannter Fehler | Zustand | Beleg |
+|---|---|---|
+| Mehrfacher Zen-Start nach fehlender Fensterbeobachtung (12+ Fenster) | Regression vorhanden | `tests/test_capability_learning.py` (Fensterbeobachtung/Startverhalten) |
+| stdout wurde als `verified` statt tatsächlicher Ausgabe zurückgegeben | **behoben + Regression** | `tests/test_end_state_stdout.py::test_end_state_stdout_returns_real_output_not_status_marker` und `…::test_end_state_stdout_rejects_when_output_missing` |
+| `web_search` gefunden, dann irrtümlich als Shell-Binary gestartet | Dispatch läuft über den Registry-Adapter, nicht über Shell | `src/skaldir/tools_core/bridge.py:184` (`web_search` als typisierter Bridge-Call), `src/skaldir/toolcall.py:67` (Klassifikation als read-only Tool, nicht als Shell) |
+| CLI-Diagnose abhängig von GUI-Endzustand; Schema-/Payload-Widersprüche | teilweise behoben; Rest als Contract-Lücken geführt | `KNOWN_CONTRACT_GAPS` in `tools/gv_schemathesis_run.py` (5 Einträge, je mit `why` + `fix`) |
+| Builder ohne konfigurierten Modellclient, obwohl Hauptagent einen Provider besitzt (BUILD-03) | **behoben + Regression** | `tests/test_toolbuild_client_wiring.py` (5 Tests, u. a. `test_without_a_client_the_caller_s_blocker_is_reported`, `test_the_draft_really_goes_to_the_injected_client`) |
+| COMPOSE registriert Dateien, aber tatsächlicher Aufrufweg unklar (FLOW-03) | Regression vorhanden | `tests/test_step_runners.py`, `tests/test_step_runners_gui.py`, `tests/test_cu_chain_local.py` |
+| Erfolgreiches Dateischreiben mit `created:false` wird als Fehler gedeutet (T-04) | Regression vorhanden | `tests/test_checkpoints_cli.py`, `tests/test_compose_cli.py` u. a. behandeln `created: false` als Aktualisierung |
+| Lange wiederholte Testbefehle ohne sichtbaren Fortschritt | beobachtet, nicht nachträglich reproduzierbar | `src/skaldir/progress_guard.py` + `run_supervisor.py` (no-progress-Streaks) |
+
+**Ergebnis:** Keiner dieser Punkte wird erneut implementiert. Zwei sind ausdrücklich als
+behoben mit Regression belegt, drei haben Regressionen am Mechanismus, einer ist über die
+Contract-Lückenliste geführt. Der Rest ist als vorhandene Mechanismen zugeordnet.
+
 ## D. Ausdrücklich nicht als erfüllt gemeldet
 
 | ID | Warum |

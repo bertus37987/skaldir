@@ -93,8 +93,8 @@ zugeschrieben, sondern hier entstanden und behoben:
 
 Danach: `184 passed, 1 xfailed` in 35 s für die betroffenen Dateien.
 
-**Abschluss-Volltestsuite:** `7646 passed, 33 skipped, 1 xfailed, 2 warnings in 1496.05 s`,
-`PYTEST_EXIT=0` — kein einziger Fehlschlag.
+**Abschluss-Volltestsuite** (nach dem `tool_search`-Fix):
+`7648 passed, 33 skipped, 2 warnings in 1523.59 s`, `PYTEST_EXIT=0` — **0 Fehler, 0 xfail**.
 
 ### Nachtrag 2: P0 `tool_search` ohne Aufrufvertrag — behoben
 

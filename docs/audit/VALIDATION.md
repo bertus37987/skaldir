@@ -109,6 +109,10 @@ Zweit-Worktree `/tmp/skaldir-pristine` ausgeführt (`/tmp/pristine-run.log`):
 | `build_agent_toolset` wirft bei `store=None` | 4 FAIL | **0** | `_store_for`-Auflösung in `build_agent_toolset` (dessen Signatur `store=None` zusagt) |
 | `schemathesis`-Binär fehlt (nicht deklariert) | 6 FAIL + 5 ERROR | **0** | `schemathesis>=4` in die `dev`-Extras aufgenommen |
 | `tool_search` liefert kein `input_schema` | (im Test versteckt) | **0** | behoben — Descriptor-Vertrag wird durchgereicht, siehe §3.1 |
+
+**Abschlussbestand:** 7648 Tests bestanden, 0 fehlgeschlagen, 0 `xfail`. Die Suite ist damit
+in ihrem gesamten Bestand grün — nicht durch Weglassen, sondern durch die sieben behobenen
+Ursachen oben.
 | Lücken-Reproduktion der Property-Suite | 1 FAIL | **0** | bedingte Reproduktion als `conditional` + `condition` modelliert, Gate zweistufig |
 | doppelter Helper `register_contract_entries` | 1 FAIL | **0** | entfernt; `cli_shared.install_contract_entries` bleibt die eine Heimat |
 
@@ -192,7 +196,7 @@ sie ehrlich lauffähig sind (02 §7, §8).
 | Baseline (vor den Fixes) | 25.09.2026 | `16 failed, 7462 passed, 34 skipped, 63 errors` in 1496 s |
 | Referenz Initialcommit `0b09a8a` (Zweit-Worktree) | 25.09.2026 | `12 failed, 1 passed, 5 errors` — Herkunftsbeleg |
 | Zwischenstand | 25.09.2026 | `3 failed, 7642 passed, 33 skipped, 1 xfailed` in 1487 s |
-| **Abschluss** | 25.09.2026 | **`7646 passed, 33 skipped, 1 xfailed, 2 warnings in 1496.05 s`** — `PYTEST_EXIT=0` (`logs/final-suite2.log`) |
+| **Abschluss** (nach dem `tool_search`-Fix) | 25.09.2026 | **`7648 passed, 33 skipped, 2 warnings in 1523.59 s`** — `PYTEST_EXIT=0`, **0 Fehler, 0 xfail** (`logs/final-suite3.log`) |
 
 Die drei Fehler des Zwischenstands (`test_agent_loop`, `test_cli_shared`,
 `test_schemathesis_cli`) waren **durch diese Sitzung entstanden** und sind behoben; §3.2
