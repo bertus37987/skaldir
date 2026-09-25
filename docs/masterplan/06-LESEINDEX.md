@@ -4,16 +4,16 @@ Stand: 25. September 2026. Index für diese lokale Paketkopie. Physische Zeilen,
 
 ## 00-START-HIER.md
 
-[00-START-HIER.md](00-START-HIER.md) · 57 Zeilen · `sha256:6f651e0b1c71f97e5c923c54c8f3888a7b85cd904a3a64c0fe6d5ac7b81982fc`
+[00-START-HIER.md](00-START-HIER.md) · 58 Zeilen · `sha256:f713a2c5b39c7e2c817a35e7731199b7738158c8ddcfedd22df8df6e136d79a0`
 
 | Abschnitt | Zeilen |
 |---|---|
-| Arbeitsauftrag an den Coding-Agenten | 1–57 |
+| Arbeitsauftrag an den Coding-Agenten | 1–58 |
 | Auftrag | 7–16 |
 | Vorhandener Projektkontext | 17–24 |
 | Vorrang der aktuellen Entscheidungen | 25–41 |
 | Erwartete Arbeitsartefakte im Repository | 42–47 |
-| Paketübersicht | 48–57 |
+| Paketübersicht | 48–58 |
 
 ## 01-MASTERPLAN.md
 
@@ -127,3 +127,21 @@ Stand: 25. September 2026. Index für diese lokale Paketkopie. Physische Zeilen,
 |---|---|
 | Vollständige Anforderungsmatrix | 1–142 |
 
+## 07-BROWSER-UPGRADE.md
+
+[07-BROWSER-UPGRADE.md](07-BROWSER-UPGRADE.md) · 140 Zeilen · `sha256:be06eb5f3c2acd25cf4415bf0c80b9f253e0986c8fde48c04eb093fca23f7f5f`
+
+| Abschnitt | Zeilen |
+|---|---|
+| Browser-Upgrade für Skaldir | 1–140 |
+| 1. Entscheidungsvorschlag | 5–12 |
+| 2. Geprüfte Kandidaten | 13–23 |
+| 3. Entscheidende Grenze: Zen und bestehende Sitzungen | 24–36 |
+| 4. Browser-Layer statt lose Shell-Befehle | 37–54 |
+| 5. Geschwindigkeit und korrektes Batching | 55–67 |
+| 6. Fensterflut zuverlässig verhindern | 68–75 |
+| 7. Subtools und gemischte Workflows | 76–85 |
+| 8. Kontrolle, UI und Verifikation | 86–95 |
+| 9. Setup-Auftrag an Hermes | 96–107 |
+| 10. Abnahmetests | 108–129 |
+| 11. Primärquellen und Nachweisgrenzen | 130–140 |

@@ -2256,6 +2256,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     _register_jev_cli(sub)
 
+    # --- The confirmed surface (UI-01..08, DESK-01..04, STOP-01..05):
+    #     `skaldir tui …`, `skaldir stop …`, `skaldir desk …`. One owner for the three
+    #     groups, because they are one confirmed decision set — see src/skaldir/surface_cli.py.
+    from .surface_cli import register_cli as _register_surface
+
+    _register_surface(sub)
+
     # --- CLINE-PERF-1: bounded-rate streaming. Two lines, paste-ready, right after
     #     `_register_jev_cli(sub)` inside build_parser() ---
     from .streaming import register_cli as _register_stream

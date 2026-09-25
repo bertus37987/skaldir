@@ -1158,8 +1158,12 @@ def build_agent_toolset(
     tools.append(knowledge_search_tool(runtime=runtime))
     tools.append(knowledge_read_tool(runtime=runtime))
     if selection in ("registry", "both"):
-        if store is None:
-            raise AgentLoopError("the registry tool set needs a tool store (--db)")
+        # `_store_for` already resolves `<runtime>/tools.db` when no store is handed in;
+        # the two tool-set builders used to refuse instead, so the documented
+        # `store: ToolStore | None = None` signature was unusable (measured:
+        # tests/test_tool_search_integration.py — 4 failures at the initial transfer
+        # commit, before any change here).
+        store = _store_for(runtime if runtime is not None else workspace, store)
         directory = (
             Path(str(runtime)).expanduser()
             if runtime is not None

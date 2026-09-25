@@ -40,6 +40,12 @@ dev = [
   "ruff>=0.6,<1",
   "bandit>=1.7,<2",
   "cryptography>=42",
+  # `tests/test_schemathesis_cli.py` shells out to `.venv/bin/schemathesis` through
+  # `tools/gv_schemathesis_run.py`. It is not an import in the shipped tree, so
+  # `test_dependency_declarations` never saw it — and a fresh `pip install -e '.[dev]'`
+  # arrived without it (measured: 6 failures, "no schemathesis at .venv/bin/schemathesis").
+  # Naming it here is what makes the declared test runner self-sufficient.
+  "schemathesis>=4",
   # The API surface, the optional schema validator and the CDP screenshot path are all
   # imported lazily (never at module level) so the core CLI works without them — but the
   # *test suite* exercises them, so a dev install must actually have them. They used to

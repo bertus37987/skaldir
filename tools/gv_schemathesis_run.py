@@ -970,7 +970,9 @@ KNOWN_CONTRACT_GAPS: tuple[dict, ...] = (
         "check": "response_schema_conformance",
         "contains": "/data",
         "kind": "schema_gap",
-        "reproduced_by": "generation",
+        # measured 2026-09-25 in the Skaldir_Agent workspace: this one DOES come back from
+        # the deterministic reference pass, so "generation" under-stated it
+        "reproduced_by": "reference_pass",
         "why": "cli_contract.COMMANDS['memory-retrieval-check'] declares data_available: false, "
                "successful invocation emits data {stdout, enforcement_gaps, ...} — the reference "
                "pass sees data: null only because its placeholder arguments fail the command first",
@@ -981,10 +983,19 @@ KNOWN_CONTRACT_GAPS: tuple[dict, ...] = (
         "check": "reference_pass",
         "contains": "",
         "kind": "schema_gap",
-        "reproduced_by": "reference_pass",
-        "why": "cli_contract.COMMANDS['completion.override'] declares data_available: false, "
-               "command emits data {state, reason, is_verified_complete} with exit 0",
-        "fix": "declare the completion.override payload schema in cli_contract.COMMANDS",
+        # Re-measured 2026-09-25, twice: the reference pass no longer reports a
+        # declared-data contradiction for this command, because `completion.override` only
+        # emits data when a completion is actually open. The contract gap itself is still
+        # there (`data_schema: null`), it is just not reachable from the reference pass's
+        # state — so it is recorded as `state_dependent` instead of claiming a reproduction
+        # that does not happen.
+        "reproduced_by": "state_dependent",
+        "why": "cli_contract.COMMANDS['completion.override'] declares no data schema, and the "
+               "command emits data {state, reason, is_verified_complete} with exit 0 — but "
+               "only while a completion is open, so the deterministic reference pass cannot "
+               "reproduce it (measured 2026-09-25, 2/2 runs)",
+        "fix": "declare the completion.override payload schema in cli_contract.COMMANDS, and "
+               "have the reference pass open a completion first so the gap is reproducible",
     },
 )
 

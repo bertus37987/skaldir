@@ -352,6 +352,15 @@ def test_the_recorded_data_schema_gaps_reproduce(property_run: dict) -> None:
         "update KNOWN_CONTRACT_GAPS (or the contract) with the new measurement"
     )
 
+    # A gap the reference pass cannot reach is still a gap: it stays recorded, and the
+    # recording must keep saying what it is. This is the gate that stops `state_dependent`
+    # from becoming a polite name for "deleted".
+    for gap in artifact["known_gaps"]:
+        if gap.get("reproduced_by") == "state_dependent":
+            assert gap.get("why"), gap
+            assert gap.get("fix"), gap
+            assert "state" in gap["why"].lower() or "open" in gap["why"].lower(), gap
+
 
 def test_no_command_destroys_the_directory_it_runs_in() -> None:
     """A directory-shaped path argument must not chmod the directory the command runs in.

@@ -1,6 +1,6 @@
 # Skaldir CLI art - the logo converted once, checked in. Do not edit by hand.
 # a grid carries one hex digit per pixel: 0 = paper, f = full ink
-# source: /home/willy/projects/gods-voice/src/skaldir/assets/skaldir-logo.png
+# source: /home/willy/Agentic_Projects/Skaldir_Agent/src/skaldir/assets/skaldir-logo.png
 # source: 1254x1254 px, ink box 282,213-1039,1025
 # generator: python -m skaldir.logo regenerate  (stdlib only, no Pillow)
 # rendering: one pixel row per terminal line, aspect corrected for 2:1 cells;

@@ -55,3 +55,4 @@ Keinen globalen „alles fertig“-Status aus Anzahl registrierter Commands oder
 | [04-AUDIT-UND-UEBERGABE.md](04-AUDIT-UND-UEBERGABE.md) | Auditverfahren, Abgrenzungen und Quellen |
 | [05-ANFORDERUNGSMATRIX.md](05-ANFORDERUNGSMATRIX.md) | Vollständige ID-Liste für den Codeabgleich |
 | [06-LESEINDEX.md](06-LESEINDEX.md) | Exakte Abschnittszeilen und SHA-256-Hashes |
+| [07-BROWSER-UPGRADE.md](07-BROWSER-UPGRADE.md) | Recherchierter Browser-Backend-Vorschlag, Zen-Grenzen, Integration und Abnahmetests |

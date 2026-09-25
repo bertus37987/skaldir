@@ -8,10 +8,11 @@ Stand: 25. September 2026. Quelle: `/home/willy/projects/gods-voice` (read-only,
 | Quell-HEAD | `a8fcaa1beb2cd3da81262e46b6378d8ecd66cc0a` (2026-09-19 11:23:05 +0200) |
 | Quell-Arbeitsbaum | dirty: 166 modifizierte, 192 untracked Pfade (vor der Migration erfasst) |
 | Inventur | `git ls-files` (1296 tracked) + `git ls-files --others --exclude-standard` (192 untracked) |
-| Übernommen | 1094 Dateien. 24.938.580 Bytes |
+| Übernommen | 1095 Dateien |
 | Ausgeschlossen | 1649 Dateien (vollständige Liste: `logs/migration-excluded.txt`) |
 | Kollisionen | 1 (`.gitignore`) — nicht überschrieben, stattdessen zusammengeführt |
-| Hash-Prüfung | SHA-256 Quelle == Ziel für alle 1094 kopierten Dateien; erneute Kontrolle nach dem Kopieren: 0 Abweichungen, 0 Quelldrift |
+| Hash-Prüfung | SHA-256 Quelle == Ziel für alle kopierten Dateien; erneute Kontrolle nach dem Kopieren: 0 Quelldrift, 0 Zielabweichung |
+| Nach der Migration geändert | 2 Dateien (unten gesondert ausgewiesen) |
 
 ## 1. Auswahlregeln
 
@@ -19,153 +20,46 @@ Stand: 25. September 2026. Quelle: `/home/willy/projects/gods-voice` (read-only,
 
 **Nicht übernommen:** `.git`/alte Remotes, `.venv`, `node_modules`, Python-/Test-/Build-Caches, Runtime-Datenbanken (`events.db`, `cu_runs.jsonl`), generierte Testoutputs (`outputs/`, 216 MB), UI-Audit-Screenshots (`ui-artifacts/`, 8,4 MB), rohe Probe-Evidence-Logs (`audit/evidence/`, 1,6 MB), Browserprofile. Nicht übernommene Dateien wurden **nicht gelöscht** — sie liegen unverändert in der Quelle.
 
-**Verschoben statt überschrieben** (Ziel enthielt bereits eigenes Planpaket):
+**Pfade beibehalten:** Die Dokumentation der Quelle liegt weiterhin unter `docs/…` an ihrem ursprünglichen relativen Pfad, weil Code, Tools und Tests genau diese Pfade referenzieren (Beispiel: `tools/gv_benchmark.py` → `docs/BENCHMARK-RUN-SCHEMA.json`). Eine erste Umlagerung nach `docs/upstream/` wurde zurückgenommen, nachdem sie 63 Testfehler erzeugt hatte.
 
-- `.hermes/plans/2026-09-13_161102-feature-map-luecken-fix-und-remap.md` → `docs/upstream/plans/plans/2026-09-13_161102-feature-map-luecken-fix-und-remap.md`
-- `.hermes/plans/2026-09-13_1750-verifikation-und-release.md` → `docs/upstream/plans/plans/2026-09-13_1750-verifikation-und-release.md`
-- `AGENTS.md` → `docs/upstream/AGENTS-UPSTREAM.md`
-- `README.md` → `docs/upstream/README-UPSTREAM.md`
-- `docs/94-token-economy-worked-example.py` → `docs/upstream/94-token-economy-worked-example.py`
-- `docs/ABNAHME-STATUS.md` → `docs/upstream/ABNAHME-STATUS.md`
-- `docs/ACCEPTANCE.md` → `docs/upstream/ACCEPTANCE.md`
-- `docs/APP-BUILD.md` → `docs/upstream/APP-BUILD.md`
-- `docs/ARCHITECTURE.md` → `docs/upstream/ARCHITECTURE.md`
-- `docs/BENCHMARK-MATRIX.md` → `docs/upstream/BENCHMARK-MATRIX.md`
-- `docs/BENCHMARK-RUN-SCHEMA.json` → `docs/upstream/BENCHMARK-RUN-SCHEMA.json`
-- `docs/CAPABILITY-GAPS.md` → `docs/upstream/CAPABILITY-GAPS.md`
-- `docs/CAPABILITY-LEARNING-E2E.md` → `docs/upstream/CAPABILITY-LEARNING-E2E.md`
-- `docs/CHAT-INTEGRATION.md` → `docs/upstream/CHAT-INTEGRATION.md`
-- `docs/CHAT-UI-V6-PLAN.md` → `docs/upstream/CHAT-UI-V6-PLAN.md`
-- `docs/CHATTING.md` → `docs/upstream/CHATTING.md`
-- `docs/CLI-REFERENCE.md` → `docs/upstream/CLI-REFERENCE.md`
-- `docs/CLI-STYLE.md` → `docs/upstream/CLI-STYLE.md`
-- `docs/CLI-VISUAL-AUDIT.md` → `docs/upstream/CLI-VISUAL-AUDIT.md`
-- `docs/COMPLETE_AUDIT-2026-09-13.md` → `docs/upstream/COMPLETE_AUDIT-2026-09-13.md`
-- `docs/CORE-PLAN.md` → `docs/upstream/CORE-PLAN.md`
-- `docs/DESIGN-2-GODS-VOICE.md` → `docs/upstream/DESIGN-2-GODS-VOICE.md`
-- `docs/DESIGN.md` → `docs/upstream/DESIGN.md`
-- `docs/DEV.md` → `docs/upstream/DEV.md`
-- `docs/DISCOVERY-TESTSET.md` → `docs/upstream/DISCOVERY-TESTSET.md`
-- `docs/E2E-LIVE-PROOF-40.md` → `docs/upstream/E2E-LIVE-PROOF-40.md`
-- `docs/EVAL-LONGHORIZON.md` → `docs/upstream/EVAL-LONGHORIZON.md`
-- `docs/EXPERIENCE-V6-PLAN.md` → `docs/upstream/EXPERIENCE-V6-PLAN.md`
-- `docs/FEATURE-MAP.md` → `docs/upstream/FEATURE-MAP.md`
-- `docs/FEATURES.md` → `docs/upstream/FEATURES.md`
-- `docs/FONTS.md` → `docs/upstream/FONTS.md`
-- `docs/GODSV-COMPLETE-OVERVIEW.md` → `docs/upstream/GODSV-COMPLETE-OVERVIEW.md`
-- `docs/GV-README-DRAFT.md` → `docs/upstream/GV-README-DRAFT.md`
-- `docs/HANDOVER.md` → `docs/upstream/HANDOVER.md`
-- `docs/HARDENING-MATRIX.md` → `docs/upstream/HARDENING-MATRIX.md`
-- `docs/IMPLEMENTATION-MATRIX.md` → `docs/upstream/IMPLEMENTATION-MATRIX.md`
-- `docs/IMPLEMENTATION-PLAN-docker-tool-builder.md` → `docs/upstream/IMPLEMENTATION-PLAN-docker-tool-builder.md`
-- `docs/IMPLEMENTATION-PLAN-live-control-plane.md` → `docs/upstream/IMPLEMENTATION-PLAN-live-control-plane.md`
-- `docs/IMPLEMENTATION-PLAN-recovery-skaldir.md` → `docs/upstream/IMPLEMENTATION-PLAN-recovery-skaldir.md`
-- `docs/IMPLEMENTATION.md` → `docs/upstream/IMPLEMENTATION.md`
-- `docs/INSTALL.md` → `docs/upstream/INSTALL.md`
-- `docs/JEV-IMPLEMENTATION-PLAN.md` → `docs/upstream/JEV-IMPLEMENTATION-PLAN.md`
-- `docs/LIVE-STREAM-SPEC.md` → `docs/upstream/LIVE-STREAM-SPEC.md`
-- `docs/MEMORY-LEARNING.md` → `docs/upstream/MEMORY-LEARNING.md`
-- `docs/PLATFORM.md` → `docs/upstream/PLATFORM.md`
-- `docs/PRODUCT-RUN-6.2.md` → `docs/upstream/PRODUCT-RUN-6.2.md`
-- `docs/PROJECT-STATE.md` → `docs/upstream/PROJECT-STATE.md`
-- `docs/PROMPTS.md` → `docs/upstream/PROMPTS.md`
-- `docs/QUICKSTART.md` → `docs/upstream/QUICKSTART.md`
-- `docs/RENAME-MIGRATION.md` → `docs/upstream/RENAME-MIGRATION.md`
-- `docs/RENAME.md` → `docs/upstream/RENAME.md`
-- `docs/REPOS.md` → `docs/upstream/REPOS.md`
-- `docs/RESEARCH-V6-INPUTS.md` → `docs/upstream/RESEARCH-V6-INPUTS.md`
-- `docs/RF-LONGRUN-FREIGABE.md` → `docs/upstream/RF-LONGRUN-FREIGABE.md`
-- `docs/RF-STATUS.md` → `docs/upstream/RF-STATUS.md`
-- `docs/RUN-LIFECYCLE.md` → `docs/upstream/RUN-LIFECYCLE.md`
-- `docs/RUNBOOK.md` → `docs/upstream/RUNBOOK.md`
-- `docs/SECURITY-BOUNDARIES.md` → `docs/upstream/SECURITY-BOUNDARIES.md`
-- `docs/SECURITY.md` → `docs/upstream/SECURITY.md`
-- `docs/SNIPPET-93-subagent-roles.md` → `docs/upstream/SNIPPET-93-subagent-roles.md`
-- `docs/SOURCES.md` → `docs/upstream/SOURCES.md`
-- `docs/STATUS.md` → `docs/upstream/STATUS.md`
-- `docs/SUPERVISOR-AUDIT.md` → `docs/upstream/SUPERVISOR-AUDIT.md`
-- `docs/SURFACE.md` → `docs/upstream/SURFACE.md`
-- `docs/TOOL-HUB.md` → `docs/upstream/TOOL-HUB.md`
-- `docs/TOOLS-V2-BUILDER-GAPS.md` → `docs/upstream/TOOLS-V2-BUILDER-GAPS.md`
-- `docs/TOOLS-V2-BUILDFLOW.md` → `docs/upstream/TOOLS-V2-BUILDFLOW.md`
-- `docs/TOOLS-V2-DISCOVERY.md` → `docs/upstream/TOOLS-V2-DISCOVERY.md`
-- `docs/TOOLS-V2-EXECUTION-BOUNDARY.md` → `docs/upstream/TOOLS-V2-EXECUTION-BOUNDARY.md`
-- `docs/TOOLS-V2-HOST-WIRING.md` → `docs/upstream/TOOLS-V2-HOST-WIRING.md`
-- `docs/TOOLS-V2-MINING-HEALTH.md` → `docs/upstream/TOOLS-V2-MINING-HEALTH.md`
-- `docs/TOOLS-V2-REGISTRY.md` → `docs/upstream/TOOLS-V2-REGISTRY.md`
-- `docs/UI-AUDIT-CHECKPOINTS.md` → `docs/upstream/UI-AUDIT-CHECKPOINTS.md`
-- `docs/UI-DESIGN.md` → `docs/upstream/UI-DESIGN.md`
-- `docs/UI.md` → `docs/upstream/UI.md`
-- `docs/VERIFICATION-1.3.md` → `docs/upstream/VERIFICATION-1.3.md`
-- `docs/VERIFICATION-1.4.md` → `docs/upstream/VERIFICATION-1.4.md`
-- `docs/VERIFICATION-CLOSURE.md` → `docs/upstream/VERIFICATION-CLOSURE.md`
-- `docs/VERIFIED-FINDINGS-live-2026-09-13.md` → `docs/upstream/VERIFIED-FINDINGS-live-2026-09-13.md`
-- `docs/VOICE-CALIBRATION.md` → `docs/upstream/VOICE-CALIBRATION.md`
-- `docs/artifacts-94-token-economy/archived-tool-result.json` → `docs/upstream/artifacts-94-token-economy/archived-tool-result.json`
-- `docs/artifacts-94-token-economy/f1-lease-cas.txt` → `docs/upstream/artifacts-94-token-economy/f1-lease-cas.txt`
-- `docs/artifacts-94-token-economy/hot-form.json` → `docs/upstream/artifacts-94-token-economy/hot-form.json`
-- `docs/artifacts-94-token-economy/progress-decision.json` → `docs/upstream/artifacts-94-token-economy/progress-decision.json`
-- `docs/artifacts-94-token-economy/retry-gate.json` → `docs/upstream/artifacts-94-token-economy/retry-gate.json`
-- `docs/artifacts-94-token-economy/run/state/runs/run-20260919T135346Z-1cd1ec.jsonl` → `docs/upstream/artifacts-94-token-economy/run/state/runs/run-20260919T135346Z-1cd1ec.jsonl`
-- `docs/artifacts-94-token-economy/run/state/tool_archive/dd59b60a2a5e55e42d3f2b940f999c7c5e195de203c855d07ede6f0935d3f479.json` → `docs/upstream/artifacts-94-token-economy/run/state/tool_archive/dd59b60a2a5e55e42d3f2b940f999c7c5e195de203c855d07ede6f0935d3f479.json`
-- `docs/artifacts-94-token-economy/token-report.json` → `docs/upstream/artifacts-94-token-economy/token-report.json`
-- `docs/artifacts-94-token-economy/token-report.txt` → `docs/upstream/artifacts-94-token-economy/token-report.txt`
-- `docs/artifacts-94-token-economy/worked-example.json` → `docs/upstream/artifacts-94-token-economy/worked-example.json`
-- `docs/audit/ARTIFACT-MANIFEST.json` → `docs/upstream/audit/ARTIFACT-MANIFEST.json`
-- `docs/audit/AUDIT-FINDINGS.md` → `docs/upstream/audit/AUDIT-FINDINGS.md`
-- `docs/audit/BENCHMARK-RAW-README.md` → `docs/upstream/audit/BENCHMARK-RAW-README.md`
-- `docs/audit/BENCHMARK_MANIFEST.json` → `docs/upstream/audit/BENCHMARK_MANIFEST.json`
-- `docs/audit/CLI-CONTRACT-PROBES.md` → `docs/upstream/audit/CLI-CONTRACT-PROBES.md`
-- `docs/audit/COMPLETION_PRECHECK.md` → `docs/upstream/audit/COMPLETION_PRECHECK.md`
-- `docs/audit/COMPUTER-USE-GUI-E2E.md` → `docs/upstream/audit/COMPUTER-USE-GUI-E2E.md`
-- `docs/audit/COMPUTER_USE_SUBTOOLS.md` → `docs/upstream/audit/COMPUTER_USE_SUBTOOLS.md`
-- `docs/audit/DOCKER-BUILDER-EVIDENCE.md` → `docs/upstream/audit/DOCKER-BUILDER-EVIDENCE.md`
-- `docs/audit/JEV-WORKER-A-CODE-MAP.md` → `docs/upstream/audit/JEV-WORKER-A-CODE-MAP.md`
-- `docs/audit/JEV-WORKER-A-REPORT.md` → `docs/upstream/audit/JEV-WORKER-A-REPORT.md`
-- `docs/audit/JEV_CU_PACK.md` → `docs/upstream/audit/JEV_CU_PACK.md`
-- `docs/audit/JEV_ID_MAP.md` → `docs/upstream/audit/JEV_ID_MAP.md`
-- `docs/audit/JEV_PROVIDER_COMPATIBILITY.md` → `docs/upstream/audit/JEV_PROVIDER_COMPATIBILITY.md`
-- `docs/audit/PERFORMANCE.md` → `docs/upstream/audit/PERFORMANCE.md`
-- `docs/audit/PLATFORM-MATRIX.md` → `docs/upstream/audit/PLATFORM-MATRIX.md`
-- `docs/audit/RELEASE_NOTES.md` → `docs/upstream/audit/RELEASE_NOTES.md`
-- `docs/audit/RF09-CRASH-WINDOW-INVENTORY.md` → `docs/upstream/audit/RF09-CRASH-WINDOW-INVENTORY.md`
-- `docs/audit/SKILLS_USED.md` → `docs/upstream/audit/SKILLS_USED.md`
-- `docs/audit/SYSTEM_ONE_GUISTATE.md` → `docs/upstream/audit/SYSTEM_ONE_GUISTATE.md`
-- `docs/audit/SYSTEM_ONE_QUESTIONS.json` → `docs/upstream/audit/SYSTEM_ONE_QUESTIONS.json`
-- `docs/audit/SYSTEM_ONE_SHADOW.md` → `docs/upstream/audit/SYSTEM_ONE_SHADOW.md`
-- `docs/audit/SYSTEM_ONE_TRIAGE_PACK.md` → `docs/upstream/audit/SYSTEM_ONE_TRIAGE_PACK.md`
-- `docs/audit/TEST_REPORT.md` → `docs/upstream/audit/TEST_REPORT.md`
-- `docs/audit/UI-FEATURE-MAP.md` → `docs/upstream/audit/UI-FEATURE-MAP.md`
-- `docs/audit/UPDATE_COMPATIBILITY.md` → `docs/upstream/audit/UPDATE_COMPATIBILITY.md`
-- `docs/audit/probes-2026-09-12.json` → `docs/upstream/audit/probes-2026-09-12.json`
-- `docs/audit/probes-after-etappe1.json` → `docs/upstream/audit/probes-after-etappe1.json`
-- `docs/audit/probes-after-etappe2.json` → `docs/upstream/audit/probes-after-etappe2.json`
-- `docs/audit/review_probes.py` → `docs/upstream/audit/review_probes.py`
-- `docs/skaldir-upgrade/decisions.md` → `docs/upstream/skaldir-upgrade/decisions.md`
-- `docs/skaldir-upgrade/implementation-audit.md` → `docs/upstream/skaldir-upgrade/implementation-audit.md`
-- `docs/skaldir-upgrade/ist-audit-2026-09-25.md` → `docs/upstream/skaldir-upgrade/ist-audit-2026-09-25.md`
-- `docs/skaldir-upgrade/validation-report.md` → `docs/upstream/skaldir-upgrade/validation-report.md`
+Nur diese Dateien liegen unter einem bewusst anderen Pfad:
 
-Der alte Ziel-`README.md` (Vorbereitungshinweis des Planpakets) ist als `docs/upstream/README-PLANPAKET.md` erhalten; die Produkt-`README.md` stammt jetzt aus der Quelle und ist um einen Abschnitt zum neuen Arbeitsbereich ergänzt.
+| Herkunft | Ziel | Grund |
+|---|---|---|
+| `AGENTS.md` | `docs/upstream/AGENTS-UPSTREAM.md` | Feature-Standard der Quelle; die neue Ziel-`AGENTS.md` bleibt maßgeblich und wurde nicht überschrieben |
+| `README.md` | `docs/upstream/README-UPSTREAM.md` | Produkt-README der Quelle; die neue Root-`README.md` ist daraus abgeleitet und um einen Arbeitsbereichs-Abschnitt ergänzt |
+| `.hermes/plans/*.md` | `docs/reference/upstream-plans/` | historische Session-Pläne, kein aktiver Codepfad |
 
-## 2. Aufgeschoben (deferred)
+Der alte Ziel-`README.md` (Vorbereitungshinweis des Planpakets) ist als `docs/upstream/README-PLANPAKET.md` wortgleich erhalten.
+
+## 2. Nach der Migration geänderte Dateien
+
+Diese Dateien wurden übernommen und danach im Zieldurchlauf bewusst verändert; der Quellhash steht für den übernommenen Stand.
+
+| Ziel | Quellhash (übernommen) | Änderung |
+|---|---|---|
+| `.gitignore` | `af063c16b7a0bfb757bd7725cad0bc7808a76fd140ffa7346d6093e08d9f1979` | nach der Migration zusammengeführt (Ziel- und Quellregeln vereint) |
+| `src/skaldir/cli.py` | `30f2213a02ecbd3706f3834fe738f0a9e5c8809898182fb620f547127ceb2eaf` | nach der Migration erweitert: registriert die neue Surface-CLI |
+
+## 3. Aufgeschoben (deferred)
 
 | Pfad | Grund | Ersatz / Rückweg |
 |---|---|---|
 | `audit/evidence/` (199 rohe Probe-Logs) | lange Originalausgaben; laut Auftrag nur redigierte Zusammenfassungen versionieren | vollständig in der Quelle erhalten; Zusammenfassungen in `docs/audit/` |
-| `outputs/` (1315 Dateien) | generierte Test-/UI-Audit-Outputs, ohne aktive Laufzeitabhängigkeit | nur als Dokstrings referenziert (Tests laufen ohne sie); Regenerierbar |
+| `outputs/` (1315 Dateien) | generierte Test-/UI-Audit-Outputs, ohne aktive Laufzeitabhängigkeit | nur in Dokstrings referenziert (Tests laufen ohne sie); regenerierbar |
 | `ui-artifacts/` (42 Screenshots) | reine Bildschirmfotos alter UI-Stände | nur von `tools/build_artifact_manifest.py` referenziert |
 | `~/.hermes/godsv/app-src`, Live-Runtime | explizit geschützt laut AGENTS.md | nicht angefasst |
 
-## 3. Übernommene Dateien mit SHA-256
+## 4. Übernommene Dateien mit SHA-256
 
 `Herkunft` ist der Pfad relativ zur Quelle, `Ziel` relativ zum neuen Repository.
 
 | Herkunft | Ziel | Bytes | SHA-256 (Quelle = Ziel) |
 |---|---|---|---|
 | `.github/workflows/ci.yml` | `.github/workflows/ci.yml` | 474 | `7df4801b82946bba9555311144a7362cd8317101530d83e338f534acab20c76e` |
-| `.hermes/plans/2026-09-13_161102-feature-map-luecken-fix-und-remap.md` | `docs/upstream/plans/plans/2026-09-13_161102-feature-map-luecken-fix-und-remap.md` | 38364 | `e2f945a183c95e24420331d73c0fe863df9e5dc4c8ccc894dbf03cdd468b8302` |
-| `.hermes/plans/2026-09-13_1750-verifikation-und-release.md` | `docs/upstream/plans/plans/2026-09-13_1750-verifikation-und-release.md` | 13567 | `70edfa71a40a9c8175d7bbe1843ff0c4e67f03705d3f88c3f86d0a1124c2c485` |
+| `.gitignore` | `.gitignore` | 1070 | `af063c16b7a0bfb757bd7725cad0bc7808a76fd140ffa7346d6093e08d9f1979` |
+| `.hermes/plans/2026-09-13_161102-feature-map-luecken-fix-und-remap.md` | `docs/reference/upstream-plans/2026-09-13_161102-feature-map-luecken-fix-und-remap.md` | 38364 | `e2f945a183c95e24420331d73c0fe863df9e5dc4c8ccc894dbf03cdd468b8302` |
+| `.hermes/plans/2026-09-13_1750-verifikation-und-release.md` | `docs/reference/upstream-plans/2026-09-13_1750-verifikation-und-release.md` | 13567 | `70edfa71a40a9c8175d7bbe1843ff0c4e67f03705d3f88c3f86d0a1124c2c485` |
 | `AGENTS.md` | `docs/upstream/AGENTS-UPSTREAM.md` | 13535 | `cba57dad0a931fc8dfbe17b89c1304577d66299e7e027ccb07c3fcd79db80675` |
 | `CHANGELOG.md` | `CHANGELOG.md` | 35239 | `11a881ae13f9633ee36dae6053ad016ee00e8fa4ed5c797d2d9b91c1f5eacc17` |
 | `LICENSE` | `LICENSE` | 11358 | `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30` |
@@ -185,126 +79,126 @@ Der alte Ziel-`README.md` (Vorbereitungshinweis des Planpakets) ist als `docs/up
 | `audit/findings.json` | `audit/findings.json` | 58196 | `fb3d464e75123ea70177693b1d34376ce42e179bf4c8b7faaa06d3c8597c3ea1` |
 | `audit/verification-mapping.json` | `audit/verification-mapping.json` | 114997 | `6deb78cdf1c9661dc48a7d88c57044a74403a1f7ff05486b7c132803cc86f2c9` |
 | `docker/cu-x11.Containerfile` | `docker/cu-x11.Containerfile` | 4108 | `605b0a96ec9f8c289c97d27caf24f4aa811551cdf243c6c311774f3ae68efe23` |
-| `docs/94-token-economy-worked-example.py` | `docs/upstream/94-token-economy-worked-example.py` | 11944 | `f800306252c83d091984457a3e01c5638d30f45af59db990145ee3940f772616` |
-| `docs/ABNAHME-STATUS.md` | `docs/upstream/ABNAHME-STATUS.md` | 44573 | `04810be59de3ffa73949b481b6b993da99341b8c6b5cdc30b92026d565634e19` |
-| `docs/ACCEPTANCE.md` | `docs/upstream/ACCEPTANCE.md` | 4836 | `1452050549be179835fa26a97ddb4addb13ee8b149593233f0f29ca9ea64416e` |
-| `docs/APP-BUILD.md` | `docs/upstream/APP-BUILD.md` | 3988 | `3928d1ea102412572aae7187dd8c6b1a3b5339861d9190295c95a1c3c6a79fd2` |
-| `docs/ARCHITECTURE.md` | `docs/upstream/ARCHITECTURE.md` | 19717 | `7d65321fbdf8a4f6ac3d53e5fb12570b065f64df2195ce8e29b2dd2af1288d58` |
-| `docs/BENCHMARK-MATRIX.md` | `docs/upstream/BENCHMARK-MATRIX.md` | 11138 | `f3636430ec3351531f2ccfb84c57c13727e7ae74c6a20ed3a34c56a298548c10` |
-| `docs/BENCHMARK-RUN-SCHEMA.json` | `docs/upstream/BENCHMARK-RUN-SCHEMA.json` | 6806 | `3532be6f3d02a51cea105c4fb2314df1193624cdc235fe1f409a31c42bcb68d3` |
-| `docs/CAPABILITY-GAPS.md` | `docs/upstream/CAPABILITY-GAPS.md` | 8641 | `46fcd53f0808c7e0c36ad4a25a037d3f072633b54d9c682099b2bf035d72d073` |
-| `docs/CAPABILITY-LEARNING-E2E.md` | `docs/upstream/CAPABILITY-LEARNING-E2E.md` | 17466 | `81c0d9108805661d74f93cc9ff45768e06ef58fa7d02145d1ff1b7c0dfb5daba` |
-| `docs/CHAT-INTEGRATION.md` | `docs/upstream/CHAT-INTEGRATION.md` | 4538 | `9072457c0757e17a2411f3d86e79489f3475e4025980f8efe3cd778a6225e4f0` |
-| `docs/CHAT-UI-V6-PLAN.md` | `docs/upstream/CHAT-UI-V6-PLAN.md` | 6660 | `ac8c346896413c53693d2db06a99b060fc41dfdd2e7385c2621cdf15f1049c87` |
-| `docs/CHATTING.md` | `docs/upstream/CHATTING.md` | 65190 | `c77dc6760a8526f4f3608a58a0dd2e632d8e25a495de4f91411f97e9476d3c4c` |
-| `docs/CLI-REFERENCE.md` | `docs/upstream/CLI-REFERENCE.md` | 687890 | `829ec807b9e2a1ae163301a239f9d3410d1833e9a5e20a708f73b05e8bf0e467` |
-| `docs/CLI-STYLE.md` | `docs/upstream/CLI-STYLE.md` | 14596 | `e9d3d859a210f92a18ad1d1a692b18d54ecfa8e4bd69e6dc51cac8dd9f8cead4` |
-| `docs/CLI-VISUAL-AUDIT.md` | `docs/upstream/CLI-VISUAL-AUDIT.md` | 17533 | `964af95fa6a5126635f48d10aee3761bb880f2ddc5985aea9a2ccc213d424286` |
-| `docs/COMPLETE_AUDIT-2026-09-13.md` | `docs/upstream/COMPLETE_AUDIT-2026-09-13.md` | 562033 | `b43191dcc3fe1b2bf2d1efce9a5c750592cd3e258e12911d16d090f4bf4c2dce` |
-| `docs/CORE-PLAN.md` | `docs/upstream/CORE-PLAN.md` | 27983 | `b0e06ed1b08ee52a08de544557bdd1c37820b69ca0e85033e267e8f8ee6f5d79` |
-| `docs/DESIGN-2-GODS-VOICE.md` | `docs/upstream/DESIGN-2-GODS-VOICE.md` | 24994 | `c27c56a157ffb0e9f8298bbac0df9fba6841548f6893554d79b6f5413df58e52` |
-| `docs/DESIGN.md` | `docs/upstream/DESIGN.md` | 35999 | `7bf2d00f928a45bbe17271cfb0f77bc51c4a78ae6154d445dc923be6edf601fd` |
-| `docs/DEV.md` | `docs/upstream/DEV.md` | 2548 | `b9cf575170a58e897e178e479b5f42992a616c76f7130ebe04bb026f3ed9bebf` |
-| `docs/DISCOVERY-TESTSET.md` | `docs/upstream/DISCOVERY-TESTSET.md` | 1484 | `94a26dd0bd924d0c4e45c2346cf09be4f06b8b2416672e2011973035f2bc6fd7` |
-| `docs/E2E-LIVE-PROOF-40.md` | `docs/upstream/E2E-LIVE-PROOF-40.md` | 10097 | `1d74d0a867ead3d19cc7d9fddc715fad27d4a3195670645939184cf0aedc31d7` |
-| `docs/EVAL-LONGHORIZON.md` | `docs/upstream/EVAL-LONGHORIZON.md` | 2790 | `b8fbc31c8c262d4b7b6acc2d98a7542c643388dad7f7513ac746a59c2ab338a6` |
-| `docs/EXPERIENCE-V6-PLAN.md` | `docs/upstream/EXPERIENCE-V6-PLAN.md` | 4069 | `9a6762049bbe5bdf1c7159f120717c6b9c211b14176425ea71b75ed7ee53526a` |
-| `docs/FEATURE-MAP.md` | `docs/upstream/FEATURE-MAP.md` | 217574 | `9cdc740abf0b1bd50e95e3fd630776a426a1685cea3bde460a1a7c2b19c370bc` |
-| `docs/FEATURES.md` | `docs/upstream/FEATURES.md` | 21687 | `fc50f989647792bd3f463863e59cfa57cdf06b7f03cac7cc8de7043f330b7ca2` |
-| `docs/FONTS.md` | `docs/upstream/FONTS.md` | 2026 | `4d3be7dcefa514ebc38645da709c1d6784778f9c3033d452e4428dde74645858` |
-| `docs/GODSV-COMPLETE-OVERVIEW.md` | `docs/upstream/GODSV-COMPLETE-OVERVIEW.md` | 10720 | `2294d6dfe968e1803a2919e8016ba0e9d5925ec8da56885cef2f1166d428ad51` |
-| `docs/GV-README-DRAFT.md` | `docs/upstream/GV-README-DRAFT.md` | 31532 | `0fbb1beac1c259fddec9e718a4c7b24b1d8275e917c2607166ca2d404a74cf74` |
-| `docs/HANDOVER.md` | `docs/upstream/HANDOVER.md` | 22887 | `3075e329e663255608436c7d487fae5a9897466cd33ab93a59a3bae4d3d8f28d` |
-| `docs/HARDENING-MATRIX.md` | `docs/upstream/HARDENING-MATRIX.md` | 10482 | `987f80c0b0e5dbe69d8e864584e5eeb26c0241f3a0498d4fdc59bf3ede8d0c39` |
-| `docs/IMPLEMENTATION-MATRIX.md` | `docs/upstream/IMPLEMENTATION-MATRIX.md` | 25716 | `ed7b7a46794b3bbb86091897b9c7a502d78f57552e6c0656ea61418d66850803` |
-| `docs/IMPLEMENTATION-PLAN-docker-tool-builder.md` | `docs/upstream/IMPLEMENTATION-PLAN-docker-tool-builder.md` | 11426 | `0aad4f94ecd8620798578c43c53878ca8da746fd1d187269813b7194f9cedfb6` |
-| `docs/IMPLEMENTATION-PLAN-live-control-plane.md` | `docs/upstream/IMPLEMENTATION-PLAN-live-control-plane.md` | 6798 | `c1b6fe932cad4dbfc5a89c8c0b133fcb0feb12f6d98c1f3c93f5264509bf2c54` |
-| `docs/IMPLEMENTATION-PLAN-recovery-skaldir.md` | `docs/upstream/IMPLEMENTATION-PLAN-recovery-skaldir.md` | 16132 | `e2c47f8bcebe5659c735782458b6f15ded8a0c613c4374b2168d0a11e820c483` |
-| `docs/IMPLEMENTATION.md` | `docs/upstream/IMPLEMENTATION.md` | 19779 | `345a382e5b0d4a6f5bf290a13ebde7a0881d7d08fe303a7405df918ba8690587` |
-| `docs/INSTALL.md` | `docs/upstream/INSTALL.md` | 10321 | `205da4b364d63bf308bb0510bf7e505655ffd4582f5a669b00b87d2581b83ea5` |
-| `docs/JEV-IMPLEMENTATION-PLAN.md` | `docs/upstream/JEV-IMPLEMENTATION-PLAN.md` | 8839 | `7084480d0c9452108c2f7c77c00126c893fc398c52f8b4f510ff1e7d28e03f94` |
-| `docs/LIVE-STREAM-SPEC.md` | `docs/upstream/LIVE-STREAM-SPEC.md` | 3462 | `7f729de387c56144becf2d10bc5dc12bc8bb68baa3fba2b1b524e3a6b8085561` |
-| `docs/MEMORY-LEARNING.md` | `docs/upstream/MEMORY-LEARNING.md` | 21525 | `adf050ab87cf2002d11f7eb5dd1fd203cc6d6fc924e9e87fb0948b53feca4042` |
-| `docs/PLATFORM.md` | `docs/upstream/PLATFORM.md` | 23483 | `496f9e7d9e547377ad6b345833265fd86b5fbdd3420abfbf4aa4c27c3936e291` |
-| `docs/PRODUCT-RUN-6.2.md` | `docs/upstream/PRODUCT-RUN-6.2.md` | 2823 | `c226f9bf2b751b9ea42a96219b67d4943fa97f0941dd63f7b964e944f183fe6b` |
-| `docs/PROJECT-STATE.md` | `docs/upstream/PROJECT-STATE.md` | 53262 | `41df80117afe314f94772a603094f629052fabfb2ea51c7fd5589d49311fc5b8` |
-| `docs/PROMPTS.md` | `docs/upstream/PROMPTS.md` | 3383 | `d402b2143197fc66afee8a567a141d91b4874eed4c042398989bbad123b3d71d` |
-| `docs/QUICKSTART.md` | `docs/upstream/QUICKSTART.md` | 18495 | `97fa685c9765dbf0f5c4ba74857667a860d752becbf312c2feb088144dcde27b` |
-| `docs/RENAME-MIGRATION.md` | `docs/upstream/RENAME-MIGRATION.md` | 6080 | `b2ae7c02c02d33d2c16f00b8b5c96c73e36a71cc83751de22bfbbd8fb683798a` |
-| `docs/RENAME.md` | `docs/upstream/RENAME.md` | 23015 | `1adb20a647b26bbfaf591f32d3d611fae19fd7005f42837c3445cd358df1e19c` |
-| `docs/REPOS.md` | `docs/upstream/REPOS.md` | 7732 | `46ca5adf50ec9b2582a77ab65de43d3f6c5245aafad5c5510b1e7f508fefaa28` |
-| `docs/RESEARCH-V6-INPUTS.md` | `docs/upstream/RESEARCH-V6-INPUTS.md` | 6346 | `9a88b3a92af2022173bc6add85605b65c1d4abff796ebe6abeb4232167776f50` |
-| `docs/RF-LONGRUN-FREIGABE.md` | `docs/upstream/RF-LONGRUN-FREIGABE.md` | 6626 | `9b1eb38ec33601013a4e58d8804e2815b80a1f51b5f6cff42fa036f55714e758` |
-| `docs/RF-STATUS.md` | `docs/upstream/RF-STATUS.md` | 18740 | `98d1c78568d384630cb1805894cd4ef92dfc2bdbdb657e36aff689e80852b729` |
-| `docs/RUN-LIFECYCLE.md` | `docs/upstream/RUN-LIFECYCLE.md` | 13055 | `0ff2f6389464dc04a9eb5bc418fe76efc45458a5bd6d9ecaf08df9ca1430faeb` |
-| `docs/RUNBOOK.md` | `docs/upstream/RUNBOOK.md` | 28955 | `d2b099790d31b132df56079cf4783c20a1360ccfe93fb7fec2a5935204b9beaa` |
-| `docs/SECURITY-BOUNDARIES.md` | `docs/upstream/SECURITY-BOUNDARIES.md` | 22401 | `d9be238e056f4157a74ebf754304aaec624af4c42ba7092c17916a8d5b7d359a` |
-| `docs/SECURITY.md` | `docs/upstream/SECURITY.md` | 15767 | `65bd105bcfc6137d8b0aadbf5b635b4a59c8f6c6f2ff234184fbbc0740a088af` |
-| `docs/SNIPPET-93-subagent-roles.md` | `docs/upstream/SNIPPET-93-subagent-roles.md` | 5041 | `be0b7dfe74c937d6afc3c0567cffe28bfd88df89022c098a6cd4700517b1a53e` |
-| `docs/SOURCES.md` | `docs/upstream/SOURCES.md` | 9306 | `e132ae89ab3838195737e5e8651c93ab15f983a8637822aa758d1f1a3c275c0c` |
-| `docs/STATUS.md` | `docs/upstream/STATUS.md` | 14359 | `b17b064bf2b1dfdcd947737bbaa809206e12e023f4be60684355393977461ebc` |
-| `docs/SUPERVISOR-AUDIT.md` | `docs/upstream/SUPERVISOR-AUDIT.md` | 12851 | `2f2482a9559780a0f599fe4402cd58d64f830c61e392f54645210cada9c81def` |
-| `docs/SURFACE.md` | `docs/upstream/SURFACE.md` | 13352 | `11bdba69eb0e012ba177264f46a2912d4f7884b4580bd94d96d45e132d34dfc9` |
-| `docs/TOOL-HUB.md` | `docs/upstream/TOOL-HUB.md` | 3478 | `e32a5195c1761bbffaf5e32023ed3fc5b7c543331256dd4744a396f1c0aa80ef` |
-| `docs/TOOLS-V2-BUILDER-GAPS.md` | `docs/upstream/TOOLS-V2-BUILDER-GAPS.md` | 13381 | `7f80a90f230ca42b0b0052cd4e8772adfbf1424d0b4b2e53e47c4be4bd30cec2` |
-| `docs/TOOLS-V2-BUILDFLOW.md` | `docs/upstream/TOOLS-V2-BUILDFLOW.md` | 1229 | `c796fa0f2037f16b09f294881021c1d475939395612de7152d8feef5d53ae97d` |
-| `docs/TOOLS-V2-DISCOVERY.md` | `docs/upstream/TOOLS-V2-DISCOVERY.md` | 27653 | `65c72997db9ecdb950ba17e304d23ed0b53c065228c5671757dffadcba99aa38` |
-| `docs/TOOLS-V2-EXECUTION-BOUNDARY.md` | `docs/upstream/TOOLS-V2-EXECUTION-BOUNDARY.md` | 13725 | `2a331eef5e6b913935d8a38d1d73f68be588180d1c06273f19ae8510c787d503` |
-| `docs/TOOLS-V2-HOST-WIRING.md` | `docs/upstream/TOOLS-V2-HOST-WIRING.md` | 17908 | `793d251b40bc1f7ce3d0a63813b525ed2e2078d2286c9ea6f9718058305c5b80` |
-| `docs/TOOLS-V2-MINING-HEALTH.md` | `docs/upstream/TOOLS-V2-MINING-HEALTH.md` | 20280 | `a8fffae1bddfba74a1954b2b9b9281abdc6e55605e6e646edd949a406d857d3e` |
-| `docs/TOOLS-V2-REGISTRY.md` | `docs/upstream/TOOLS-V2-REGISTRY.md` | 12933 | `1c54909e19bf0a1dc5280e2632f99f045f356ce07f0dc7e6cec5ea0907e30ecc` |
-| `docs/UI-AUDIT-CHECKPOINTS.md` | `docs/upstream/UI-AUDIT-CHECKPOINTS.md` | 6668 | `b10d0942f95279b2b4657b2df7791bc2d74f41bfe6666706c88c24c98609621a` |
-| `docs/UI-DESIGN.md` | `docs/upstream/UI-DESIGN.md` | 4401 | `12caff1ec8b17ce2aa64535237d50602d8a6abb1a8566b725a9f8f5a38bcf35f` |
-| `docs/UI.md` | `docs/upstream/UI.md` | 9132 | `d499ae050b08b77645437eb2da3540974f2d0f549dc7f2a504cb220deb860c46` |
-| `docs/VERIFICATION-1.3.md` | `docs/upstream/VERIFICATION-1.3.md` | 8196 | `02801d8dd20d77acc753c2c33bc1c3397b06bd519631397f1f39cf73f91e347e` |
-| `docs/VERIFICATION-1.4.md` | `docs/upstream/VERIFICATION-1.4.md` | 9157 | `0ad023667dbf2e2a3071dc6758a3134a166bf2b80b010281cfd0ab8687450fe6` |
-| `docs/VERIFICATION-CLOSURE.md` | `docs/upstream/VERIFICATION-CLOSURE.md` | 21521 | `68e202e319d3d3cbaf951bd1e4d3ab05f054928000a0dc9ebf66769288a09437` |
-| `docs/VERIFIED-FINDINGS-live-2026-09-13.md` | `docs/upstream/VERIFIED-FINDINGS-live-2026-09-13.md` | 2351 | `afb5a8412b7107774a0c59baa6eff2634b96da9ad2923d969569957ed0de9241` |
-| `docs/VOICE-CALIBRATION.md` | `docs/upstream/VOICE-CALIBRATION.md` | 18575 | `6d1b124b607bdc4220f9770d2f9954040447ba557ea42dac555a9fac58db6864` |
-| `docs/artifacts-94-token-economy/archived-tool-result.json` | `docs/upstream/artifacts-94-token-economy/archived-tool-result.json` | 1076 | `579e33069f831dd7354c54ad0db21f1894875613d4eacbc7f74ea648a7c57178` |
-| `docs/artifacts-94-token-economy/f1-lease-cas.txt` | `docs/upstream/artifacts-94-token-economy/f1-lease-cas.txt` | 1700 | `d40240d67b468fddef8c46a570088490ff4aa89832fccaeb4978bb34f6fe25f6` |
-| `docs/artifacts-94-token-economy/hot-form.json` | `docs/upstream/artifacts-94-token-economy/hot-form.json` | 1137 | `10d3e393967430a043187b49eb1cf2e58929744809d559ebcc5700554347cffd` |
-| `docs/artifacts-94-token-economy/progress-decision.json` | `docs/upstream/artifacts-94-token-economy/progress-decision.json` | 3282 | `f3bbb7ae37d544f35d8e781d2918a824638d44cb078196480a3dc282827cb56b` |
-| `docs/artifacts-94-token-economy/retry-gate.json` | `docs/upstream/artifacts-94-token-economy/retry-gate.json` | 1910 | `d898de2feedc966536e4473093ade3ad6cbc0f1fd3d689e7e083287a3e99442d` |
-| `docs/artifacts-94-token-economy/run/state/runs/run-20260919T135346Z-1cd1ec.jsonl` | `docs/upstream/artifacts-94-token-economy/run/state/runs/run-20260919T135346Z-1cd1ec.jsonl` | 11337 | `896d2fe610f09b7126a5c64377d3db321db8b73b8246d2bb73e69694c4473ce5` |
-| `docs/artifacts-94-token-economy/run/state/tool_archive/dd59b60a2a5e55e42d3f2b940f999c7c5e195de203c855d07ede6f0935d3f479.json` | `docs/upstream/artifacts-94-token-economy/run/state/tool_archive/dd59b60a2a5e55e42d3f2b940f999c7c5e195de203c855d07ede6f0935d3f479.json` | 137200 | `dd59b60a2a5e55e42d3f2b940f999c7c5e195de203c855d07ede6f0935d3f479` |
-| `docs/artifacts-94-token-economy/token-report.json` | `docs/upstream/artifacts-94-token-economy/token-report.json` | 7350 | `2cb7a7a16bad1f17c3910557e0f731184bc37ce4a7e0271f542a665e354d33e6` |
-| `docs/artifacts-94-token-economy/token-report.txt` | `docs/upstream/artifacts-94-token-economy/token-report.txt` | 2006 | `8106d1b413d9ff77f5916ae0fe07fd6e5ba07ad9b7289771801ee50a35379f1f` |
-| `docs/artifacts-94-token-economy/worked-example.json` | `docs/upstream/artifacts-94-token-economy/worked-example.json` | 15271 | `b0a624eab5703b3643eb002105a2c7ad7ad5320b02c3319c3f117454c8309a14` |
-| `docs/audit/ARTIFACT-MANIFEST.json` | `docs/upstream/audit/ARTIFACT-MANIFEST.json` | 23074 | `ad5c3397adad25526119691946a0797d843f0f61d1a91a415256d65d94c66670` |
-| `docs/audit/AUDIT-FINDINGS.md` | `docs/upstream/audit/AUDIT-FINDINGS.md` | 25780 | `e883a4d28b43cc5737281d51b637851c32d3ce0ac620228fcf5d1fc0a4c69dc3` |
-| `docs/audit/BENCHMARK-RAW-README.md` | `docs/upstream/audit/BENCHMARK-RAW-README.md` | 6238 | `57e445bd0283c517065faf659ca0167ec52db1c1f6b506c697e51d73b593931b` |
-| `docs/audit/BENCHMARK_MANIFEST.json` | `docs/upstream/audit/BENCHMARK_MANIFEST.json` | 2637 | `adf96feb162aa7e89f25bfb742026857f7ed2d8b93f4bfbe0e7248bd5f1aadea` |
-| `docs/audit/CLI-CONTRACT-PROBES.md` | `docs/upstream/audit/CLI-CONTRACT-PROBES.md` | 3345 | `141f394156ad036a160739a4f4bfae70cde2bd1ca228171f79d4812ccbb1335a` |
-| `docs/audit/COMPLETION_PRECHECK.md` | `docs/upstream/audit/COMPLETION_PRECHECK.md` | 7299 | `e5407465170ea8f7dae8fb08a91df53789334ca522cb79033509964e218e1988` |
-| `docs/audit/COMPUTER-USE-GUI-E2E.md` | `docs/upstream/audit/COMPUTER-USE-GUI-E2E.md` | 4384 | `a216b139e51e1e9ee9f96534545c7613fdd6806ed0a90f64cdca7d1d6b84ae91` |
-| `docs/audit/COMPUTER_USE_SUBTOOLS.md` | `docs/upstream/audit/COMPUTER_USE_SUBTOOLS.md` | 8092 | `473efafa4d2f88c633cc2a8e15d2ca6c40061e4d61f4d94370f511fae2e379dd` |
-| `docs/audit/DOCKER-BUILDER-EVIDENCE.md` | `docs/upstream/audit/DOCKER-BUILDER-EVIDENCE.md` | 6520 | `25aab42cf531d004c71c05e92a032c37a83640739403da1d42fa135996a55616` |
-| `docs/audit/JEV-WORKER-A-CODE-MAP.md` | `docs/upstream/audit/JEV-WORKER-A-CODE-MAP.md` | 3563 | `29049216b1088b1fbcee234289b8117942d97959afc0e41889786eb4973d170c` |
-| `docs/audit/JEV-WORKER-A-REPORT.md` | `docs/upstream/audit/JEV-WORKER-A-REPORT.md` | 6655 | `4fb16e6126e0c7f80b1a07cd4cc83f13526924a8339b075b172ab54f2d5c388d` |
-| `docs/audit/JEV_CU_PACK.md` | `docs/upstream/audit/JEV_CU_PACK.md` | 12744 | `d41a622eb9fcc57319df9a9fe5cbe079ddf520f1bfa3d179bbf7d5c9733d9476` |
-| `docs/audit/JEV_ID_MAP.md` | `docs/upstream/audit/JEV_ID_MAP.md` | 4952 | `e0dadb411b6896f04fc9786b332df249e4216763de30064c5b07bc8e96ceb5e8` |
-| `docs/audit/JEV_PROVIDER_COMPATIBILITY.md` | `docs/upstream/audit/JEV_PROVIDER_COMPATIBILITY.md` | 10669 | `e19e318fc6e750debbf499dd97ee5fb818d4ef4443cb0e61a9dde68b132667db` |
-| `docs/audit/PERFORMANCE.md` | `docs/upstream/audit/PERFORMANCE.md` | 13738 | `e32a5b509cf0f5b6e5695ff2570a8751383746b5eabc56456c5ed1fdb284a33e` |
-| `docs/audit/PLATFORM-MATRIX.md` | `docs/upstream/audit/PLATFORM-MATRIX.md` | 5860 | `1e24fa87f61c5cbecf8af35acefd7bbc81a4e2db4ca8a6781115d7face625bbf` |
-| `docs/audit/RELEASE_NOTES.md` | `docs/upstream/audit/RELEASE_NOTES.md` | 2380 | `e8981aa87c4d363a9c8d6668a30b7371aa0c71b34e2d57a6996b34cb62629316` |
-| `docs/audit/RF09-CRASH-WINDOW-INVENTORY.md` | `docs/upstream/audit/RF09-CRASH-WINDOW-INVENTORY.md` | 8072 | `586b0e3d4f0d9b9122d11bd645e2f41a46a8fa241959f4d7c3f9f43b3fe3213b` |
-| `docs/audit/SKILLS_USED.md` | `docs/upstream/audit/SKILLS_USED.md` | 1687 | `784f646bad3e2c2f8925e782fc67fadfb057146ec7f13a6110ea1dc48e261a67` |
-| `docs/audit/SYSTEM_ONE_GUISTATE.md` | `docs/upstream/audit/SYSTEM_ONE_GUISTATE.md` | 9529 | `d920abd71e2755ad599476b4dfd21a3db4f8927198b20afa3d165476949bb54f` |
-| `docs/audit/SYSTEM_ONE_QUESTIONS.json` | `docs/upstream/audit/SYSTEM_ONE_QUESTIONS.json` | 18767 | `c52e18f0aac8cb1c7f38198f979bd221387f8fbcb012ebd20e26ab543f53e1fe` |
-| `docs/audit/SYSTEM_ONE_SHADOW.md` | `docs/upstream/audit/SYSTEM_ONE_SHADOW.md` | 11579 | `c5b57775b037782b88c81f9800cd10df88b98bb706807684a7f5247a2e4dcc69` |
-| `docs/audit/SYSTEM_ONE_TRIAGE_PACK.md` | `docs/upstream/audit/SYSTEM_ONE_TRIAGE_PACK.md` | 17539 | `421c06248c6fa58ca8b262928d5be2d9e377e277172d6a7739733921a7dea076` |
-| `docs/audit/TEST_REPORT.md` | `docs/upstream/audit/TEST_REPORT.md` | 9488 | `eb3df01b45050fa1b22f8cf6b10e2ed1ee7a3607e56c2bb6b2d1393425588b0b` |
-| `docs/audit/UI-FEATURE-MAP.md` | `docs/upstream/audit/UI-FEATURE-MAP.md` | 12330 | `087121958eafd7882572b482d3598eba58df4794c365961d839d1ca0288c2c20` |
-| `docs/audit/UPDATE_COMPATIBILITY.md` | `docs/upstream/audit/UPDATE_COMPATIBILITY.md` | 2359 | `652b7cc556f365a2972f07a1bccd405b6fd955bc04f80fe8df6c2f9be5e71451` |
-| `docs/audit/probes-2026-09-12.json` | `docs/upstream/audit/probes-2026-09-12.json` | 1470 | `e21f329b286eb9809f234f39f832bd116446777ab16012bf3ee1488dea3fa081` |
-| `docs/audit/probes-after-etappe1.json` | `docs/upstream/audit/probes-after-etappe1.json` | 2047 | `73891463a061d7934a2cdc06ad86085de6d6727da25470a478bda55fbb2df783` |
-| `docs/audit/probes-after-etappe2.json` | `docs/upstream/audit/probes-after-etappe2.json` | 2817 | `b932697a6bbfd435622ec8193d8d5ffcc2e7e53de9aa9341a8a96a6334db797c` |
-| `docs/audit/review_probes.py` | `docs/upstream/audit/review_probes.py` | 4215 | `e3dece30a8eb0e4663e134668022741ec5fe90c3fd8ac50c6e44a1068e166efb` |
-| `docs/skaldir-upgrade/decisions.md` | `docs/upstream/skaldir-upgrade/decisions.md` | 3629 | `543679ae6ffc4c3b932ab75a4404a5b961ec185429d5a533d6b7af84513fc4fd` |
-| `docs/skaldir-upgrade/implementation-audit.md` | `docs/upstream/skaldir-upgrade/implementation-audit.md` | 3814 | `d43ab9507b05e313b8a59b4cc906f01ba067b1d037f16dea59c13becf7d73a34` |
-| `docs/skaldir-upgrade/ist-audit-2026-09-25.md` | `docs/upstream/skaldir-upgrade/ist-audit-2026-09-25.md` | 17915 | `0e71498e51cd76a1c2b757112c794b826296f623575513335cecb158f9bd7d06` |
-| `docs/skaldir-upgrade/validation-report.md` | `docs/upstream/skaldir-upgrade/validation-report.md` | 3721 | `c03c6d3a331f64c9238698a9900425880b5cbdf59c4493b621a95c1bf86b863d` |
+| `docs/94-token-economy-worked-example.py` | `docs/94-token-economy-worked-example.py` | 11944 | `f800306252c83d091984457a3e01c5638d30f45af59db990145ee3940f772616` |
+| `docs/ABNAHME-STATUS.md` | `docs/ABNAHME-STATUS.md` | 44573 | `04810be59de3ffa73949b481b6b993da99341b8c6b5cdc30b92026d565634e19` |
+| `docs/ACCEPTANCE.md` | `docs/ACCEPTANCE.md` | 4836 | `1452050549be179835fa26a97ddb4addb13ee8b149593233f0f29ca9ea64416e` |
+| `docs/APP-BUILD.md` | `docs/APP-BUILD.md` | 3988 | `3928d1ea102412572aae7187dd8c6b1a3b5339861d9190295c95a1c3c6a79fd2` |
+| `docs/ARCHITECTURE.md` | `docs/ARCHITECTURE.md` | 19717 | `7d65321fbdf8a4f6ac3d53e5fb12570b065f64df2195ce8e29b2dd2af1288d58` |
+| `docs/BENCHMARK-MATRIX.md` | `docs/BENCHMARK-MATRIX.md` | 11138 | `f3636430ec3351531f2ccfb84c57c13727e7ae74c6a20ed3a34c56a298548c10` |
+| `docs/BENCHMARK-RUN-SCHEMA.json` | `docs/BENCHMARK-RUN-SCHEMA.json` | 6806 | `3532be6f3d02a51cea105c4fb2314df1193624cdc235fe1f409a31c42bcb68d3` |
+| `docs/CAPABILITY-GAPS.md` | `docs/CAPABILITY-GAPS.md` | 8641 | `46fcd53f0808c7e0c36ad4a25a037d3f072633b54d9c682099b2bf035d72d073` |
+| `docs/CAPABILITY-LEARNING-E2E.md` | `docs/CAPABILITY-LEARNING-E2E.md` | 17466 | `81c0d9108805661d74f93cc9ff45768e06ef58fa7d02145d1ff1b7c0dfb5daba` |
+| `docs/CHAT-INTEGRATION.md` | `docs/CHAT-INTEGRATION.md` | 4538 | `9072457c0757e17a2411f3d86e79489f3475e4025980f8efe3cd778a6225e4f0` |
+| `docs/CHAT-UI-V6-PLAN.md` | `docs/CHAT-UI-V6-PLAN.md` | 6660 | `ac8c346896413c53693d2db06a99b060fc41dfdd2e7385c2621cdf15f1049c87` |
+| `docs/CHATTING.md` | `docs/CHATTING.md` | 65190 | `c77dc6760a8526f4f3608a58a0dd2e632d8e25a495de4f91411f97e9476d3c4c` |
+| `docs/CLI-REFERENCE.md` | `docs/CLI-REFERENCE.md` | 687890 | `829ec807b9e2a1ae163301a239f9d3410d1833e9a5e20a708f73b05e8bf0e467` |
+| `docs/CLI-STYLE.md` | `docs/CLI-STYLE.md` | 14596 | `e9d3d859a210f92a18ad1d1a692b18d54ecfa8e4bd69e6dc51cac8dd9f8cead4` |
+| `docs/CLI-VISUAL-AUDIT.md` | `docs/CLI-VISUAL-AUDIT.md` | 17533 | `964af95fa6a5126635f48d10aee3761bb880f2ddc5985aea9a2ccc213d424286` |
+| `docs/COMPLETE_AUDIT-2026-09-13.md` | `docs/COMPLETE_AUDIT-2026-09-13.md` | 562033 | `b43191dcc3fe1b2bf2d1efce9a5c750592cd3e258e12911d16d090f4bf4c2dce` |
+| `docs/CORE-PLAN.md` | `docs/CORE-PLAN.md` | 27983 | `b0e06ed1b08ee52a08de544557bdd1c37820b69ca0e85033e267e8f8ee6f5d79` |
+| `docs/DESIGN-2-GODS-VOICE.md` | `docs/DESIGN-2-GODS-VOICE.md` | 24994 | `c27c56a157ffb0e9f8298bbac0df9fba6841548f6893554d79b6f5413df58e52` |
+| `docs/DESIGN.md` | `docs/DESIGN.md` | 35999 | `7bf2d00f928a45bbe17271cfb0f77bc51c4a78ae6154d445dc923be6edf601fd` |
+| `docs/DEV.md` | `docs/DEV.md` | 2548 | `b9cf575170a58e897e178e479b5f42992a616c76f7130ebe04bb026f3ed9bebf` |
+| `docs/DISCOVERY-TESTSET.md` | `docs/DISCOVERY-TESTSET.md` | 1484 | `94a26dd0bd924d0c4e45c2346cf09be4f06b8b2416672e2011973035f2bc6fd7` |
+| `docs/E2E-LIVE-PROOF-40.md` | `docs/E2E-LIVE-PROOF-40.md` | 10097 | `1d74d0a867ead3d19cc7d9fddc715fad27d4a3195670645939184cf0aedc31d7` |
+| `docs/EVAL-LONGHORIZON.md` | `docs/EVAL-LONGHORIZON.md` | 2790 | `b8fbc31c8c262d4b7b6acc2d98a7542c643388dad7f7513ac746a59c2ab338a6` |
+| `docs/EXPERIENCE-V6-PLAN.md` | `docs/EXPERIENCE-V6-PLAN.md` | 4069 | `9a6762049bbe5bdf1c7159f120717c6b9c211b14176425ea71b75ed7ee53526a` |
+| `docs/FEATURE-MAP.md` | `docs/FEATURE-MAP.md` | 217574 | `9cdc740abf0b1bd50e95e3fd630776a426a1685cea3bde460a1a7c2b19c370bc` |
+| `docs/FEATURES.md` | `docs/FEATURES.md` | 21687 | `fc50f989647792bd3f463863e59cfa57cdf06b7f03cac7cc8de7043f330b7ca2` |
+| `docs/FONTS.md` | `docs/FONTS.md` | 2026 | `4d3be7dcefa514ebc38645da709c1d6784778f9c3033d452e4428dde74645858` |
+| `docs/GODSV-COMPLETE-OVERVIEW.md` | `docs/GODSV-COMPLETE-OVERVIEW.md` | 10720 | `2294d6dfe968e1803a2919e8016ba0e9d5925ec8da56885cef2f1166d428ad51` |
+| `docs/GV-README-DRAFT.md` | `docs/GV-README-DRAFT.md` | 31532 | `0fbb1beac1c259fddec9e718a4c7b24b1d8275e917c2607166ca2d404a74cf74` |
+| `docs/HANDOVER.md` | `docs/HANDOVER.md` | 22887 | `3075e329e663255608436c7d487fae5a9897466cd33ab93a59a3bae4d3d8f28d` |
+| `docs/HARDENING-MATRIX.md` | `docs/HARDENING-MATRIX.md` | 10482 | `987f80c0b0e5dbe69d8e864584e5eeb26c0241f3a0498d4fdc59bf3ede8d0c39` |
+| `docs/IMPLEMENTATION-MATRIX.md` | `docs/IMPLEMENTATION-MATRIX.md` | 25716 | `ed7b7a46794b3bbb86091897b9c7a502d78f57552e6c0656ea61418d66850803` |
+| `docs/IMPLEMENTATION-PLAN-docker-tool-builder.md` | `docs/IMPLEMENTATION-PLAN-docker-tool-builder.md` | 11426 | `0aad4f94ecd8620798578c43c53878ca8da746fd1d187269813b7194f9cedfb6` |
+| `docs/IMPLEMENTATION-PLAN-live-control-plane.md` | `docs/IMPLEMENTATION-PLAN-live-control-plane.md` | 6798 | `c1b6fe932cad4dbfc5a89c8c0b133fcb0feb12f6d98c1f3c93f5264509bf2c54` |
+| `docs/IMPLEMENTATION-PLAN-recovery-skaldir.md` | `docs/IMPLEMENTATION-PLAN-recovery-skaldir.md` | 16132 | `e2c47f8bcebe5659c735782458b6f15ded8a0c613c4374b2168d0a11e820c483` |
+| `docs/IMPLEMENTATION.md` | `docs/IMPLEMENTATION.md` | 19779 | `345a382e5b0d4a6f5bf290a13ebde7a0881d7d08fe303a7405df918ba8690587` |
+| `docs/INSTALL.md` | `docs/INSTALL.md` | 10321 | `205da4b364d63bf308bb0510bf7e505655ffd4582f5a669b00b87d2581b83ea5` |
+| `docs/JEV-IMPLEMENTATION-PLAN.md` | `docs/JEV-IMPLEMENTATION-PLAN.md` | 8839 | `7084480d0c9452108c2f7c77c00126c893fc398c52f8b4f510ff1e7d28e03f94` |
+| `docs/LIVE-STREAM-SPEC.md` | `docs/LIVE-STREAM-SPEC.md` | 3462 | `7f729de387c56144becf2d10bc5dc12bc8bb68baa3fba2b1b524e3a6b8085561` |
+| `docs/MEMORY-LEARNING.md` | `docs/MEMORY-LEARNING.md` | 21525 | `adf050ab87cf2002d11f7eb5dd1fd203cc6d6fc924e9e87fb0948b53feca4042` |
+| `docs/PLATFORM.md` | `docs/PLATFORM.md` | 23483 | `496f9e7d9e547377ad6b345833265fd86b5fbdd3420abfbf4aa4c27c3936e291` |
+| `docs/PRODUCT-RUN-6.2.md` | `docs/PRODUCT-RUN-6.2.md` | 2823 | `c226f9bf2b751b9ea42a96219b67d4943fa97f0941dd63f7b964e944f183fe6b` |
+| `docs/PROJECT-STATE.md` | `docs/PROJECT-STATE.md` | 53262 | `41df80117afe314f94772a603094f629052fabfb2ea51c7fd5589d49311fc5b8` |
+| `docs/PROMPTS.md` | `docs/PROMPTS.md` | 3383 | `d402b2143197fc66afee8a567a141d91b4874eed4c042398989bbad123b3d71d` |
+| `docs/QUICKSTART.md` | `docs/QUICKSTART.md` | 18495 | `97fa685c9765dbf0f5c4ba74857667a860d752becbf312c2feb088144dcde27b` |
+| `docs/RENAME-MIGRATION.md` | `docs/RENAME-MIGRATION.md` | 6080 | `b2ae7c02c02d33d2c16f00b8b5c96c73e36a71cc83751de22bfbbd8fb683798a` |
+| `docs/RENAME.md` | `docs/RENAME.md` | 23015 | `1adb20a647b26bbfaf591f32d3d611fae19fd7005f42837c3445cd358df1e19c` |
+| `docs/REPOS.md` | `docs/REPOS.md` | 7732 | `46ca5adf50ec9b2582a77ab65de43d3f6c5245aafad5c5510b1e7f508fefaa28` |
+| `docs/RESEARCH-V6-INPUTS.md` | `docs/RESEARCH-V6-INPUTS.md` | 6346 | `9a88b3a92af2022173bc6add85605b65c1d4abff796ebe6abeb4232167776f50` |
+| `docs/RF-LONGRUN-FREIGABE.md` | `docs/RF-LONGRUN-FREIGABE.md` | 6626 | `9b1eb38ec33601013a4e58d8804e2815b80a1f51b5f6cff42fa036f55714e758` |
+| `docs/RF-STATUS.md` | `docs/RF-STATUS.md` | 18740 | `98d1c78568d384630cb1805894cd4ef92dfc2bdbdb657e36aff689e80852b729` |
+| `docs/RUN-LIFECYCLE.md` | `docs/RUN-LIFECYCLE.md` | 13055 | `0ff2f6389464dc04a9eb5bc418fe76efc45458a5bd6d9ecaf08df9ca1430faeb` |
+| `docs/RUNBOOK.md` | `docs/RUNBOOK.md` | 28955 | `d2b099790d31b132df56079cf4783c20a1360ccfe93fb7fec2a5935204b9beaa` |
+| `docs/SECURITY-BOUNDARIES.md` | `docs/SECURITY-BOUNDARIES.md` | 22401 | `d9be238e056f4157a74ebf754304aaec624af4c42ba7092c17916a8d5b7d359a` |
+| `docs/SECURITY.md` | `docs/SECURITY.md` | 15767 | `65bd105bcfc6137d8b0aadbf5b635b4a59c8f6c6f2ff234184fbbc0740a088af` |
+| `docs/SNIPPET-93-subagent-roles.md` | `docs/SNIPPET-93-subagent-roles.md` | 5041 | `be0b7dfe74c937d6afc3c0567cffe28bfd88df89022c098a6cd4700517b1a53e` |
+| `docs/SOURCES.md` | `docs/SOURCES.md` | 9306 | `e132ae89ab3838195737e5e8651c93ab15f983a8637822aa758d1f1a3c275c0c` |
+| `docs/STATUS.md` | `docs/STATUS.md` | 14359 | `b17b064bf2b1dfdcd947737bbaa809206e12e023f4be60684355393977461ebc` |
+| `docs/SUPERVISOR-AUDIT.md` | `docs/SUPERVISOR-AUDIT.md` | 12851 | `2f2482a9559780a0f599fe4402cd58d64f830c61e392f54645210cada9c81def` |
+| `docs/SURFACE.md` | `docs/SURFACE.md` | 13352 | `11bdba69eb0e012ba177264f46a2912d4f7884b4580bd94d96d45e132d34dfc9` |
+| `docs/TOOL-HUB.md` | `docs/TOOL-HUB.md` | 3478 | `e32a5195c1761bbffaf5e32023ed3fc5b7c543331256dd4744a396f1c0aa80ef` |
+| `docs/TOOLS-V2-BUILDER-GAPS.md` | `docs/TOOLS-V2-BUILDER-GAPS.md` | 13381 | `7f80a90f230ca42b0b0052cd4e8772adfbf1424d0b4b2e53e47c4be4bd30cec2` |
+| `docs/TOOLS-V2-BUILDFLOW.md` | `docs/TOOLS-V2-BUILDFLOW.md` | 1229 | `c796fa0f2037f16b09f294881021c1d475939395612de7152d8feef5d53ae97d` |
+| `docs/TOOLS-V2-DISCOVERY.md` | `docs/TOOLS-V2-DISCOVERY.md` | 27653 | `65c72997db9ecdb950ba17e304d23ed0b53c065228c5671757dffadcba99aa38` |
+| `docs/TOOLS-V2-EXECUTION-BOUNDARY.md` | `docs/TOOLS-V2-EXECUTION-BOUNDARY.md` | 13725 | `2a331eef5e6b913935d8a38d1d73f68be588180d1c06273f19ae8510c787d503` |
+| `docs/TOOLS-V2-HOST-WIRING.md` | `docs/TOOLS-V2-HOST-WIRING.md` | 17908 | `793d251b40bc1f7ce3d0a63813b525ed2e2078d2286c9ea6f9718058305c5b80` |
+| `docs/TOOLS-V2-MINING-HEALTH.md` | `docs/TOOLS-V2-MINING-HEALTH.md` | 20280 | `a8fffae1bddfba74a1954b2b9b9281abdc6e55605e6e646edd949a406d857d3e` |
+| `docs/TOOLS-V2-REGISTRY.md` | `docs/TOOLS-V2-REGISTRY.md` | 12933 | `1c54909e19bf0a1dc5280e2632f99f045f356ce07f0dc7e6cec5ea0907e30ecc` |
+| `docs/UI-AUDIT-CHECKPOINTS.md` | `docs/UI-AUDIT-CHECKPOINTS.md` | 6668 | `b10d0942f95279b2b4657b2df7791bc2d74f41bfe6666706c88c24c98609621a` |
+| `docs/UI-DESIGN.md` | `docs/UI-DESIGN.md` | 4401 | `12caff1ec8b17ce2aa64535237d50602d8a6abb1a8566b725a9f8f5a38bcf35f` |
+| `docs/UI.md` | `docs/UI.md` | 9132 | `d499ae050b08b77645437eb2da3540974f2d0f549dc7f2a504cb220deb860c46` |
+| `docs/VERIFICATION-1.3.md` | `docs/VERIFICATION-1.3.md` | 8196 | `02801d8dd20d77acc753c2c33bc1c3397b06bd519631397f1f39cf73f91e347e` |
+| `docs/VERIFICATION-1.4.md` | `docs/VERIFICATION-1.4.md` | 9157 | `0ad023667dbf2e2a3071dc6758a3134a166bf2b80b010281cfd0ab8687450fe6` |
+| `docs/VERIFICATION-CLOSURE.md` | `docs/VERIFICATION-CLOSURE.md` | 21521 | `68e202e319d3d3cbaf951bd1e4d3ab05f054928000a0dc9ebf66769288a09437` |
+| `docs/VERIFIED-FINDINGS-live-2026-09-13.md` | `docs/VERIFIED-FINDINGS-live-2026-09-13.md` | 2351 | `afb5a8412b7107774a0c59baa6eff2634b96da9ad2923d969569957ed0de9241` |
+| `docs/VOICE-CALIBRATION.md` | `docs/VOICE-CALIBRATION.md` | 18575 | `6d1b124b607bdc4220f9770d2f9954040447ba557ea42dac555a9fac58db6864` |
+| `docs/artifacts-94-token-economy/archived-tool-result.json` | `docs/artifacts-94-token-economy/archived-tool-result.json` | 1076 | `579e33069f831dd7354c54ad0db21f1894875613d4eacbc7f74ea648a7c57178` |
+| `docs/artifacts-94-token-economy/f1-lease-cas.txt` | `docs/artifacts-94-token-economy/f1-lease-cas.txt` | 1700 | `d40240d67b468fddef8c46a570088490ff4aa89832fccaeb4978bb34f6fe25f6` |
+| `docs/artifacts-94-token-economy/hot-form.json` | `docs/artifacts-94-token-economy/hot-form.json` | 1137 | `10d3e393967430a043187b49eb1cf2e58929744809d559ebcc5700554347cffd` |
+| `docs/artifacts-94-token-economy/progress-decision.json` | `docs/artifacts-94-token-economy/progress-decision.json` | 3282 | `f3bbb7ae37d544f35d8e781d2918a824638d44cb078196480a3dc282827cb56b` |
+| `docs/artifacts-94-token-economy/retry-gate.json` | `docs/artifacts-94-token-economy/retry-gate.json` | 1910 | `d898de2feedc966536e4473093ade3ad6cbc0f1fd3d689e7e083287a3e99442d` |
+| `docs/artifacts-94-token-economy/run/state/runs/run-20260919T135346Z-1cd1ec.jsonl` | `docs/artifacts-94-token-economy/run/state/runs/run-20260919T135346Z-1cd1ec.jsonl` | 11337 | `896d2fe610f09b7126a5c64377d3db321db8b73b8246d2bb73e69694c4473ce5` |
+| `docs/artifacts-94-token-economy/run/state/tool_archive/dd59b60a2a5e55e42d3f2b940f999c7c5e195de203c855d07ede6f0935d3f479.json` | `docs/artifacts-94-token-economy/run/state/tool_archive/dd59b60a2a5e55e42d3f2b940f999c7c5e195de203c855d07ede6f0935d3f479.json` | 137200 | `dd59b60a2a5e55e42d3f2b940f999c7c5e195de203c855d07ede6f0935d3f479` |
+| `docs/artifacts-94-token-economy/token-report.json` | `docs/artifacts-94-token-economy/token-report.json` | 7350 | `2cb7a7a16bad1f17c3910557e0f731184bc37ce4a7e0271f542a665e354d33e6` |
+| `docs/artifacts-94-token-economy/token-report.txt` | `docs/artifacts-94-token-economy/token-report.txt` | 2006 | `8106d1b413d9ff77f5916ae0fe07fd6e5ba07ad9b7289771801ee50a35379f1f` |
+| `docs/artifacts-94-token-economy/worked-example.json` | `docs/artifacts-94-token-economy/worked-example.json` | 15271 | `b0a624eab5703b3643eb002105a2c7ad7ad5320b02c3319c3f117454c8309a14` |
+| `docs/audit/ARTIFACT-MANIFEST.json` | `docs/audit/ARTIFACT-MANIFEST.json` | 23074 | `ad5c3397adad25526119691946a0797d843f0f61d1a91a415256d65d94c66670` |
+| `docs/audit/AUDIT-FINDINGS.md` | `docs/audit/AUDIT-FINDINGS.md` | 25780 | `e883a4d28b43cc5737281d51b637851c32d3ce0ac620228fcf5d1fc0a4c69dc3` |
+| `docs/audit/BENCHMARK-RAW-README.md` | `docs/audit/BENCHMARK-RAW-README.md` | 6238 | `57e445bd0283c517065faf659ca0167ec52db1c1f6b506c697e51d73b593931b` |
+| `docs/audit/BENCHMARK_MANIFEST.json` | `docs/audit/BENCHMARK_MANIFEST.json` | 2637 | `adf96feb162aa7e89f25bfb742026857f7ed2d8b93f4bfbe0e7248bd5f1aadea` |
+| `docs/audit/CLI-CONTRACT-PROBES.md` | `docs/audit/CLI-CONTRACT-PROBES.md` | 3345 | `141f394156ad036a160739a4f4bfae70cde2bd1ca228171f79d4812ccbb1335a` |
+| `docs/audit/COMPLETION_PRECHECK.md` | `docs/audit/COMPLETION_PRECHECK.md` | 7299 | `e5407465170ea8f7dae8fb08a91df53789334ca522cb79033509964e218e1988` |
+| `docs/audit/COMPUTER-USE-GUI-E2E.md` | `docs/audit/COMPUTER-USE-GUI-E2E.md` | 4384 | `a216b139e51e1e9ee9f96534545c7613fdd6806ed0a90f64cdca7d1d6b84ae91` |
+| `docs/audit/COMPUTER_USE_SUBTOOLS.md` | `docs/audit/COMPUTER_USE_SUBTOOLS.md` | 8092 | `473efafa4d2f88c633cc2a8e15d2ca6c40061e4d61f4d94370f511fae2e379dd` |
+| `docs/audit/DOCKER-BUILDER-EVIDENCE.md` | `docs/audit/DOCKER-BUILDER-EVIDENCE.md` | 6520 | `25aab42cf531d004c71c05e92a032c37a83640739403da1d42fa135996a55616` |
+| `docs/audit/JEV-WORKER-A-CODE-MAP.md` | `docs/audit/JEV-WORKER-A-CODE-MAP.md` | 3563 | `29049216b1088b1fbcee234289b8117942d97959afc0e41889786eb4973d170c` |
+| `docs/audit/JEV-WORKER-A-REPORT.md` | `docs/audit/JEV-WORKER-A-REPORT.md` | 6655 | `4fb16e6126e0c7f80b1a07cd4cc83f13526924a8339b075b172ab54f2d5c388d` |
+| `docs/audit/JEV_CU_PACK.md` | `docs/audit/JEV_CU_PACK.md` | 12744 | `d41a622eb9fcc57319df9a9fe5cbe079ddf520f1bfa3d179bbf7d5c9733d9476` |
+| `docs/audit/JEV_ID_MAP.md` | `docs/audit/JEV_ID_MAP.md` | 4952 | `e0dadb411b6896f04fc9786b332df249e4216763de30064c5b07bc8e96ceb5e8` |
+| `docs/audit/JEV_PROVIDER_COMPATIBILITY.md` | `docs/audit/JEV_PROVIDER_COMPATIBILITY.md` | 10669 | `e19e318fc6e750debbf499dd97ee5fb818d4ef4443cb0e61a9dde68b132667db` |
+| `docs/audit/PERFORMANCE.md` | `docs/audit/PERFORMANCE.md` | 13738 | `e32a5b509cf0f5b6e5695ff2570a8751383746b5eabc56456c5ed1fdb284a33e` |
+| `docs/audit/PLATFORM-MATRIX.md` | `docs/audit/PLATFORM-MATRIX.md` | 5860 | `1e24fa87f61c5cbecf8af35acefd7bbc81a4e2db4ca8a6781115d7face625bbf` |
+| `docs/audit/RELEASE_NOTES.md` | `docs/audit/RELEASE_NOTES.md` | 2380 | `e8981aa87c4d363a9c8d6668a30b7371aa0c71b34e2d57a6996b34cb62629316` |
+| `docs/audit/RF09-CRASH-WINDOW-INVENTORY.md` | `docs/audit/RF09-CRASH-WINDOW-INVENTORY.md` | 8072 | `586b0e3d4f0d9b9122d11bd645e2f41a46a8fa241959f4d7c3f9f43b3fe3213b` |
+| `docs/audit/SKILLS_USED.md` | `docs/audit/SKILLS_USED.md` | 1687 | `784f646bad3e2c2f8925e782fc67fadfb057146ec7f13a6110ea1dc48e261a67` |
+| `docs/audit/SYSTEM_ONE_GUISTATE.md` | `docs/audit/SYSTEM_ONE_GUISTATE.md` | 9529 | `d920abd71e2755ad599476b4dfd21a3db4f8927198b20afa3d165476949bb54f` |
+| `docs/audit/SYSTEM_ONE_QUESTIONS.json` | `docs/audit/SYSTEM_ONE_QUESTIONS.json` | 18767 | `c52e18f0aac8cb1c7f38198f979bd221387f8fbcb012ebd20e26ab543f53e1fe` |
+| `docs/audit/SYSTEM_ONE_SHADOW.md` | `docs/audit/SYSTEM_ONE_SHADOW.md` | 11579 | `c5b57775b037782b88c81f9800cd10df88b98bb706807684a7f5247a2e4dcc69` |
+| `docs/audit/SYSTEM_ONE_TRIAGE_PACK.md` | `docs/audit/SYSTEM_ONE_TRIAGE_PACK.md` | 17539 | `421c06248c6fa58ca8b262928d5be2d9e377e277172d6a7739733921a7dea076` |
+| `docs/audit/TEST_REPORT.md` | `docs/audit/TEST_REPORT.md` | 9488 | `eb3df01b45050fa1b22f8cf6b10e2ed1ee7a3607e56c2bb6b2d1393425588b0b` |
+| `docs/audit/UI-FEATURE-MAP.md` | `docs/audit/UI-FEATURE-MAP.md` | 12330 | `087121958eafd7882572b482d3598eba58df4794c365961d839d1ca0288c2c20` |
+| `docs/audit/UPDATE_COMPATIBILITY.md` | `docs/audit/UPDATE_COMPATIBILITY.md` | 2359 | `652b7cc556f365a2972f07a1bccd405b6fd955bc04f80fe8df6c2f9be5e71451` |
+| `docs/audit/probes-2026-09-12.json` | `docs/audit/probes-2026-09-12.json` | 1470 | `e21f329b286eb9809f234f39f832bd116446777ab16012bf3ee1488dea3fa081` |
+| `docs/audit/probes-after-etappe1.json` | `docs/audit/probes-after-etappe1.json` | 2047 | `73891463a061d7934a2cdc06ad86085de6d6727da25470a478bda55fbb2df783` |
+| `docs/audit/probes-after-etappe2.json` | `docs/audit/probes-after-etappe2.json` | 2817 | `b932697a6bbfd435622ec8193d8d5ffcc2e7e53de9aa9341a8a96a6334db797c` |
+| `docs/audit/review_probes.py` | `docs/audit/review_probes.py` | 4215 | `e3dece30a8eb0e4663e134668022741ec5fe90c3fd8ac50c6e44a1068e166efb` |
+| `docs/skaldir-upgrade/decisions.md` | `docs/skaldir-upgrade/decisions.md` | 3629 | `543679ae6ffc4c3b932ab75a4404a5b961ec185429d5a533d6b7af84513fc4fd` |
+| `docs/skaldir-upgrade/implementation-audit.md` | `docs/skaldir-upgrade/implementation-audit.md` | 3814 | `d43ab9507b05e313b8a59b4cc906f01ba067b1d037f16dea59c13becf7d73a34` |
+| `docs/skaldir-upgrade/ist-audit-2026-09-25.md` | `docs/skaldir-upgrade/ist-audit-2026-09-25.md` | 17915 | `0e71498e51cd76a1c2b757112c794b826296f623575513335cecb158f9bd7d06` |
+| `docs/skaldir-upgrade/validation-report.md` | `docs/skaldir-upgrade/validation-report.md` | 3721 | `c03c6d3a331f64c9238698a9900425880b5cbdf59c4493b621a95c1bf86b863d` |
 | `host-overlay/patch_agent.py` | `host-overlay/patch_agent.py` | 4488 | `b18f04dd4dccd8bf1ce76748ea9ff786c50567641071cfc1133c553a5ce583eb` |
 | `host-overlay/patch_rf02_request_deadline.py` | `host-overlay/patch_rf02_request_deadline.py` | 9928 | `4ea0cb7e104a2153b41d5ca8d0c2243ae8100a2fcc2fa9ecb329d711d9736c86` |
 | `host-overlay/patch_rf03_monotonic_stream_clock.py` | `host-overlay/patch_rf03_monotonic_stream_clock.py` | 9902 | `81bbf63c06ab32bd2b171bfbad917c3d14a19f6105a3da99ed4ed4d74ac7f4e4` |
@@ -1258,7 +1152,7 @@ Der alte Ziel-`README.md` (Vorbereitungshinweis des Planpakets) ist als `docs/up
 | `tools/vendor_thinking_orbs.mjs` | `tools/vendor_thinking_orbs.mjs` | 6812 | `8d6c3c651d259ed60ef3203eb381d3ee4dca74ff99330654ac9f8ee8172b697c` |
 | `uv.lock` | `uv.lock` | 315861 | `827d45aea30543be3d7a36bff8d005619a7d1abc093a9cc72b3528ae425ea543` |
 
-## 4. Ausgeschlossene Pfade (Auszug, Gruppierung)
+## 5. Ausgeschlossene Pfade (Gruppierung)
 
 | Grund | Wurzel | Anzahl |
 |---|---|---|

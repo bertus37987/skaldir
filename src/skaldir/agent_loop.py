@@ -768,8 +768,15 @@ def tool_set_for(
     if selection in ("builtin", "both"):
         tools.extend(builtin_tools(workspace))
     if selection in ("registry", "both"):
+        # A caller that wants registry tools and hands in no store gets the runtime's own
+        # `tools.db` — the same resolution `agent_toolset._store_for` and the CLI use. The
+        # old `raise` made the documented `store=None` default unusable.
         if store is None:
-            raise AgentLoopError("the registry tool set needs a tool store (--db)")
+            from pathlib import Path as _Path
+
+            from .tools import ToolStore as _ToolStore
+
+            store = _ToolStore(_Path(str(runtime or workspace)).expanduser() / "tools.db")
         tools.extend(registry_tools(store, runtime=runtime, project_id=project_id))
     return ToolSet.of(tools)
 

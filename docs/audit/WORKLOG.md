@@ -8,3 +8,90 @@
 - AGENTS.md, Transfer-/Implementierungsauftrag, README und initiale Ignore-Regeln angelegt.
 - Quellcode nicht kopiert, altes Projekt nicht verändert, GitHub-Repo noch nicht angelegt.
 - Nächster Schritt für den Coding-Agenten: Quellinventur und selektives Transfermanifest.
+
+---
+
+## 25. September 2026 — Sitzung 1: Transfer, Setup, Repository, Umsetzung
+
+Kurz und nachvollziehbar. Vollständige Befehlsausgaben liegen unter `logs/` (git-ignored);
+die überprüfbaren Zusammenfassungen stehen in
+[VALIDATION.md](VALIDATION.md) und [DECISIONS.md](DECISIONS.md).
+
+### Gelesen
+`AGENTS.md`, `STARTPROMPT.md`, `TRANSFER-UND-IMPLEMENTIERUNG.md`,
+`docs/masterplan/00-START-HIER.md` … `05-ANFORDERUNGSMATRIX.md` (1195 Zeilen),
+Quell-`AGENTS.md` (Feature-Standard) und Quell-Statusmatrix.
+
+### M0 — Quell-Inventur
+- Branch `godsv-supervisor-hardening`, HEAD `a8fcaa1b`, **dirty**: 166 modifiziert,
+  192 untracked, 1296 tracked.
+- Wichtig: 43 untracked **Quelldateien** (`src/skaldir/*.py` inkl. `agent_toolset.py`,
+  `cu_host_session.py`, `knowledge.py`, `skills_builtin/`, `tool_archive.py`,
+  `verify_flows.py`) und `uv.lock` sind relevante Arbeit — sie wurden übernommen, nicht als
+  „Altlast“ verworfen.
+- Einstieg verfolgt: `perf_lazy.main` → `cli.main` → `repl.launch_from_bare_call` →
+  `chatbar.launch_from_bare_call`. Testrunner: `pytest tests -q -o addopts=""`.
+
+### Migration
+- 1095 Dateien übernommen, 1649 ausgeschlossen, 1 Kollision (`.gitignore`) zusammengeführt.
+  Manifest: [MIGRATION-MANIFEST.md](MIGRATION-MANIFEST.md) mit SHA-256 je Datei.
+- Erste Umlagerung `docs/` → `docs/upstream/` erzeugte 63 Testfehler (Pfadreferenzen aus
+  Code/Tools/Tests). **Zurückgenommen** (D-01); Dokumentpfade beibehalten.
+- Logo-ASCII-Kunst neu abgeleitet (D-06) — sie trug den absoluten Quellpfad.
+
+### Setup
+- Neue venv (`uv venv .venv --python 3.11`), Installation aus dem Ziel, keine
+  Absolute-Referenz auf die alte venv. `skaldir --version` → `1.5.0`; `--help` zeigt
+  66 Root-/278 Leaf-Commands. Importpfad = Zielcode, belegt.
+- `skaldir selftest --json` → `ok true`, 8 Layer, 26 Probes, 0 nicht erreichbar, exit 0.
+
+### Repository
+- `gh auth status` → `bertus37987`, aktiv. Kollisionsprüfung: `<owner>/Skylia-Agent`
+  existierte **nicht**.
+- Secret-Prüfung des tatsächlichen Commitbestands (1123 Dateien, 9 Muster): 21 Treffer,
+  alle dokumentierte Test-Platzhalter bzw. Fachprosa (D-08).
+- `gh repo create bertus37987/Skylia-Agent --private --source . --remote origin`,
+  `git push -u origin main`. **Verifiziert:** `private: true`, `visibility: private`,
+  Owner `bertus37987`, Default-Branch `main`, HEAD `0b09a8a` == lokal.
+- Quellprojekt unverändert; `~/.hermes/godsv/app-src` nicht angefasst.
+
+### Implementierung (M2 + M6-Kern)
+Neue Module, jeweils mit Tests:
+- `src/skaldir/stop_signal.py` — Doppel-Escape-Detektor + Backend-Machbarkeitsprobe.
+- `src/skaldir/desktop_lease.py` — Host-Desktop-Lease mit Fencing-Generation und Eck-Indikator.
+- `src/skaldir/approval_modes.py` — drei bestätigte Approval-Modi über der vorhandenen
+  Policy-Engine, Tab-Zyklus, pro Run.
+- `src/skaldir/tui.py` — bestätigte Vollbild-TUI: Chat links, Tools oben rechts, Goal unten
+  rechts, Vorschau + aufklappbare Details, ASCII/Plain, Fehler als Symbol + Wort.
+- `src/skaldir/surface_cli.py` — `skaldir tui …` / `skaldir stop …` / `skaldir desk …`,
+  inkl. `cli_contract`-Einträge; in `cli.py` registriert.
+
+Drei echte Defekte im eigenen neuen Code gefunden und behoben (Blocker überschrieb die
+Eingabezeile; ASCII-Modus ließ Unicode durch; `at=0.0` wurde als „kein Zeitstempel“
+gelesen). Drei Altlasten im Quellcode behoben (D-01, D-06, `_store_for`-Auflösung).
+`schemathesis>=4` in die `dev`-Extras aufgenommen (war undeklariert).
+
+### Ergebnisse
+- Neue/gezielte Tests: **109 grün**, plus 1 `xfail(strict)` für die offene
+  `tool_search`-Lücke. Details: [VALIDATION.md](VALIDATION.md).
+- Baseline-Volltestsuite (vor den Fixes): `16 failed, 7462 passed, 34 skipped, 63 errors`
+  in 1496 s. Herkunft gegen Initialcommit `0b09a8a` in einem Zweit-Worktree verifiziert:
+  **dieselben** Fehlergruppen traten dort auf (`12 failed, 5 errors`) — Altlasten, nicht
+  durch diese Sitzung entstanden.
+- Abschluss-Volltestsuite → `logs/final-suite.log`.
+
+### Nächste Schritte
+1. Abschluss-Volltestsuite auswerten und in `VALIDATION.md` nachtragen.
+2. `tool_search`-P0: `input_schema`/`output_schema` in `build_candidates` ergänzen; der
+   `xfail(strict)`-Test schlägt dann an und wird positiv umgestellt.
+3. STOP-05: Gruppe `input` beim Besitzer anfragen, dann physischen Doppel-Escape auf
+   Fedora abnehmen (02 §3). Wayland-Live-Abnahme separat.
+4. Produktprüfungen B–F: Testobjekte/Anwendungen mit dem Nutzer festlegen (02 §7, §8).
+5. `scripts/proof-codex-ux-pty.py:47` trägt noch eine absolute Referenz auf das alte
+   Checkout — durch Repo-Root-Auflösung ersetzen.
+
+### Laufende Ressourcen
+- Hintergrundprozess: Abschluss-Volltestsuite (`logs/final-suite.log`).
+- Kein Server, kein Browserprofil, keine Live-Desktopsitzung gestartet.
+- Live-Runtime `~/.hermes/godsv` wurde von `selftest` **gelesen**; spätere Läufe liefen mit
+  isoliertem `SKALDIR_HOME`.
