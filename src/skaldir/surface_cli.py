@@ -35,6 +35,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from . import browser_layer as BL
+from . import desktop_indicator as DI
 from . import desktop_lease as DL
 from . import stop_signal as SS
 from . import tui as TUI
@@ -71,6 +73,14 @@ COMMAND_EVIDENCE: dict[str, str] = {
     "stop.report": "src/skaldir/stop_signal.py:write_report",
     "stop.detect": "src/skaldir/stop_signal.py:DoubleEscapeDetector",
     "desk.status": "src/skaldir/desktop_lease.py:DesktopLeaseStore",
+    "browser.probe": "src/skaldir/browser_layer.py:agent_browser_probe",
+    "browser.discover": "src/skaldir/browser_layer.py:SessionManager.discover",
+    "browser.ensure": "src/skaldir/browser_layer.py:SessionManager.ensure",
+    "browser.tabs": "src/skaldir/browser_layer.py:BrowserLayer.tabs",
+    "browser.detach": "src/skaldir/browser_layer.py:BrowserLayer.detach",
+    "desk.indicator": "src/skaldir/desktop_indicator.py:HostIndicator",
+    "desk.indicator-show": "src/skaldir/desktop_indicator.py:HostIndicator.show",
+    "desk.indicator-hide": "src/skaldir/desktop_indicator.py:HostIndicator.hide",
     "desk.acquire": "src/skaldir/desktop_lease.py:DesktopLeaseStore.acquire",
     "desk.release": "src/skaldir/desktop_lease.py:DesktopLeaseStore.release",
     "desk.stop": "src/skaldir/desktop_lease.py:DesktopLeaseStore.request_stop",
@@ -287,6 +297,146 @@ def _desk_payload(store: DL.DesktopLeaseStore) -> dict[str, Any]:
     }
 
 
+def _browser_sessions(args: argparse.Namespace) -> BL.SessionManager:
+    return BL.SessionManager(runtime_dir(args) / "browser")
+
+
+def _cmd_browser_probe(args: argparse.Namespace) -> int:
+    """§9.4: measured capability, and a visible refusal instead of a download loop."""
+    payload = BL.agent_browser_probe().to_dict()
+    payload["node"] = _node_version()
+    payload["note"] = ("this probe never installs anything; it reports the exact pinned "
+                       "install command when the tool is absent (§9.2)")
+    report_envelope(payload, [{"ref": COMMAND_EVIDENCE["browser.probe"], "kind": "code",
+                               "note": "the measured capability"}])
+    dump(payload)
+    return EXIT_OK if payload["available"] else EXIT_BLOCKED
+
+
+def _node_version() -> str:
+    import shutil as _sh
+    import subprocess as _sp
+
+    node = _sh.which("node")
+    if not node:
+        return "not installed"
+    try:
+        proc = _sp.run([node, "--version"], capture_output=True, text=True, timeout=10,
+                       check=False)
+        return (proc.stdout or proc.stderr or "").strip()[:40] or "unknown"
+    except Exception:  # noqa: BLE001
+        return "unknown"
+
+
+def _cmd_browser_discover(args: argparse.Namespace) -> int:
+    """§6: what exists right now. Read-only; never creates anything."""
+    payload = _browser_sessions(args).discover()
+    payload["capability"] = BL.agent_browser_probe().to_dict()
+    report_envelope(payload, [{"ref": COMMAND_EVIDENCE["browser.discover"], "kind": "code",
+                               "note": ""}])
+    dump(payload)
+    return EXIT_OK
+
+
+def _cmd_browser_ensure(args: argparse.Namespace) -> int:
+    """§6: the one entry point that may start a browser — and only once."""
+    result = _browser_sessions(args).ensure(
+        task=str(getattr(args, "task", "") or ""), run_id=str(getattr(args, "run", "") or ""),
+        allow_create=not bool(getattr(args, "no_create", False)))
+    report_envelope(result, [{"ref": COMMAND_EVIDENCE["browser.ensure"], "kind": "code",
+                              "note": ""}])
+    dump(result)
+    return EXIT_OK if result.get("action") in ("reused", "launched") else EXIT_BLOCKED
+
+
+def _cmd_browser_tabs(args: argparse.Namespace) -> int:
+    sessions = _browser_sessions(args)
+    inventory = sessions.discover()
+    tabs = [dict(t) for t in (sessions._read().get("tabs") or [])]
+    payload = {"tabs": tabs, "agent_tabs": inventory["agent_tabs"],
+               "user_tabs": inventory["user_tabs"],
+               "rule": "only agent-created tabs may be closed; there is no close --all (§6)"}
+    report_envelope(payload, [{"ref": COMMAND_EVIDENCE["browser.tabs"], "kind": "code",
+                               "note": ""}])
+    dump(payload)
+    return EXIT_OK
+
+
+def _cmd_browser_detach(args: argparse.Namespace) -> int:
+    sessions = _browser_sessions(args)
+    inventory = sessions.discover()
+    report = sessions.close_agent_tabs([str(t) for t in (getattr(args, "tab", []) or [])])
+    payload = {
+        "detached": True,
+        "foreign_browsers_closed": False,
+        "closed_agent_tabs": [t["tab_id"] for t in report["closed"]],
+        "refused_user_tabs": [t["tab_id"] for t in report["refused_user_tabs"]],
+        "left_open": inventory.get("tab_count", 0),
+        "rule": "a foreign browser is never closed by a detach (BR-13)",
+    }
+    report_envelope(payload, [{"ref": COMMAND_EVIDENCE["browser.detach"], "kind": "code",
+                               "note": ""}])
+    dump(payload)
+    return EXIT_OK
+
+
+def _cmd_desk_indicator(args: argparse.Namespace) -> int:
+    """What the corner indicator can do *here* — measured, never assumed (DESK-03)."""
+    payload = DI.status()
+    report_envelope(payload, [{"ref": COMMAND_EVIDENCE["desk.indicator"], "kind": "code",
+                              "note": "the measured host backend"}])
+    dump(payload)
+    return EXIT_OK
+
+
+def _cmd_desk_indicator_show(args: argparse.Namespace) -> int:
+    """Put the corner bar on screen for this run's task. Read the status back."""
+    store = _store(args)
+    info = store.indicator()
+    if getattr(args, "task", ""):
+        info = DL.IndicatorState(state=info.state, task=str(args.task), run_id=info.run_id)
+    indicator = DI.HostIndicator(corner=str(getattr(args, "corner", "") or "bottom-right"))
+    result = indicator.show(info)
+    hold = float(getattr(args, "hold", 0.0) or 0.0)
+    shown = bool(result.visible)   # the show's own verdict — not the post-hold state
+    if hold > 0 and result.visible:
+        # The window belongs to this process: it disappears when the command exits. A
+        # real run holds it open for the duration of its control; `--hold` makes that
+        # visible from the CLI so the bar can actually be looked at.
+        import time as _time
+
+        _time.sleep(min(hold, 3600.0))
+        indicator.hide()
+        indicator.close()
+        result = DI.IndicatorStatus(state="hidden", reason=f"held for {hold:g}s",
+                                    backend=result.backend, geometry=result.geometry,
+                                    lines=result.lines, since=result.since)
+    payload = result.to_dict()
+    payload["lease_state"] = store.state()
+    payload["note"] = (
+        "the window is owned by this process; `desk indicator-hide` (or the process "
+        "ending) takes it away"
+    )
+    payload["shown"] = shown
+    report_envelope(payload, [{"ref": COMMAND_EVIDENCE["desk.indicator-show"],
+                               "kind": "code", "note": ""}])
+    dump(payload)
+    # `shown` is the question this command answers: did the bar go on screen? A bar that
+    # was visible for `--hold` and then taken away is a success, not a blocker.
+    return EXIT_OK if shown else EXIT_BLOCKED
+
+
+def _cmd_desk_indicator_hide(args: argparse.Namespace) -> int:
+    result = DI.HostIndicator().hide()
+    payload = result.to_dict()
+    payload["note"] = ("a hide only reaches a window this process created; a bar left by a "
+                       "previous run disappears when that process ends")
+    report_envelope(payload, [{"ref": COMMAND_EVIDENCE["desk.indicator-hide"],
+                               "kind": "code", "note": ""}])
+    dump(payload)
+    return EXIT_OK
+
+
 def _cmd_desk_status(args: argparse.Namespace) -> int:
     payload = _desk_payload(_store(args))
     report_envelope(payload, [{"ref": COMMAND_EVIDENCE["desk.status"], "kind": "code", "note": ""}])
@@ -418,6 +568,39 @@ def contract_entries() -> dict[str, Any]:
                             "signal": {"type": ["object", "null"]}},
              "required": ["presses", "stopped"]},
             "pure logic; --gap-ms sets the gaps, --origin marks a synthetic press"),
+        "browser.probe": entry(
+            "browser.probe", "kernel",
+            "the measured browser backend: version, licence, supported operations",
+            object_schema, "§9.2/§9.4: never installs anything; a missing tool reports the "
+            "exact pinned install command, and a tool that will not name its version is "
+            "refused as unpinnable"),
+        "browser.discover": entry(
+            "browser.discover", "kernel",
+            "what browser state exists right now — read-only, never creates anything",
+            object_schema, "§6: 'window not observable' is never read as 'browser missing'"),
+        "browser.ensure": entry(
+            "browser.ensure", "kernel",
+            "the single entry point that may start a browser, and only once",
+            object_schema, "§6/BR-01: repeated calls reuse one instance; a start lock "
+            "prevents parallel launches; an unconfirmed state is diagnosed, never relaunched"),
+        "browser.tabs": entry(
+            "browser.tabs", "kernel", "tab inventory with owner and run id",
+            object_schema, "§4/§6: stable tab ids; only agent-created tabs may be closed"),
+        "browser.detach": entry(
+            "browser.detach", "kernel", "release the session; never close a foreign browser",
+            object_schema, "BR-13: user tabs and foreign browsers stay open"),
+        "desk.indicator": entry(
+            "desk.indicator", "kernel",
+            "what the host corner indicator can do on this machine, measured",
+            object_schema, "DESK-03: reports `unavailable` with a reason instead of "
+            "pretending; the backend is named (x11-xwayland, not a native Wayland surface)"),
+        "desk.indicator-show": entry(
+            "desk.indicator-show", "kernel", "put the corner bar on screen",
+            object_schema, "read the status back: `visible` is the only state in which "
+            "anything is on screen"),
+        "desk.indicator-hide": entry(
+            "desk.indicator-hide", "kernel", "take the corner bar away",
+            object_schema, ""),
         "desk.status": entry(
             "desk.status", "kernel", "the desktop lease, its queue and the corner indicator",
             {"type": "object",
@@ -492,11 +675,50 @@ def register_cli(subparsers: Any) -> Any:
     det.add_argument("--min-gap-ms", dest="min_gap_ms", type=int, default=SS.DEFAULT_MIN_GAP_MS)
     det.set_defaults(func=_cmd_stop_detect)
 
+    br = sub.add_parser("browser",
+                        help="the browser layer: probe, discover, ensure, tabs, detach")
+    br_sub = br.add_subparsers(dest="browser_command", required=True)
+
+    bp = br_sub.add_parser("probe", help="what browser support exists here, measured")
+    bp.set_defaults(func=_cmd_browser_probe)
+
+    bd = br_sub.add_parser("discover", help="what browser state exists right now (read-only)")
+    bd.set_defaults(func=_cmd_browser_discover)
+
+    be = br_sub.add_parser("ensure", help="the one call that may start a browser")
+    be.add_argument("--task", default="")
+    be.add_argument("--run", default="")
+    be.add_argument("--no-create", action="store_true",
+                    help="never start one; report what is there")
+    be.set_defaults(func=_cmd_browser_ensure)
+
+    bt = br_sub.add_parser("tabs", help="tab inventory with owner and run")
+    bt.set_defaults(func=_cmd_browser_tabs)
+
+    bde = br_sub.add_parser("detach", help="release; never close a foreign browser")
+    bde.add_argument("--tab", action="append", default=[])
+    bde.set_defaults(func=_cmd_browser_detach)
+
     desk = sub.add_parser("desk", help="the host desktop lease and its corner indicator")
     desk_sub = desk.add_subparsers(dest="desk_command", required=True)
 
     st = desk_sub.add_parser("status", help="lease, queue and indicator")
     st.set_defaults(func=_cmd_desk_status)
+
+    ind = desk_sub.add_parser("indicator", help="what the corner indicator can do here")
+    ind.set_defaults(func=_cmd_desk_indicator)
+
+    ind_show = desk_sub.add_parser("indicator-show",
+                                   help="put the corner bar on screen for this run")
+    ind_show.add_argument("--task", default="")
+    ind_show.add_argument("--corner", default="bottom-right",
+                          choices=("top-left", "top-right", "bottom-left", "bottom-right"))
+    ind_show.add_argument("--hold", type=float, default=0.0,
+                          help="keep the bar on screen for N seconds, then take it away")
+    ind_show.set_defaults(func=_cmd_desk_indicator_show)
+
+    ind_hide = desk_sub.add_parser("indicator-hide", help="take the corner bar away")
+    ind_hide.set_defaults(func=_cmd_desk_indicator_hide)
 
     ac = desk_sub.add_parser("acquire", help="take the desktop")
     ac.add_argument("--run", required=True)

@@ -1,10 +1,10 @@
 # Leseindex und Revisionen
 
-Stand: 25. September 2026. Index für diese lokale Paketkopie. Physische Zeilen, 1-basiert und inklusive; nach Änderungen erneut erzeugen. Index selbst ausgeschlossen.
+Stand: 25. September 2026. Physische Zeilen, 1-basiert und inklusive. Index selbst ausgeschlossen.
 
 ## 00-START-HIER.md
 
-[00-START-HIER.md](00-START-HIER.md) · 58 Zeilen · `sha256:f713a2c5b39c7e2c817a35e7731199b7738158c8ddcfedd22df8df6e136d79a0`
+[00-START-HIER.md](00-START-HIER.md) · 58 Zeilen · `sha256:32edbc24f7cda9c69b729cf0b58d08f90d0816f3554aa5d50a49128db551cefa`
 
 | Abschnitt | Zeilen |
 |---|---|
@@ -129,19 +129,34 @@ Stand: 25. September 2026. Index für diese lokale Paketkopie. Physische Zeilen,
 
 ## 07-BROWSER-UPGRADE.md
 
-[07-BROWSER-UPGRADE.md](07-BROWSER-UPGRADE.md) · 140 Zeilen · `sha256:be06eb5f3c2acd25cf4415bf0c80b9f253e0986c8fde48c04eb093fca23f7f5f`
+[07-BROWSER-UPGRADE.md](07-BROWSER-UPGRADE.md) · 262 Zeilen · `sha256:331b72ca3f0d260e6001f87d676914f647769b16ee79c83adde0c6201c467b55`
 
 | Abschnitt | Zeilen |
 |---|---|
-| Browser-Upgrade für Skaldir | 1–140 |
-| 1. Entscheidungsvorschlag | 5–12 |
-| 2. Geprüfte Kandidaten | 13–23 |
-| 3. Entscheidende Grenze: Zen und bestehende Sitzungen | 24–36 |
-| 4. Browser-Layer statt lose Shell-Befehle | 37–54 |
-| 5. Geschwindigkeit und korrektes Batching | 55–67 |
-| 6. Fensterflut zuverlässig verhindern | 68–75 |
-| 7. Subtools und gemischte Workflows | 76–85 |
-| 8. Kontrolle, UI und Verifikation | 86–95 |
-| 9. Setup-Auftrag an Hermes | 96–107 |
-| 10. Abnahmetests | 108–129 |
-| 11. Primärquellen und Nachweisgrenzen | 130–140 |
+| Browser-Upgrade für Skaldir | 1–262 |
+| 1. Von Willy bestätigte technische Empfehlung | 5–16 |
+| 2. Geprüfte Kandidaten | 17–27 |
+| 3. Entscheidende Grenze: Zen und bestehende Sitzungen | 28–40 |
+| 4. Browser-Layer statt lose Shell-Befehle | 41–58 |
+| 5. Geschwindigkeit und korrektes Batching | 59–71 |
+| 6. Fensterflut zuverlässig verhindern | 72–79 |
+| 7. Subtools und gemischte Workflows | 80–89 |
+| 8. Kontrolle, UI und Verifikation | 90–99 |
+| 9. Setup-Auftrag an Hermes | 100–111 |
+| 10. Abnahmetests | 112–133 |
+| 11. Primärquellen und Nachweisgrenzen | 134–145 |
+| 12. Konkrete Prüfpunkte im inzwischen vorhandenen Zielcode | 146–161 |
+| 13. Minimale Session- und Auftragsverträge | 162–205 |
+| Session | 166–178 |
+| Einzelaktion | 179–197 |
+| Batch | 198–205 |
+| 14. Fehlerklassen und erlaubte Reaktionen | 206–222 |
+| 15. Umsetzung in überprüfbaren Paketen | 223–259 |
+| Paket A: Inventar und Fensterlebenszyklus | 225–233 |
+| Paket B: Ein vertikaler strukturierter Browserpfad | 234–243 |
+| Paket C: Tabs, Batches, Lesepfad und Performance | 244–247 |
+| Paket D: Host/DOM-Wechsel und Wiederaufnahme | 248–251 |
+| Paket E: Ein gelerntes Browser-Subtool | 252–255 |
+| Paket F: Produktabnahme | 256–259 |
+| 16. Copy-paste-Auftrag für Hermes | 260–262 |
+

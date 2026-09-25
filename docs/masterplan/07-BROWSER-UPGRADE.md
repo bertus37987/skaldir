@@ -2,7 +2,11 @@
 
 Stand: 25. September 2026. Recherche und Umsetzungsvorschlag, keine bestätigte Installation oder Laufzeitabnahme. Ergänzt den Masterplan; verändert weder den Wunsch nach dem echten Host-Desktop noch die Approval-Regeln. Gegen bestehende Implementierung abgleichen, funktionierende Komponenten behalten.
 
-## 1. Entscheidungsvorschlag
+## 1. Von Willy bestätigte technische Empfehlung
+
+**Empfehlungsgeber:** Codex als technischer Architekturberater auf Grundlage der oben dokumentierten Recherche; von Willy ausdrücklich bestätigt und als gemeinsame Empfehlung an Hermes beauftragt. Dies bezeichnet die fachliche Empfehlung im Projekt, keine externe Zertifizierung.
+
+**An Hermes:** Behandle diese Empfehlung als bevorzugte Umsetzungsrichtung: agent-browser lokal, versioniert und beim Setup mitinstalliert integrieren; den bestehenden ACT-/Computer-Use-Pfad für Zen und native Dialoge erhalten. Prüfe den vorhandenen Code und implementiere die Integration gemäß den folgenden Paketen und Abnahmen. Weiche nur bei einem konkret belegten technischen Nachteil oder einer besseren vorhandenen Lösung ab und dokumentiere Begründung und gleichwertige Erfüllung der Nutzeranforderungen. Zen-Kompatibilität und Fedora-Lauffähigkeit weiterhin tatsächlich testen.
 
 **agent-browser als beim Setup mitinstalliertes, versioniertes Standardwerkzeug für unterstützte Browser integrieren.** Skaldir bleibt der entscheidende Hauptagent. Ein gemeinsamer Adapter verbindet strukturierte Browseraktionen mit vorhandenem ACT/Computer Use. Zen im echten Nutzerprofil bleibt ein eigenes verpflichtendes Abnahmeziel; Chromium-Erfolg erfüllt dieses Ziel nicht.
 
@@ -138,3 +142,121 @@ Am Recherchetag mit dem Browser-Plugin gelesene Originaldokumentation:
 - https://github.com/browser-use/browser-use — Unterscheidung CLI, lokalem Agenten und Cloud-Angeboten.
 
 README-Funktionen sind Angaben der Projekte. Versionen, tatsächliche Fedora-Kompatibilität, Durchsatz, Stop-Verhalten und Zen-Anbindung müssen vor einer Produktzusage lokal bestätigt werden.
+
+## 12. Konkrete Prüfpunkte im inzwischen vorhandenen Zielcode
+
+Lesender Stichprobenaudit am 25. September 2026, HEAD `89b02a7209a6b1bae0b2e1fdb0eea363527925ad`. Arbeitsbaum kann zusätzliche Änderungen enthalten. Zeilen sind Orientierung für diese Momentaufnahme, keine unveränderlichen Referenzen. Kein vollständiger Laufzeitaudit; insbesondere keine Live-Desktop-Tests in dieser Recherche ausgeführt.
+
+| Beobachteter Code | Bedeutung und Auftrag |
+|---|---|
+| `src/skaldir/act_service.py:148–156`, `BROWSER_TITLE_RE`, `BROWSER_LAUNCH` | Breite Titel-/Prozessmuster und `xdg-open` sind vorhanden. Sie identifizieren weder zuverlässig eine bestimmte Nutzersitzung noch beweist URL-Öffnen Idempotenz: auch eine zusätzliche Registerkarte ist ein Seiteneffekt. `ensure_ready` von `navigate` trennen; Launch nicht mit erneutem Öffnen von `about:blank` gleichsetzen. |
+| `src/skaldir/act_service.py:2028–2082`, eingebautes `open_browser` | Vorbedingung `browser_absent`; danach Shell-Start, feste Wartezeit, Ausgabe `LAUNCHED`, Fokusprüfung. Der Flow ist damit kein allgemeines „vorhandenen Browser sicher bereitstellen“. Aufrufer und Vorbedingungsbehandlung verfolgen; vorhandene Instanz muss einen eigenen erfolgreichen Attach-/Reuse-Pfad haben. |
+| `src/skaldir/act_service.py:2058` | Hintergrundstart und anschließendes `echo LAUNCHED` belegen nur die Shell-Ausgabe. Startfehler und Bereitschaft unabhängig prüfen; Prozess-/Verbindungsnachweis und Ergebnisprüfung getrennt halten. Nicht behaupten, die spätere Endzustandsprüfung existiere nicht. |
+| `src/skaldir/cu_host_session.py:1368–1400`, `_child_env` | Entfernt `WAYLAND_DISPLAY` und setzt unter anderem `MOZ_ENABLE_WAYLAND=0`, `GDK_BACKEND=x11`. Dies beeinflusst gestartete Kinder; es macht einen bereits laufenden nativen Wayland-Browser nicht nachträglich per X11 steuerbar. Bestehende native Sitzung separat abnehmen. Kommentare über Umgehung von Portaldialogen sind kein Nachweis vollständiger Wayland-Unterstützung. |
+| `src/skaldir/verify_flows.py:850–900`, `browser_availability`, `_BrowserSession` | Vorhandener Playwright-Prüfpfad startet Chromium mit neuem Context. Für isolierte UI-Regressionsprüfungen wiederverwenden; nicht als Nachweis einer persönlichen Host-Sitzung darstellen. Verfügbarkeit per Import ist schwächer als ein erfolgreicher Start. |
+| `src/skaldir/adapter_mcp.py`, `MCPClient`, `validate_payload`, `call_mapped_tool` | Vorhandener MCP-Client, Schemaverarbeitung und Toolaufruf sind Integrationskandidaten. Erst prüfen, dann erweitern; keine zweite vollständige MCP-Schicht bauen. |
+| `src/skaldir/tool_archive.py`, `ToolArchive`, `ArchivedResult` | Vorhandene Archivierung für große Browserergebnisse prüfen und möglichst verwenden. Keine parallele Browser-eigene Memory-Datenbank ohne begründete Lücke. |
+
+Vorhandene Tests als Ausgangspunkt: `tests/test_act_service.py`, `tests/test_act_service_container.py`, `tests/test_adapter_mcp.py`, `tests/test_adapter_mcp_cli.py`, `tests/test_verify_flows.py`. Existenz dieser Dateien bedeutet nicht, dass die neuen Anforderungen bereits getestet sind.
+
+## 13. Minimale Session- und Auftragsverträge
+
+Die folgenden Felder sind ein Zielvertrag. Bestehende gleichwertige Datenmodelle bevorzugen und auf diese Semantik abbilden.
+
+### Session
+
+- `session_id`: stabile Skaldir-ID; nicht allein ein Fenstertitel.
+- `backend`: tatsächlich benutzter Adapter, beispielsweise `agent_browser` oder `host_gui`.
+- `browser_identity`: Browserfamilie, identifizierte Instanz und lokal verwaltete Profilreferenz; keine Cookies oder Secrets.
+- `ownership`: `user_owned` oder `agent_owned`; zusätzlich Besitzer jedes Tabs getrennt erfassen.
+- `scope`: `host_existing` oder `managed`; für Nutzer sichtbar.
+- `connection_state`: `discovered`, `attaching`, `ready`, `degraded`, `disconnected`.
+- `capabilities`: einzeln bestätigte Funktionen, etwa `dom_read`, `screenshot`, `tab_targeting`, `native_input`, `download`.
+- `last_observed_at`, `connection_generation`: Zeit und Verbindungsrevision; nach Neuverbindung alte Referenzen invalidieren.
+
+Laufzustand separat halten: Ein Run kann pausiert sein, während der Browser weiterhin verbunden ist. Pausieren darf weder das Nutzerfenster schließen noch einen neuen Run automatisch starten.
+
+### Einzelaktion
+
+```json
+{
+  "run_id": "run-example",
+  "action_id": "action-0042",
+  "session_id": "session-existing",
+  "tab_id": "tab-source-a",
+  "operation": "read",
+  "arguments": {"scope": "article", "max_chars": 12000},
+  "observation_revision": "obs-0017",
+  "timeout_ms": 15000
+}
+```
+
+Beispielwerte, keine vorgeschriebenen globalen Limits. Der Executor ergänzt vertrauenswürdig Ressourcenbedarf, Effektklasse und Approval-Entscheidung; diese Eigenschaften nicht ungeprüft aus Modellargumenten übernehmen.
+
+Ergebnisfelder: `action_id`, `status`, `effect_state`, `summary`, `evidence_refs`, `duration_ms`, `error`. Statuswerte mindestens `succeeded`, `failed`, `blocked`, `cancelled`, `unknown`. `effect_state` unterscheidet `not_started`, `confirmed`, `uncertain`; ein fehlgeschlagener Transport kann eine dennoch ausgeführte Aktion bedeuten. Inhaltliche Zielerreichung wird zusätzlich von VERIFY bewertet.
+
+### Batch
+
+Eine Liste von Aktionen mit `depends_on`, stabilen IDs und expliziten Ressourcen. Der Scheduler leitet erlaubte Parallelität aus Backendfähigkeiten und Konflikten ab. Das LLM darf sie vorschlagen, aber keine Locks ausschalten.
+
+Ein fehlerhafter Pflichtschritt verhindert seine abhängigen Folgeschritte. Unabhängige Reads können nach Run-Policy weiterlaufen. Stop pausiert den gesamten betroffenen Run. Vor folgenreichen Schritten zwingender Approval- und Abbruchcheckpoint. Wenn der externe Batchmodus solche Unterbrechungen nicht ermöglicht, in kleinere kontrollierte Aufrufe zerlegen.
+
+Ein lokaler `action_id` verhindert versehentliche erneute Einplanung. Er ist keine Exactly-once-Garantie für fremde Webseiten. Bei ungewissem Ausgang prüfen oder gezielt nachfragen statt Wiederholung erzwingen.
+
+## 14. Fehlerklassen und erlaubte Reaktionen
+
+| Fehlerklasse | Reaktion |
+|---|---|
+| `CAPABILITY_UNAVAILABLE` | Fehlende Fähigkeit benennen; passenden vorhandenen Backendpfad auswählen, wenn Browser-/Profilwahl gewahrt bleibt. |
+| `OBSERVATION_UNAVAILABLE` | Beobachtung diagnostizieren, Session erhalten; nicht aus fehlender Sichtbarkeit Abwesenheit ableiten. |
+| `TARGET_STALE` | Neu beobachten und Ziel neu auflösen; begrenzter Wiederholungsversuch. |
+| `SESSION_DISCONNECTED` | Bekannte Session wiederverbinden und Zustand abgleichen; kein automatischer neuer Browser. |
+| `NAVIGATION_TIMEOUT` | Aktuelle URL und Lade-/Fehlerzustand lesen; mögliche Teilwirkung feststellen. |
+| `AUTH_REQUIRED` | Login-/2FA-Bedarf benennen; vorhandenen zulässigen Authentifizierungspfad verwenden, andernfalls User-Aufgabe anzeigen. |
+| `HUMAN_INTERFERENCE` | Bei konkurrierender Navigation/Eingabe stoppen und neu beobachten; gegebenenfalls Desktopkontrolle übernehmen. |
+| `APPROVAL_REQUIRED` | Aktion nicht ausführen; konkrete Wirkung und Ziel anzeigen. |
+| `EFFECT_UNCERTAIN` | Ergebnis abgleichen; keine automatische Wiederholung folgenreicher Aktion. |
+| `USER_STOP` | Neue Aktionen sperren, Queue pausieren und Stop persistent speichern. |
+
+Retries pro Aktion und Wiederholung gleicher Fehler über den Run hinweg zählen. Ein neues Tool-Call-ID darf das Wiederholungslimit nicht zurücksetzen. Gleiche Aktion bei gleichem Zustand ohne neue Evidenz als Schleife melden.
+
+## 15. Umsetzung in überprüfbaren Paketen
+
+### Paket A: Inventar und Fensterlebenszyklus
+
+1. Aktive Aufrufpfade vom Chat über Tool-Registry bis Browserstart verfolgen; auch Subtools, Workflows und CLI einbeziehen.
+2. Bestehenden Browserstatus von „Browser öffnen“ trennen. Explizite Fälle: vorhanden, nachweislich abwesend, unbekannt.
+3. Start-Lock und begrenzte Bereitschaftsprüfung integrieren. Bei unbekanntem Zustand keinen Relaunch.
+4. Regressionen BR-01, BR-02 und BR-13 zunächst kontrolliert, anschließend am echten Host prüfen.
+
+Abnahme: Bereits geöffneter Zen wird wiederverwendet. Bei absichtlich fehlender Beobachtung entstehen keine zusätzlichen Browserfenster oder leeren Tabs. Kann der Hostpfad das noch nicht leisten, Blockade dokumentieren und Paket B unabhängig bearbeiten.
+
+### Paket B: Ein vertikaler strukturierter Browserpfad
+
+1. Gepinnte agent-browser-Version im Zielprojekt bereitstellen.
+2. Eine zulässige Session verbinden oder explizit verwaltet starten.
+3. Eine lokale Testseite öffnen, Formular ausfüllen, navigieren, Text lesen, Screenshot erstellen und Ergebnis überprüfen.
+4. Jede Aktion durch Skaldirs Registry, Approval, Events und Archiv führen. Keine separate Demo außerhalb des eigentlichen Agentenpfads als Integration verkaufen.
+5. Abbruch und Detach testen, bevor weitere Bedienfunktionen erweitert werden.
+
+Abnahme: Nutzerprompt startet den kompletten Ablauf im normalen Skaldir; TUI zeigt Einzelschritte und Belege; kein zusätzlicher autonomer Browser-Agent nötig.
+
+### Paket C: Tabs, Batches, Lesepfad und Performance
+
+Drei unabhängige Quellen lesen, schrittweise Resultate streamen und einen absichtlich veralteten Selektor behandeln. Aktiver Tab darf keine falsche Zielseite verursachen. Leseumfang begrenzen, Originalbelege selektiv abrufbar halten. Kalte und warme Laufzeiten vergleichen; Erfolgsquote mindestens bewahren.
+
+### Paket D: Host/DOM-Wechsel und Wiederaufnahme
+
+Native Dialoge und Canvas zum Host-/Vision-Pfad leiten. Browser-/Tabidentität beim Wechsel bewahren. Unter X11 und Wayland separat testen. Crash nach Absenden einer harmlosen Testformularaktion simulieren; unbekannte Wirkung feststellen statt zweimal absenden. Globalen Notstopp während langer Aktionen prüfen.
+
+### Paket E: Ein gelerntes Browser-Subtool
+
+Aus dem verifizierten lokalen Formular-/Rechercheablauf ein Subtool erstellen, unnötige Wiederholungen entfernen, Eingaben parametrisieren und mit geänderter Testseite prüfen. Automatische Wiederverwendung aus einem normalen Prompt nachweisen. Persönliche E-Mails erst danach als reale Aufgabe bearbeiten; keine Inhalte in Testfixtures oder Git übernehmen.
+
+### Paket F: Produktabnahme
+
+Browserrecherche auf dem gewünschten Hostbrowser, anschließend Stock-Research-Workflow mit Containerverarbeitung und localhost-Dashboard. Prüfbericht trennt strukturierte Browserabnahme, Zen-Hostabnahme, X11 und Wayland. Fehlende Teilabnahme bleibt offen, auch wenn die Gesamt-Testsuite grün ist.
+
+## 16. Copy-paste-Auftrag für Hermes
+
+> Lies AGENTS.md, den Transferauftrag und docs/masterplan/00-START-HIER.md. Setze anschließend docs/masterplan/07-BROWSER-UPGRADE.md auf der bestehenden Implementierung um. Beginne mit dem tatsächlichen Codeaudit der in Abschnitt 12 genannten Pfade. Erstelle eine kurze Gap-Matrix für BR-01 bis BR-15 mit Codepfad, Nachweis und Restlücke. Verwende vorhandene Registry, ACT, MCP, Events und ToolArchive. Implementiere die Pakete A–F in überprüfbaren Schritten; vermeide einen Rewrite. Bevorzuge agent-browser als gepinntes lokales Werkzeug für unterstützte Browser, aber behaupte keine bestehende Zen-Anbindung ohne Live-Nachweis. Verhindere zuerst wiederholte Browserstarts, integriere danach einen vollständigen vertikalen Toolpfad mit Abbruch und Ergebnisprüfung. Beachte bestehende Browserprofile, globale Doppel-Escape-Pause, Approval-Grenzen und genaue Browserwahl. Teste passende Regressionen pro Änderung und die echten Produktabläufe nach Integration. Fahre bei isolierten Blockaden mit unabhängiger Arbeit fort. Dokumentiere den tatsächlich getesteten Stand, offene Grenzen, Laufzeiten und nächste Schritte; die bloße Erstellung dieser Dokumentation erfüllt den Implementierungsauftrag nicht.

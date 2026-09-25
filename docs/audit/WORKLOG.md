@@ -138,3 +138,16 @@ eigenen Shell-Zustand hinaus belastbar ist. Für Folgesitzungen: jeden Testlauf 
 - Kein Server, kein Browserprofil, keine Live-Desktopsitzung gestartet.
 - Live-Runtime `~/.hermes/godsv` wurde von `selftest` **gelesen**; spätere Läufe liefen mit
   isoliertem `SKALDIR_HOME`.
+
+## 2026-09-25 — Browser-Upgrade: Recherche und vertiefter Implementierungsplan
+
+- Ergänzt: `docs/masterplan/07-BROWSER-UPGRADE.md`, im Startdokument verlinkt; Leseindex aktualisiert.
+- Originaldokumentation über Browser-Plugin gelesen: agent-browser, Playwright MCP, Playwright Browser, Browser Use und Browser Harness.
+- Empfehlung: gepinnter lokaler agent-browser-Adapter plus bestehender ACT-Hostpfad; Zen-Anbindung separat belegen.
+- Zielcode lesend stichprobenartig geprüft (HEAD `89b02a7209a6b1bae0b2e1fdb0eea363527925ad`): Browserlaunch, open_browser, Host-Kindprozessumgebung, Playwright-Verifikation, MCP- und Archivbausteine.
+- Dokument enthält Session-/Aktionsverträge, Fehlerklassen, Pakete A–F, 15 Abnahmen und Hermes-Auftrag.
+- Keine Runtime geändert, keine Browserwerkzeuge installiert, keine Host-Browserprofile verändert. Markdown-Links/Index geprüft; keine Laufzeit- oder Fedora-Live-Abnahme durchgeführt. Andere bereits laufende Arbeiten und ihre Testergebnisse bleiben davon unabhängig.
+
+## 2026-09-25 — Browser-Empfehlung ausdrücklich bestätigt
+
+Willy beauftragt, die Browser-Architektur als gemeinsame Empfehlung von ihm und Codex als technischem Architekturberater festzuhalten und Hermes zu empfehlen. In Browserplan, Startprompt und Paketübersicht aufgenommen. Bevorzugter Weg: lokaler gepinnter agent-browser plus bestehender ACT-/Zen-Hostpfad; technische Grenzen und erforderliche Live-Abnahmen unverändert. Nur Dokumentation geändert.

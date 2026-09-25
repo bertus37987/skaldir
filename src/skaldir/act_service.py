@@ -1419,6 +1419,8 @@ def run_action_list(
     live_target: str = "",
     screenshot: bool = False,
     screenshot_dir: str | Path | None = None,
+    desktop_lease: Any | None = None,
+    lease_task: str = "",
 ) -> dict:
     """Run a declared action list, verify the end state, and **always clean up after itself**.
 
@@ -1434,8 +1436,40 @@ def run_action_list(
     ``screenshot=True`` also captures the run's end state from the runner (named after the
     window the observation read, so the evidence is identifiable) and records its path and
     sha256. A capture that cannot happen is reported as absent — never as an empty file.
+
+    ``desktop_lease`` (a ``skaldir.desktop_lease.DesktopLeaseStore``) is the DESK-01/DESK-02
+    wiring. When a run drives the host desktop it takes the lease for its ``session_id``,
+    and the runner's input path is fenced with that lease's generation — so an action queued
+    before a pause, crash or owner change is dropped at the adapter. The lease is released
+    in the same ``finally``-shaped teardown as the runner: on success, on failure and on an
+    exception. A refused lease is a blocker, not a silent fall-through.
     """
     holder: dict[str, Any] = {}
+    lease: Any | None = None
+    lease_generation = 0
+    desktop_payload: dict[str, Any] = {}
+    if desktop_lease is not None:
+        try:
+            lease = desktop_lease.acquire(
+                session_id, task=lease_task or goal or session_id
+            )
+            lease_generation = int(getattr(lease, "generation", 0) or 0)
+            desktop_payload = {
+                "acquired": True,
+                "owner_run": getattr(lease, "run_id", session_id),
+                "task": lease_task or goal or session_id,
+                "fencing_token": getattr(lease, "owner_token", ""),
+                "generation": lease_generation,
+            }
+        except Exception as exc:  # noqa: BLE001 — a held desktop is a named blocker
+            return {
+                "ok": False,
+                "verdict": "BLOCKED",
+                "blocked_reason": f"DESK-01: the host desktop is not available to this run "
+                                  f"— {exc}",
+                "desktop": {"acquired": False, "reason": str(exc)[:300]},
+                "actions": [],
+            }
     try:
         record = _execute_action_list(
             actions,
@@ -1456,6 +1490,7 @@ def run_action_list(
         )
     except BaseException:
         _teardown_resolved_runner(holder, owns=runner is None)
+        _release_desktop_lease(desktop_lease, session_id, desktop_payload)
         raise
     if screenshot and holder.get("runner") is not None:
         capture = _capture_run_screenshot(
@@ -1464,7 +1499,39 @@ def run_action_list(
         if capture is not None:
             record["screenshot"] = capture
     record["cleanup"] = _teardown_resolved_runner(holder, owns=runner is None)
+    released = _release_desktop_lease(desktop_lease, session_id, desktop_payload)
+    if desktop_lease is not None:
+        desktop_payload["released"] = released
+        record["desktop"] = desktop_payload
     return record
+
+
+def _bind_desktop_fence(runner: Any, store: Any, run_id: str, generation: int) -> bool:
+    """DESK-02: put the fence on the runner's input path, at the adapter.
+
+    Only runners that expose ``bind_input_fence`` get one (``HostSessionRunner`` does).
+    A runner without it is reported rather than silently treated as fenced.
+    """
+    binder = getattr(runner, "bind_input_fence", None)
+    if not callable(binder):
+        return False
+
+    def _fence() -> None:
+        store.fence(run_id, generation)
+
+    binder(_fence)
+    return True
+
+
+def _release_desktop_lease(store: Any, run_id: str, payload: dict[str, Any]) -> bool:
+    """Give the desktop back; never raise out of a teardown."""
+    if store is None:
+        return False
+    try:
+        return bool(store.release(run_id, reason="run finished"))
+    except Exception as exc:  # noqa: BLE001
+        payload["release_error"] = f"{type(exc).__name__}: {exc}"[:200]
+        return False
 
 
 def _teardown_resolved_runner(holder: Mapping, *, owns: bool) -> dict:
@@ -1580,8 +1647,14 @@ def _execute_action_list(
     allow_live_desktop: bool = False,
     live_target: str = "",
     holder: dict | None = None,
+    on_runner: Any | None = None,
 ) -> dict:
     """Run a declared action list in an isolated runner and verify the end state.
+
+    ``on_runner`` is called with the resolved runner immediately after resolution and
+    **before any action runs**. That is the only moment at which a cross-cutting rule can
+    bind to the real input path (DESK-02's fencing), because the runner does not exist
+    before it and the actions start right after.
 
     Returns one record whatever happens; ``record["status"]`` is one of ``verified`` /
     ``verification_failed`` / ``blocked`` / ``usage`` and carries the matching exit code.
@@ -1662,6 +1735,12 @@ def _execute_action_list(
     if holder is not None:
         # The wrapper owns the lifecycle decision; it needs the runner this call resolved.
         holder["runner"] = resolved_runner
+    if resolved_runner is not None and callable(on_runner):
+        # DESK-02 binds here: after the runner exists, before the first input action.
+        try:
+            on_runner(resolved_runner)
+        except Exception as exc:  # noqa: BLE001 — a hook must not break the run record
+            base["hook_error"] = f"{type(exc).__name__}: {exc}"[:200]
     if resolved_runner is None:
         return _stop(
             base,

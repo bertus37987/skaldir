@@ -13,3 +13,7 @@ Die UI ist entschieden: `skaldir` öffnet eine Terminal-Vollbild-TUI; großer Ch
 Arbeite nach den Etappen und Abnahmekriterien im Plan. Nach einzelnen Änderungen gezielte Tests, nach zusammenhängenden Änderungen Integration und vor Abschluss die vorgeschriebenen Projektchecks. Keine wiederholt gestarteten identischen Fullsuite-Läufe. Belege echte Nutzerabläufe, statt vorhandene Klassen oder registrierte Befehle als fertig zu zählen.
 
 Frage nur bei tatsächlich fehlenden entscheidenden Angaben oder externen Voraussetzungen; setze unabhängige Arbeit fort. Erfinde keine Testerfolge. Liefere am Ende Repository-Link, Transfermanifest, aktives Setup, umgesetzte Anforderungen, Ergebnisse, verbleibende Grenzen und HANDOFF.md.
+
+## Bestätigte Browser-Empfehlung an Hermes
+
+Willy und Codex als technischer Architekturberater empfehlen gemeinsam die Umsetzung von `docs/masterplan/07-BROWSER-UPGRADE.md`: agent-browser als lokal mitinstalliertes, gepinntes Werkzeug für unterstützte Browser plus vorhandenes ACT/Computer Use für Zen und native Dialoge. Dies ist die bevorzugte Integrationsrichtung. Vergleiche sie mit dem aktuellen Code, nutze vorhandene Bausteine und implementiere die dortigen Pakete und Abnahmen. Begründe technische Abweichungen mit konkreten Nachweisen. Die Empfehlung ersetzt keinen Live-Nachweis für bestehende Zen-Sitzungen oder Fedora X11/Wayland.

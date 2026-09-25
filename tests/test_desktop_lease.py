@@ -305,6 +305,103 @@ def test_the_fence_only_applies_to_input_actions_not_to_observing(store):
 
 
 # --------------------------------------------------------------------------- #
+# DESK-01 at a PRODUCTION CALLER: the lease is taken and given back by the run
+# --------------------------------------------------------------------------- #
+
+
+def _run(store, session_id="act-run", **kw):
+    from skaldir.act_service import run_action_list
+
+    return run_action_list(
+        [{"kind": "wait", "seconds": 0}],  # harmless, no display needed
+        runner_kind="dry_run",
+        session_id=session_id,
+        desktop_lease=store,
+        write_record=False,
+        **kw,
+    )
+
+
+def test_a_desktop_run_takes_and_releases_the_lease(store):
+    """DESK-01: `act_service.run_action_list` is the production caller.
+
+    Regression for the gap the requirement audit found: `DesktopLeaseStore` existed and
+    was tested, but **no production code called it**. It is now wired into the run that
+    drives the host desktop, and the lease is released on the same teardown as the runner.
+    """
+    record = _run(store, session_id="run-1", lease_task="Edit video")
+    assert record["desktop"]["acquired"] is True or record["desktop"].get("generation")
+    assert record["desktop"]["owner_run"] == "run-1"
+    assert record["desktop"]["released"] is True
+    # and the desktop is actually free again afterwards
+    assert store.state() == "free"
+
+
+def test_a_held_desktop_is_a_named_blocker_not_a_silent_fallthrough(store):
+    store.acquire("other-run", task="Research", now=1.0)
+    record = _run(store, session_id="run-2")
+    assert record["ok"] is False
+    assert record["verdict"] == "BLOCKED"
+    assert "DESK-01" in record["blocked_reason"]
+    assert "other-run" in record["blocked_reason"]
+    assert record["desktop"]["acquired"] is False
+    # the other run still owns it — a refusal never steals
+    assert store.current().run_id == "other-run"
+
+
+def test_the_fence_is_bound_on_the_resolved_runner(store):
+    """DESK-02 through the real path: the runner gets the fence, not just a method."""
+    from skaldir.act_service import run_action_list
+
+    seen: list = []
+
+    class Spy:
+        def bind_input_fence(self, fence):
+            seen.append(fence)
+
+        def cleanup_record(self):
+            return {"container": "", "prefix": "", "closed": True, "still_present": False}
+
+        def close(self):
+            return None
+
+    run_action_list([{"kind": "wait", "seconds": 0}], runner_kind="dry_run",
+                    session_id="run-1", desktop_lease=store, write_record=False)
+    # dry_run has no bind_input_fence, so nothing is bound and nothing pretends it was
+    assert seen == []
+
+    from skaldir.act_service import _bind_desktop_fence
+
+    spy = Spy()
+    assert _bind_desktop_fence(spy, store, "run-1", 1) is True
+    assert len(seen) == 1 and callable(seen[0])
+    # and the bound fence really checks the store
+    seen[0]()
+    store.request_stop(now=2.0)
+    import pytest as _pytest
+
+    with _pytest.raises(Exception):
+        seen[0]()
+
+
+def test_a_runner_without_a_fence_is_reported_not_silently_treated_as_fenced(store):
+    from skaldir.act_service import _bind_desktop_fence
+
+    class Plain:
+        pass
+
+    assert _bind_desktop_fence(Plain(), store, "run-1", 1) is False
+
+
+def test_the_lease_is_released_even_when_the_run_fails(store):
+    from skaldir.act_service import run_action_list
+
+    run_action_list([{"kind": "launch", "argv": ["/bin/false"]}], runner_kind="dry_run",
+                    session_id="run-1", desktop_lease=store, write_record=False)
+    assert store.state() == "free"
+
+
+# --------------------------------------------------------------------------- #
 # durability: the record survives a restart and is written atomically
 # --------------------------------------------------------------------------- #
 
