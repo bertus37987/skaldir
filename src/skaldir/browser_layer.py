@@ -718,6 +718,27 @@ class BrowserBackend:
         return BrowserCapability(self.kind, available=False, reason="no probe implemented")
 
 
+def _unwrap_json(text: str) -> tuple[dict[str, Any], str]:
+    """Split `--json` output into its envelope and the readable content inside it.
+
+    Returns ``(envelope, content)``. Anything that is not a JSON envelope is returned as
+    plain text with an empty envelope — a tool that prints prose is not an error.
+    """
+    stripped = (text or "").strip()
+    if not stripped:
+        return {}, ""
+    try:
+        envelope = json.loads(stripped)
+    except json.JSONDecodeError:
+        return {}, stripped
+    if not isinstance(envelope, dict):
+        return {}, stripped
+    data = envelope.get("data")
+    if isinstance(data, dict) and isinstance(data.get("content"), str):
+        return envelope, data["content"]
+    return envelope, stripped
+
+
 class AgentBrowserBackend(BrowserBackend):
     """agent-browser over its CLI, pinned and versioned (§9.2).
 
@@ -736,18 +757,182 @@ class AgentBrowserBackend(BrowserBackend):
     def probe(self) -> BrowserCapability:
         return agent_browser_probe(binary=self.binary, root=self.root)
 
-    def launch(self, *, task: str = "", run_id: str = "") -> dict[str, Any]:
+    #: The typed action vocabulary of `browser.act` (§4) → one agent-browser verb.
+    #: Only what the tool actually offers is listed; anything else is refused by name
+    #: instead of being silently mapped onto something similar.
+    ACTION_VERBS: dict[str, str] = {
+        "navigate": "open",
+        "goto": "open",
+        "open": "open",
+        "click": "click",
+        "dblclick": "dblclick",
+        "type": "type",
+        "fill": "fill",
+        "press": "press",
+        "hover": "hover",
+        "focus": "focus",
+        "check": "check",
+        "uncheck": "uncheck",
+        "select": "select",
+        "drag": "drag",
+        "upload": "upload",
+        "download": "download",
+        "scroll": "scroll",
+        "scrollintoview": "scrollintoview",
+        "wait": "wait",
+    }
+
+    def launch(self, *, task: str = "", run_id: str = "",
+               session: str = "", url: str = "") -> dict[str, Any]:
+        """Start the browser through `agent-browser open`.
+
+        ``open`` without a URL is deliberate: it stages the session without navigating, so
+        a caller can set up state first. Never ``close --all`` anywhere in this class —
+        BR-13 requires foreign tabs to survive.
+        """
         cap = self.probe()
         if not cap.available:
             return {"ok": False, "backend": self.kind.value, "detail": cap.reason,
                     "session_id": "", "tabs": []}
-        # A real launch belongs to the transport; here we only report that the tool is
-        # present so the session manager can record an honest `unconfirmed`/`ready`.
-        return {"ok": False, "backend": self.kind.value,
-                "detail": ("agent-browser is installed, but no launch verb is wired yet — "
-                           "the session stays `unconfirmed` rather than pretending it is "
-                           "ready"),
-                "session_id": "", "tabs": []}
+        argv = ["open", url] if url else ["open"]
+        argv += self._session_args(session) + ["--json"]
+        result = self.run(argv)
+        return {
+            "ok": bool(result.get("ok")),
+            "backend": self.kind.value,
+            "detail": result.get("stderr") or result.get("detail") or "",
+            "session_id": session,
+            "tabs": [],
+            "duration_ms": result.get("duration_ms"),
+            "raw": result.get("stdout", "")[:2000],
+        }
+
+    def _session_args(self, session: str) -> list[str]:
+        return ["--session", session] if session else []
+
+    def act(self, action: Mapping[str, Any], *, session: str = "") -> dict[str, Any]:
+        """One typed browser action (§4 `browser.act`).
+
+        The mapping is ``{"kind": ..., "target": ..., "value": ...}``. An unknown kind is
+        refused *by name*: mapping it onto a similar verb would execute something the
+        caller did not ask for.
+        """
+        # The vocabulary is checked FIRST: an unknown action is unsupported whether or not
+        # the tool is installed. Reporting "not installed" instead would hide the caller's
+        # own mistake behind an environment problem.
+        kind = str(action.get("kind", "") or "").lower()
+        verb = self.ACTION_VERBS.get(kind)
+        if verb is None:
+            return {
+                "ok": False,
+                "backend": self.kind.value,
+                "error_class": ErrorClass.UNSUPPORTED.value,
+                "detail": (f"browser.act: {kind or '(none)'} is not supported by this "
+                           f"backend — known kinds: {', '.join(sorted(self.ACTION_VERBS))}"),
+            }
+
+        cap = self.probe()
+        if not cap.available:
+            return {"ok": False, "backend": self.kind.value,
+                    "error_class": ErrorClass.NOT_INSTALLED.value, "detail": cap.reason}
+
+        target = str(action.get("target", "") or action.get("selector", "") or "")
+        value = action.get("value", action.get("text", ""))
+        argv = [verb]
+        if verb in ("open", "goto"):
+            argv.append(str(action.get("url", "") or target))
+        elif verb == "press":
+            argv.append(str(value))
+        elif verb == "scroll":
+            argv += [str(value or "down")]
+            if action.get("px"):
+                argv.append(str(action["px"]))
+        elif verb == "drag":
+            argv += [target, str(value)]
+        elif verb == "wait":
+            argv.append(target or str(value or "1000"))
+        elif verb in ("type", "fill"):
+            argv += [target, str(value)]
+        elif verb == "select":
+            argv += [target, str(value)]
+        elif verb in ("upload", "download"):
+            argv += [target, str(value)]
+        else:
+            argv.append(target)
+
+        argv += self._session_args(session) + ["--json"]
+        result = self.run(argv)
+        return {
+            "ok": bool(result.get("ok")),
+            "backend": self.kind.value,
+            "error_class": result.get("error_class", ""),
+            "detail": result.get("stderr") or result.get("detail") or "",
+            "duration_ms": result.get("duration_ms"),
+            "action": {"kind": kind, "verb": verb, "target": target},
+            "preview": (result.get("stdout") or "")[:400],
+        }
+
+    def read(self, *, url: str = "", session: str = "") -> dict[str, Any]:
+        """`browser.read` (§4): rendered content with URL, time and source.
+
+        Omitting ``url`` reads the rendered DOM of the active tab — the rendered state,
+        which is what the requirement asks for (not a raw HTTP fetch).
+        """
+        cap = self.probe()
+        if not cap.available:
+            return {"ok": False, "backend": self.kind.value,
+                    "error_class": ErrorClass.NOT_INSTALLED.value, "detail": cap.reason}
+        argv = ["read"] + ([url] if url else []) + self._session_args(session) + ["--json"]
+        result = self.run(argv)
+        text = (result.get("stdout") or "")
+        # `--json` wraps the page in an envelope: {"success", "data": {"content", "url",
+        # "status", "source", ...}}. Unwrapping it is what makes `browser.read` return the
+        # selective page content the requirement asks for instead of a JSON blob.
+        envelope, content = _unwrap_json(text)
+        data = envelope.get("data") if isinstance(envelope.get("data"), dict) else {}
+        if envelope.get("success") is False:
+            return {
+                "ok": False, "backend": self.kind.value,
+                "error_class": ErrorClass.BACKEND.value,
+                "detail": str(envelope.get("error") or "agent-browser reported failure")[:300],
+            }
+        return {
+            "ok": bool(result.get("ok")),
+            "backend": self.kind.value,
+            "error_class": result.get("error_class", ""),
+            "url": str(data.get("finalUrl") or data.get("url") or url),
+            "status": data.get("status"),
+            "read_at": time.time(),
+            "source": f"agent-browser read ({data.get('source') or 'rendered'})",
+            "content_type": data.get("contentType", ""),
+            "truncated": bool(data.get("truncated", False)),
+            "content": content[:8000],
+            "preview": content[:400],
+            "duration_ms": result.get("duration_ms"),
+            "detail": result.get("stderr") or "",
+        }
+
+    def tabs(self, *, session: str = "") -> dict[str, Any]:
+        """List tabs. Read-only; it never closes anything (BR-13)."""
+        result = self.run(["tabs", *self._session_args(session), "--json"])
+        return {"ok": bool(result.get("ok")), "backend": self.kind.value,
+                "tabs": [], "preview": (result.get("stdout") or "")[:800],
+                "detail": result.get("stderr") or ""}
+
+    def close_tab(self, *, tab: str = "", session: str = "") -> dict[str, Any]:
+        """Close ONE tab by name — never ``--all`` (BR-13: foreign tabs survive)."""
+        if not tab:
+            return {"ok": False, "backend": self.kind.value,
+                    "error_class": ErrorClass.UNSUPPORTED.value,
+                    "detail": "close_tab needs a named tab — there is no 'close everything' here"}
+        if tab in ("--all", "*"):
+            return {"ok": False, "backend": self.kind.value,
+                    "error_class": ErrorClass.UNSUPPORTED.value,
+                    "detail": ("refused: closing every tab would also close the user's own "
+                               "tabs (BR-13)")}
+        result = self.run(["close", *self._session_args(session), "--json"])
+        return {"ok": bool(result.get("ok")), "backend": self.kind.value,
+                "detail": result.get("stderr") or ""}
 
     def run(self, argv: list[str]) -> dict[str, Any]:
         """Run one agent-browser invocation and report it honestly (§4)."""
@@ -755,13 +940,17 @@ class AgentBrowserBackend(BrowserBackend):
         if not cap.available:
             return {"ok": False, "error_class": ErrorClass.NOT_INSTALLED.value,
                     "detail": cap.reason}
+        # Resolve the binary exactly as the probe does. Using ``self.binary`` raw meant
+        # the probe found the project-local install while every *call* failed with
+        # FileNotFoundError — measured, not assumed.
+        binary = _resolve_binary(self.binary, root=self.root) or self.binary
         started = time.monotonic()
         try:
-            proc = subprocess.run([self.binary, *argv], capture_output=True, text=True,
+            proc = subprocess.run([binary, *argv], capture_output=True, text=True,
                                   timeout=self.timeout, check=False)
         except subprocess.TimeoutExpired:
             return {"ok": False, "error_class": ErrorClass.TIMEOUT.value,
-                    "detail": f"`{self.binary} {' '.join(argv)}` exceeded {self.timeout:g}s"}
+                    "detail": f"`{binary} {' '.join(argv)}` exceeded {self.timeout:g}s"}
         except (OSError, subprocess.SubprocessError) as exc:
             return {"ok": False, "error_class": ErrorClass.BACKEND.value,
                     "detail": f"{type(exc).__name__}: {exc}"}

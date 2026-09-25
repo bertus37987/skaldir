@@ -317,7 +317,9 @@ def test_the_backend_run_reports_timeout_as_its_own_error_class(tmp_path, monkey
                     'exit 0; fi\nsleep 10\n', encoding="utf-8")
     fake.chmod(0o755)
     monkeypatch.setenv("PATH", f"{tmp_path}:{__import__('os').environ['PATH']}")
-    backend = AgentBrowserBackend(binary="agent-browser", timeout=0.2)
+    # `root=tmp_path` is required: without it the resolution finds the *project-local*
+    # real install (by design) and never runs this fake
+    backend = AgentBrowserBackend(binary="agent-browser", timeout=0.2, root=tmp_path)
     result = backend.run(["observe"])
     assert result["ok"] is False
     assert result["error_class"] == ErrorClass.TIMEOUT.value
