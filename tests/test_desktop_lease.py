@@ -15,6 +15,7 @@ from skaldir.desktop_lease import (
     IndicatorState,
     LeaseRefused,
     LeaseState,
+    LeaseStateCorrupt,
     StaleFence,
     indicator_lines,
 )
@@ -479,12 +480,28 @@ def test_the_lease_survives_a_new_store_object_on_the_same_file(store, tmp_path)
     assert reopened.generation() == 1
 
 
-def test_a_corrupt_state_file_is_treated_as_empty_not_as_a_crash(store):
+def test_a_corrupt_state_file_is_refused_not_treated_as_free(store):
+    """GOAL §2 — requirement change, and deliberately so.
+
+    This test previously asserted that unreadable state is treated as an *empty* state.
+    That is the behaviour the task calls out as wrong: if a damaged file reads as "free",
+    a second run takes the desktop while the first may still hold the input path. A corrupt
+    file is now an explicit error and recovery is a deliberate act.
+    """
     store.path.parent.mkdir(parents=True, exist_ok=True)
     store.path.write_text("{ not json", encoding="utf-8")
+
+    with pytest.raises(LeaseStateCorrupt):
+        store.current()
+    with pytest.raises(LeaseStateCorrupt):
+        store.acquire("run-1", now=1.0)
+
+    # recovery is explicit, not silent: the operator moves the damaged file aside
+    damaged = store.path.with_suffix(".corrupt")
+    store.path.rename(damaged)
+    assert damaged.exists()
     assert store.current() is None
-    assert store.generation() == 0
-    assert store.state() == LeaseState.FREE
+    assert store.acquire("run-1", now=1.0).run_id == "run-1"
 
 
 def test_no_temporary_file_is_left_behind(store):

@@ -31,11 +31,18 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
+
+try:  # POSIX only; the in-process lock still applies elsewhere
+    import fcntl
+except ImportError:  # pragma: no cover - non-POSIX
+    fcntl = None  # type: ignore[assignment]
 
 __all__ = [
     "DesktopLease",
@@ -172,19 +179,79 @@ class DesktopLease:
         return IndicatorState(state=self.state, task=self.task, run_id=self.run_id)
 
 
+class LeaseStateCorrupt(RuntimeError):
+    """The persisted lease state could not be read.
+
+    This is deliberately **not** the same as "free". Treating a corrupt file as an empty
+    one would hand the desktop to a second run while the first still believes it owns the
+    input path — exactly the double-control DESK-01 exists to prevent.
+    """
+
+
 class DesktopLeaseStore:
     """Persistence + the atomic hand-over for the desktop lease.
 
-    The file is small and rewritten whole under a thread lock, because the only operation
-    that matters is "make this generation the owner and prove nobody else slipped in". A
-    cross-process file lock is used when :mod:`fcntl` is available so two Skaldir processes
-    cannot both believe they own the input path.
+    Two things have to be true at once, and a thread lock alone cannot provide either:
+
+    * **Atomic ownership across processes and across store instances.** ``acquire``,
+      ``release`` and ``request_stop`` are read-modify-write cycles; two Skaldir processes
+      running them concurrently would both see "free" and both take the desktop. So every
+      cycle runs under a real :func:`fcntl.flock` on a sidecar lock file, *and* under the
+      in-process lock (``flock`` is per file-descriptor, so two store objects in one
+      process still need the thread lock to share one descriptor).
+
+    * **A corrupt file is never mistaken for a free desktop.** See
+      :class:`LeaseStateCorrupt`.
     """
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
+        self.lock_path = self.path.with_suffix(self.path.suffix + ".lock")
         self._lock = threading.RLock()
+        self._depth = threading.local()
         self.path.parent.mkdir(parents=True, exist_ok=True)
+
+    # -- the cross-process critical section ---------------------------------
+
+    @contextmanager
+    def _critical(self) -> Iterator[None]:
+        """Hold the desktop state exclusively across processes *and* threads.
+
+        The sidecar ``.lock`` file is never the state itself, so it can stay behind after
+        a crash without leaving a stale owner. ``flock`` is released by the kernel when
+        the descriptor closes, which is what makes a crashed run give the lock back.
+        """
+        depth = getattr(self._depth, "value", 0)
+        if depth:
+            # Re-entrant on purpose. ``flock`` is per open-file-description, so a nested
+            # call opens a *second* descriptor and blocks against the outer one forever.
+            # A method that reads the generation while already holding the section would
+            # therefore deadlock — that exact bug was measured, so nesting is supported
+            # instead of being banned by comment.
+            self._depth.value = depth + 1
+            try:
+                yield
+            finally:
+                self._depth.value = depth
+            return
+
+        self.lock_path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(self.lock_path, os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            if fcntl is not None:
+                fcntl.flock(fd, fcntl.LOCK_EX)
+            # the *thread* lock here, not _critical(): flock is per descriptor, so two
+            # store objects in one process would otherwise deadlock against themselves
+            with self._lock:
+                self._depth.value = 1
+                try:
+                    yield
+                finally:
+                    self._depth.value = 0
+                    if fcntl is not None:
+                        fcntl.flock(fd, fcntl.LOCK_UN)
+        finally:
+            os.close(fd)
 
     # -- io -----------------------------------------------------------------
 
@@ -195,25 +262,51 @@ class DesktopLeaseStore:
             return {}
         try:
             data = json.loads(raw)
-        except json.JSONDecodeError:
-            return {}
-        return data if isinstance(data, dict) else {}
+        except json.JSONDecodeError as exc:
+            raise LeaseStateCorrupt(
+                f"desktop lease state at {self.path} is not valid JSON ({exc}) — "
+                "refusing to treat it as 'free', because that would hand the desktop to a "
+                "second run while the first may still hold it. Restore or move the file."
+            ) from exc
+        if not isinstance(data, dict):
+            raise LeaseStateCorrupt(
+                f"desktop lease state at {self.path} is {type(data).__name__}, not an "
+                "object — refusing to treat it as 'free'."
+            )
+        return data
 
     def _write(self, data: dict[str, Any]) -> None:
-        tmp = self.path.with_suffix(self.path.suffix + ".tmp")
-        tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        os.replace(tmp, self.path)
+        """Atomic replace from a *private* temporary file.
+
+        The temp name must be unique per writer. A fixed ``state.json.tmp`` means two
+        writers move each other's half-written file away and one ``os.replace`` fails with
+        ``FileNotFoundError`` — measured in the concurrency test, not guessed.
+        """
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp_name = tempfile.mkstemp(dir=str(self.path.parent), prefix=self.path.name + ".", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(tmp_name, self.path)
+        except BaseException:
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
+            raise
 
     # -- queries ------------------------------------------------------------
 
     def current(self) -> DesktopLease | None:
-        with self._lock:
+        with self._critical():
             data = self._read()
         lease = data.get("lease")
         return DesktopLease.from_dict(lease) if isinstance(lease, dict) else None
 
     def generation(self) -> int:
-        with self._lock:
+        with self._critical():
             return int(self._read().get("generation", 0) or 0)
 
     def state(self) -> str:
@@ -231,7 +324,7 @@ class DesktopLeaseStore:
         is stale the moment this returns.
         """
         stamp = time.time() if now is None else float(now)
-        with self._lock:
+        with self._critical():
             data = self._read()
             existing = DesktopLease.from_dict(data["lease"]) if isinstance(data.get("lease"), dict) else None
             # A released lease keeps its record for the audit trail but owns nothing: the
@@ -262,7 +355,7 @@ class DesktopLeaseStore:
 
     def heartbeat(self, run_id: str, *, now: float | None = None) -> bool:
         stamp = time.time() if now is None else float(now)
-        with self._lock:
+        with self._critical():
             data = self._read()
             lease = DesktopLease.from_dict(data["lease"]) if isinstance(data.get("lease"), dict) else None
             if lease is None or lease.run_id != run_id:
@@ -275,7 +368,7 @@ class DesktopLeaseStore:
     def release(self, run_id: str, *, reason: str = "", now: float | None = None) -> bool:
         """Give the desktop back. The generation is NOT reused — that is the fence."""
         stamp = time.time() if now is None else float(now)
-        with self._lock:
+        with self._critical():
             data = self._read()
             lease = DesktopLease.from_dict(data["lease"]) if isinstance(data.get("lease"), dict) else None
             if lease is None or lease.run_id != run_id:
@@ -297,11 +390,15 @@ class DesktopLeaseStore:
         the adapter. Actions that already executed are not undone (STOP-02 says so).
         """
         stamp = time.time() if now is None else float(now)
-        with self._lock:
+        with self._critical():
             data = self._read()
             lease = DesktopLease.from_dict(data["lease"]) if isinstance(data.get("lease"), dict) else None
             if lease is None:
-                return {"ok": False, "reason": "no lease", "generation": self.generation()}
+                return {
+                    "ok": False,
+                    "reason": "no lease",
+                    "generation": int(data.get("generation", 0) or 0),
+                }
             lease.stop_requested = True
             lease.state = LeaseState.PAUSED
             lease.heartbeat_at = stamp
@@ -321,7 +418,7 @@ class DesktopLeaseStore:
     def resume(self, run_id: str, *, now: float | None = None) -> DesktopLease:
         """Explicit user resume after a stop (RUN-03). Always bumps the generation."""
         stamp = time.time() if now is None else float(now)
-        with self._lock:
+        with self._critical():
             data = self._read()
             lease = DesktopLease.from_dict(data["lease"]) if isinstance(data.get("lease"), dict) else None
             if lease is None or lease.run_id != run_id:
@@ -346,8 +443,10 @@ class DesktopLeaseStore:
         Raises :class:`StaleFence` and drops the action when the token is not the current
         owner's. Callers must not catch this and continue — the action is dead.
         """
-        with self._lock:
-            current = self.generation()
+        with self._critical():
+            # read the generation directly: calling self.generation() here would take the
+            # flock a second time on a second descriptor and deadlock
+            current = int(self._read().get("generation", 0) or 0)
         if int(generation) != current:
             raise StaleFence(
                 f"input action carries fencing generation {int(generation)} but the desktop "
