@@ -253,6 +253,104 @@ def _cmd_tui_approve(args: argparse.Namespace) -> int:
 
 
 # --------------------------------------------------------------------------- #
+# data sources (DOCKER-05)
+# --------------------------------------------------------------------------- #
+
+
+def _sources(args) -> Any:
+    """The declared sources, held in the runtime dir so they persist across runs."""
+    from .data_sources import DataSource, SourceKind, SourceRegistry
+
+    store = SourceRegistry()
+    path = runtime_dir(args) / "data-sources.json"
+    try:
+        import json as _json
+
+        raw = _json.loads(path.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001 — no file yet is not an error
+        raw = {}
+    for name, record in (raw.get("sources", {}) or {}).items():
+        store.register_source(DataSource(
+            name=name,
+            kind=SourceKind(record.get("kind", "free")),
+            provider=str(record.get("provider", "")),
+            terms_url=str(record.get("terms_url", "")),
+            licence=str(record.get("licence", "")),
+            requires=tuple(record.get("requires", ()) or ()),
+        ))
+    for tool, names in (raw.get("tools", {}) or {}).items():
+        for name in names:
+            source = store.source(name)
+            if source is not None:
+                try:
+                    store.attach(tool, source, allow_paid=True, approved_by="persisted")
+                except Exception:  # noqa: BLE001
+                    pass
+    return store, path
+
+
+def _cmd_sources_add(args: argparse.Namespace) -> int:
+    """Declare a source. DOCKER-05: a money-costing one must be named explicitly."""
+    from .data_sources import DataSource, PaidSourceNotAllowed, SourceKind
+
+    store, path = _sources(args)
+    kind = SourceKind(str(getattr(args, "kind", "") or "free"))
+    source = DataSource(
+        name=str(getattr(args, "name", "") or ""),
+        kind=kind,
+        provider=str(getattr(args, "provider", "") or ""),
+        terms_url=str(getattr(args, "terms", "") or ""),
+        licence=str(getattr(args, "licence", "") or ""),
+        requires=tuple(str(r) for r in (getattr(args, "require", []) or [])),
+    )
+    try:
+        store.register_source(source)
+        if getattr(args, "tool", ""):
+            store.attach(
+                str(args.tool), source,
+                allow_paid=bool(getattr(args, "allow_paid", False)),
+                approved_by=str(getattr(args, "approved_by", "") or ""),
+            )
+    except PaidSourceNotAllowed as exc:
+        # dump() rather than blocked(): the refusal is the *result* of this command and
+        # has to reach stdout regardless of which contract layer is installed
+        payload = {"ok": False, "reason": str(exc), "source": source.to_dict(),
+                   "paid_source_not_allowed": True}
+        report_envelope(payload, [{"ref": COMMAND_EVIDENCE.get("schedule.define", ""),
+                                   "kind": "code", "note": ""}])
+        dump(payload)
+        return EXIT_BLOCKED
+    _save_sources(path, store)
+    payload = {"source": source.to_dict(), "tool": getattr(args, "tool", "")}
+    report_envelope(payload, [{"ref": COMMAND_EVIDENCE.get("schedule.define", ""), "kind": "code", "note": ""}])
+    dump(payload)
+    return EXIT_OK
+
+
+def _save_sources(path: Any, store: Any) -> None:
+    import json as _json
+
+    data = {"sources": {s.name: s.to_dict() for t in store.all_tools() for s in t.sources},
+            "tools": {t.tool: [s.name for s in t.sources] for t in store.all_tools()}}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(_json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+
+def _cmd_sources_report(args: argparse.Namespace) -> int:
+    """The honest report — including what has NOT been measured (DOCKER-05)."""
+    store, _path = _sources(args)
+    tool = str(getattr(args, "tool", "") or "")
+    payload = store.report(tool) if tool else {
+        "tools": [t.to_dict() for t in store.all_tools()],
+        "disclaimer": ("Online availability is not universal and is not claimed here. "
+                       "Access rights, data availability and each provider's terms apply."),
+    }
+    report_envelope(payload, [{"ref": COMMAND_EVIDENCE.get("schedule.define", ""), "kind": "code", "note": ""}])
+    dump(payload)
+    return EXIT_OK
+
+
+# --------------------------------------------------------------------------- #
 # schedule (SCHED-01..04)
 # --------------------------------------------------------------------------- #
 
@@ -837,6 +935,27 @@ def register_cli(subparsers: Any) -> Any:
     rep.set_defaults(func=_cmd_stop_report)
 
     # SCHED-04: definition, activation, pause and deletion are separate commands
+    src = sub.add_parser("sources", help="data sources for container tools (DOCKER-05)")
+    src_sub = src.add_subparsers(dest="sources_cmd")
+    sa = src_sub.add_parser("add", help="declare a data source (paid ones must be explicit)")
+    sa.add_argument("--name", required=True)
+    sa.add_argument("--kind", default="free",
+                    choices=["free", "free_account", "paid", "metered"])
+    sa.add_argument("--provider", default="")
+    sa.add_argument("--terms", default="", help="URL of the provider's terms of use")
+    sa.add_argument("--licence", default="")
+    sa.add_argument("--require", action="append", default=[],
+                    help="what the caller must supply (api_key, region=…)")
+    sa.add_argument("--tool", default="", help="attach it to this tool as well")
+    sa.add_argument("--allow-paid", dest="allow_paid", action="store_true",
+                    help="required for paid/metered sources (DOCKER-05)")
+    sa.add_argument("--approved-by", dest="approved_by", default="",
+                    help="who approved the spend (APR-02)")
+    sa.set_defaults(func=_cmd_sources_add)
+    sr = src_sub.add_parser("report", help="what is honestly known about a tool's sources")
+    sr.add_argument("--tool", default="")
+    sr.set_defaults(func=_cmd_sources_report)
+
     sch = sub.add_parser("schedule", help="persistent schedules (SCHED-01..04)")
     sch_sub = sch.add_subparsers(dest="schedule_cmd")
     sd = sch_sub.add_parser("define", help="define a schedule (NOT active afterwards)")
