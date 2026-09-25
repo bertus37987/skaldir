@@ -466,10 +466,40 @@ def _cmd_desk_acquire(args: argparse.Namespace) -> int:
 
 
 def _cmd_desk_release(args: argparse.Namespace) -> int:
+    """Release the host desktop — but only against a *current* stop-path proof.
+
+    GOAL §3: the release must consume a current stop-path proof and re-check on a backend
+    or session change; a missing proof stays unknown/blocked and a mere report is not a
+    proof. :class:`~skaldir.stop_release_gate.StopReleaseGate` is that decision, and this
+    command is where it is actually reached.
+    """
+    from .stop_release_gate import StopReleaseGate
+
     store = _store(args)
     run_id = str(getattr(args, "run", "") or "")
-    ok = store.release(run_id, reason=str(getattr(args, "reason", "") or ""))
+    backend = str(getattr(args, "backend", "") or "")
+    session = str(getattr(args, "session", "") or "")
+    report_path = Path(str(getattr(args, "proof", "") or "")) if getattr(args, "proof", "") else (
+        runtime_dir(args) / "stop-feasibility.json"
+    )
+
+    gate = StopReleaseGate(report_path, measure=_measure_stop_path)
+    decision = gate.release(backend=backend, session=session)
+
     payload = _desk_payload(store)
+    payload["stop_path"] = decision.to_dict()
+    payload["proof_path"] = str(report_path)
+    payload["released"] = False
+    if not decision.allowed:
+        # dump() rather than blocked(): the refusal is the *result* of this command and
+        # has to reach the caller's stdout no matter which contract layer is installed
+        payload["ok"] = False
+        payload["reason"] = f"the desktop is not released: {decision.reason}"
+        report_envelope(payload, [{"ref": COMMAND_EVIDENCE["desk.release"], "kind": "code", "note": ""}])
+        dump(payload)
+        return EXIT_BLOCKED
+
+    ok = store.release(run_id, reason=str(getattr(args, "reason", "") or ""))
     payload["released"] = bool(ok)
     if not ok:
         return blocked(f"run {run_id!r} does not hold the desktop lease",
@@ -479,14 +509,42 @@ def _cmd_desk_release(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _measure_stop_path() -> tuple[bool, str]:
+    """Re-measure the stop path at release time.
+
+    The gate must not trust a stored claim, so this re-runs the probe. Until a backend has
+    actually shown a physical double-Escape (STOP-05) the answer is ``False`` — which is
+    the honest one, and it is what keeps the desktop with the run.
+    """
+    probes = SS.probe_backends()
+    usable = [p for p in probes
+              if p.availability is SS.Availability.AVAILABLE and p.name != "agent-injection"]
+    proven = bool(usable) and any(bool(getattr(p, "double_escape", False)) for p in usable)
+    backend = usable[0].name if usable else ""
+    return proven, backend
+
+
 def _cmd_desk_stop(args: argparse.Namespace) -> int:
+    """Run the whole emergency-stop chain, not only the fence bump.
+
+    GOAL §3 asks for detector → queue → fence invalidation → abort of further input →
+    paused run → visible status. :class:`~skaldir.stop_dispatch.StopDispatcher` is that
+    chain; this command is where a human can invoke it.
+    """
+    from .stop_dispatch import StopDispatcher
+
     store = _store(args)
-    result = store.request_stop(reason=str(getattr(args, "reason", "") or "double-escape"))
+    run_id = str(getattr(args, "run", "") or "") or (store.current().run_id if store.current() else "")
+    statuses: list[str] = []
+    dispatcher = StopDispatcher(store, on_status=statuses.append)
+    receipt = dispatcher.stop(run_id, reason=str(getattr(args, "reason", "") or "double-escape"))
+
     payload = _desk_payload(store)
-    payload["stop"] = result
+    payload["stop"] = receipt.to_dict()
+    payload["status_trace"] = statuses
     report_envelope(payload, [{"ref": COMMAND_EVIDENCE["desk.stop"], "kind": "code", "note": ""}])
     dump(payload)
-    return EXIT_OK if result.get("ok") else EXIT_BLOCKED
+    return EXIT_OK if receipt.applied else EXIT_BLOCKED
 
 
 def _cmd_desk_resume(args: argparse.Namespace) -> int:
@@ -730,10 +788,14 @@ def register_cli(subparsers: Any) -> Any:
     re_ = desk_sub.add_parser("release", help="give the desktop back")
     re_.add_argument("--run", required=True)
     re_.add_argument("--reason", default="")
+    re_.add_argument("--backend", default="", help="the display backend being released into")
+    re_.add_argument("--session", default="", help="the session being released")
+    re_.add_argument("--proof", default="", help="path to the stop-path proof (default: runtime stop-feasibility.json)")
     re_.set_defaults(func=_cmd_desk_release)
 
-    sp = desk_sub.add_parser("stop", help="emergency stop: pause the owner and bump the fence")
+    sp = desk_sub.add_parser("stop", help="emergency stop: drain input, bump the fence, pause the owner")
     sp.add_argument("--reason", default="double-escape")
+    sp.add_argument("--run", default="", help="the run to stop (default: the current owner)")
     sp.set_defaults(func=_cmd_desk_stop)
 
     rs = desk_sub.add_parser("resume", help="explicit user resume after a stop")
