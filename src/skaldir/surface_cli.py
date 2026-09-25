@@ -80,6 +80,7 @@ COMMAND_EVIDENCE: dict[str, str] = {
     "schedule.delete": "src/skaldir/scheduler.py:ScheduleStore.delete",
     "schedule.list": "src/skaldir/scheduler.py:ScheduleStore.all",
     "schedule.due": "src/skaldir/scheduler.py:ScheduleStore.due",
+    "schedule.run": "src/skaldir/scheduler_worker.py:SchedulerWorker.tick",
     "sources.add": "src/skaldir/data_sources.py:SourceRegistry.attach",
     "sources.report": "src/skaldir/data_sources.py:SourceRegistry.report",
     "voice.rebrief": "src/skaldir/voice_rebrief.py:validate_rebrief",
@@ -183,6 +184,61 @@ def _cmd_tui_preview(args: argparse.Namespace) -> int:
     else:
         for line in lines:
             print(line.rstrip())
+    return EXIT_OK
+
+
+def _cmd_tui_live(args: argparse.Namespace) -> int:
+    """The interactive loop, driven by live events (Paket 5 / audit F10).
+
+    Not a transcript preview: events are pushed into the loop and the frame is drawn while
+    they arrive. ``--steps`` bounds it so this is usable as a check; the real terminal runs
+    unbounded.
+    """
+    from .tui_live import LiveTui, LiveTuiConfig
+
+    tui = LiveTui(config=LiveTuiConfig(
+        width=int(getattr(args, "width", 100) or 100),
+        height=int(getattr(args, "height", 30) or 30),
+        unicode=not bool(getattr(args, "ascii", False)),
+        motion=not bool(getattr(args, "no_motion", False)),
+        project=str(getattr(args, "project", "") or ""),
+    ))
+    transcript = str(getattr(args, "transcript", "") or "")
+    if transcript:
+        import json as _json
+
+        try:
+            lines = Path(transcript).read_text(encoding="utf-8").splitlines()
+        except OSError as exc:
+            return blocked(f"cannot read {transcript!r}: {exc}", reason="unreadable")
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                event = _json.loads(line)
+            except ValueError:
+                continue
+            kind = str(event.get("kind", ""))
+            tui.push_seq(int(event.get("seq", 0) or 0), kind,
+                         **{k: v for k, v in event.items() if k not in ("kind", "seq")})
+
+    steps = tui.run(max_steps=int(getattr(args, "steps", 3) or 3), timeout_s=2.0)
+    frame = tui.render()
+    payload = {
+        "kind": "skaldir.tui-live",
+        "steps": steps,
+        "frames": tui.frame_count,
+        "calls": len(tui.state.calls),
+        "chat": len(tui.state.chat),
+        "cursor": tui.state.cursor,
+        "approval": tui.state.approval.value,
+        "lines": frame,
+        "every_line_exactly_width_cells": all(len(l) == tui.config.width for l in frame),
+    }
+    report_envelope(payload, [{"ref": COMMAND_EVIDENCE.get("tui.preview", ""),
+                               "kind": "code", "note": ""}])
+    dump(payload)
     return EXIT_OK
 
 
@@ -455,6 +511,42 @@ def _cmd_schedule_list(args: argparse.Namespace) -> int:
     payload = {"schedules": [s.to_dict() for s in store.all()],
                "executions": [c.to_dict() for c in store.executions()]}
     report_envelope(payload, [{"ref": COMMAND_EVIDENCE.get("schedule.define", ""), "kind": "code", "note": ""}])
+    dump(payload)
+    return EXIT_OK
+
+
+def _cmd_schedule_run(args: argparse.Namespace) -> int:
+    """The scheduler EXECUTION SERVICE (Paket 5 / audit F09).
+
+    The store was data; this is the worker that picks due terms up and actually starts a
+    workflow. Headless by design — the acceptance is "bei geschlossener TUI".
+    """
+    import datetime as _dt
+
+    from .scheduler_worker import SchedulerWorker
+
+    store = _sched_store(args)
+    evidence = runtime_dir(args) / "scheduler-worker.json"
+    worker = SchedulerWorker(
+        store,
+        interval_s=float(getattr(args, "interval", 0) or 30.0),
+        owner="cli",
+        evidence_path=evidence,
+    )
+    ticks = int(getattr(args, "ticks", 0) or 0)
+    if ticks:
+        worker.run_forever(max_ticks=ticks)
+    else:
+        worker.tick(now=_dt.datetime.now(_dt.timezone.utc))
+    payload = {
+        "report": worker.report.to_dict(),
+        "evidence": str(evidence),
+        "executions": [c.to_dict() for c in store.executions()],
+        "note": ("the worker executes only schedules that are already ACTIVE; starting "
+                 "it never turns a paused schedule on, and a schedule never grants money"),
+    }
+    report_envelope(payload, [{"ref": COMMAND_EVIDENCE.get("schedule.due", ""),
+                               "kind": "code", "note": ""}])
     dump(payload)
     return EXIT_OK
 
@@ -911,6 +1003,12 @@ def contract_entries() -> dict[str, Any]:
             "delete a schedule; the execution ledger is kept",
             object_schema,
             "deleting a definition must not erase what it already ran"),
+        "schedule.run": entry(
+            "schedule.run", "kernel",
+            "the scheduler execution service: run due terms headless (Paket 5)",
+            due_schema,
+            "executes only ACTIVE schedules; never turns a paused one on, and a schedule "
+            "never grants money (SCHED-03)"),
         "schedule.list": entry(
             "schedule.list", "kernel", "all schedules and the execution ledger",
             object_schema, "the persisted execution ids are what prevent double starts"),
@@ -1069,6 +1167,16 @@ def register_cli(subparsers: Any) -> Any:
     lay.add_argument("--blocked", action="store_true", help="reserve the blocker row")
     lay.set_defaults(func=_cmd_tui_layout)
 
+    lv = tui_sub.add_parser("live", help="the interactive loop over live events (Paket 5)")
+    lv.add_argument("--width", type=int, default=100)
+    lv.add_argument("--height", type=int, default=30)
+    lv.add_argument("--project", default="")
+    lv.add_argument("--transcript", default="", help="feed these events in, then loop")
+    lv.add_argument("--steps", type=int, default=3, help="bounded so this is a check")
+    lv.add_argument("--ascii", action="store_true")
+    lv.add_argument("--no-motion", action="store_true")
+    lv.set_defaults(func=_cmd_tui_live)
+
     fig = tui_sub.add_parser("figure", help="the animated figure at a clock reading")
     fig.add_argument("--at", type=float, default=0.0)
     fig.add_argument("--no-motion", action="store_true")
@@ -1131,6 +1239,12 @@ def register_cli(subparsers: Any) -> Any:
     sls.set_defaults(func=_cmd_schedule_list)
     sdu = sch_sub.add_parser("due", help="what should fire now")
     sdu.set_defaults(func=_cmd_schedule_due)
+    srun = sch_sub.add_parser(
+        "run", help="the execution service: pick due terms up and run them (headless)")
+    srun.add_argument("--ticks", type=int, default=0,
+                      help="poll this many times and exit (0 = one poll)")
+    srun.add_argument("--interval", type=float, default=30.0)
+    srun.set_defaults(func=_cmd_schedule_run)
 
     det = stop_sub.add_parser("detect", help="run a press sequence through the detector")
     det.add_argument("--gap-ms", dest="gap_ms", type=float, action="append", default=[])
