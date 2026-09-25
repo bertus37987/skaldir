@@ -104,6 +104,7 @@ import base64
 import hashlib
 import json
 import os
+import sys
 import re
 import struct
 import threading
@@ -961,8 +962,15 @@ class OpenAICompatibleLLM:
         with self._client_scope() as client:
             while True:
                 attempt += 1
+                attempt_timeout = self._attempt_timeout(deadline)
+                self._announce(
+                    "waiting",
+                    f"waiting for the model (attempt {attempt}/{self._cfg.max_retries + 1}, "
+                    f"limit {attempt_timeout:.0f}s)",
+                )
                 try:
-                    raw = self._send(client, url, body, timeout=self._attempt_timeout(deadline))
+                    raw = self._send(client, url, body, timeout=attempt_timeout)
+                    self._announce("done", "")
                     return self._extract(raw)
                 except _EmptyCompletion as exc:
                     # the reasoning-budget guard, text path: one bounded retry with a bigger
@@ -987,7 +995,42 @@ class OpenAICompatibleLLM:
                     backoff_base=self._cfg.backoff_s,
                 )
                 self._gate_retry(last, decision, attempt)
+                self._announce(
+                    "retrying",
+                    f"no answer yet ({str(last)[:60]}) - retrying in {decision.delay:.1f}s "
+                    f"(attempt {attempt}/{self._cfg.max_retries + 1})",
+                )
                 time.sleep(decision.delay)
+
+    # -- visible waiting --------------------------------------------------- #
+
+    def _announce(self, kind: str, text: str) -> None:
+        """Say what the provider call is doing while it is doing it.
+
+        A trivial calculation that returns nothing for 30s is not a hang, it is an
+        *invisible* wait: ``timeout_s`` (30) times ``max_retries`` (2 + 1) is a 90 second
+        window in which the tool said nothing at all. The fix is not a shorter timeout —
+        it is telling the owner where the time goes. Deliberately quiet unless someone is
+        watching: a JSON run and a pipe are machine surfaces and must stay one envelope.
+        """
+        observer = getattr(self, "wait_observer", None)
+        if observer is not None:
+            try:
+                observer(kind, text)
+            except Exception:  # noqa: BLE001 — never let reporting break the call
+                pass
+            return
+        if os.environ.get("SKALDIR_QUIET") or os.environ.get("SKALDIR_FORMAT") in ("json", "jsonl"):
+            return
+        try:
+            if sys.stderr.isatty():
+                sys.stderr.write(f"\r  {text}          ")
+                sys.stderr.flush()
+                if kind in ("done", "failed", "retrying"):
+                    sys.stderr.write("\r" + " " * 60 + "\r")
+                    sys.stderr.flush()
+        except Exception:  # noqa: BLE001
+            pass
 
     def _gate_retry(self, last: LLMError, decision: Any, attempt: int) -> None:
         """The commit point has the last word over the §43 retry policy (§94).
