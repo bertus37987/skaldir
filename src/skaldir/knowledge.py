@@ -420,6 +420,107 @@ class KnowledgeStore:
             "next_start_line": next_start,
         }
 
+    def answer(
+        self,
+        question: str,
+        entry_ids: list[str] | None = None,
+        *,
+        max_lines: int = 6,
+        max_output_tokens: int = 1200,
+    ) -> dict[str, Any]:
+        """Answer a short question from **selected** entries, with original references.
+
+        MEM-03: "Zusätzlich kann eine kurze Frage auf ausgewählte Dokumente beantwortet
+        werden: Antwort mit Originalreferenzen, kein erneutes Einlesen der ganzen
+        Datenbank."
+
+        Two rules shape the answer:
+
+        * **Only the named entries are read.** Passing no ids is refused rather than
+          silently falling back to the whole base — "kein erneutes Einlesen der ganzen
+          Datenbank" is the point, not a hint.
+        * **Every claim carries its origin.** A sentence in the answer is paired with
+          ``entry_id:line_start-line_end@revision``. That is what makes it checkable.
+
+        The answer is *extractive*: it quotes the lines that actually match the question
+        rather than generating prose over them. When nothing matches, it says so — an
+        invented answer would be worse than no answer here.
+        """
+        question = str(question or "").strip()
+        if not question:
+            return {"error": "usage", "message": "a question is required"}
+        if not entry_ids:
+            return {
+                "error": "usage",
+                "message": ("name the entries to read (entry_ids) — answering would "
+                            "otherwise re-read the whole database, which MEM-03 forbids"),
+            }
+
+        wanted = list(dict.fromkeys(str(e) for e in entry_ids if str(e).strip()))
+        from .memory import lexical_overlap
+
+        findings: list[dict[str, Any]] = []
+        missing: list[str] = []
+
+        for entry_id in wanted:
+            entry = self.get(entry_id)
+            if entry is None:
+                missing.append(entry_id)
+                continue
+            lines = entry.body.splitlines()
+            scored: list[tuple[float, int, str]] = []
+            for index, line in enumerate(lines, start=1):
+                score = lexical_overlap(question, line)
+                if score > 0.0:
+                    scored.append((score, index, line))
+            scored.sort(key=lambda item: (-item[0], item[1]))
+            for score, index, line in scored[:max_lines]:
+                findings.append({
+                    "text": line.strip(),
+                    "score": round(score, 4),
+                    "reference": f"{entry_id}:{index}-{index}@{entry.revision}",
+                    "entry_id": entry_id,
+                    "title": entry.title,
+                    "kind": entry.kind,
+                    "scope": entry.scope,
+                    "revision": entry.revision,
+                    "line_start": index,
+                    "line_end": index,
+                })
+
+        findings.sort(key=lambda item: -item["score"])
+        findings = findings[:max_lines]
+
+        answer_text = " ".join(f["text"] for f in findings)[:max_output_tokens * 4]
+        return {
+            "question": question,
+            "entry_ids": wanted,
+            "read_entries": [f for f in dict.fromkeys(f["entry_id"] for f in findings)],
+            "missing_entries": missing,
+            "answer": answer_text if findings else "",
+            "answered": bool(findings),
+            "kind": "extractive",
+            "references": [
+                {
+                    "reference": f["reference"],
+                    "entry_id": f["entry_id"],
+                    "title": f["title"],
+                    "revision": f["revision"],
+                    "line_start": f["line_start"],
+                    "line_end": f["line_end"],
+                    "text": f["text"],
+                }
+                for f in findings
+            ],
+            "note": (
+                "extractive answer: these are the matching lines from the named entries "
+                "with their original references, not generated prose"
+                if findings else
+                "no line in the named entries matches this question — nothing is invented"
+            ),
+            "queried_only": wanted,
+        }
+
     def list_entries(self, *, scope: str = "", kind: str = "", status: str = "") -> list[dict]:
         conditions = []
         params: list[Any] = []
