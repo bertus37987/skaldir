@@ -162,6 +162,14 @@ def _finish_call(state: TuiState, event: Mapping[str, Any], final: CallState) ->
             row.error = str(event.get("error") or row.error)
             if event.get("exit_code") is not None:
                 row.exit_code = event.get("exit_code")
+            # The expandable detail ("Ergebnisvorschau und aufklappbare Details"):
+            # it arrived on the RESULT, and the result goes through here — without
+            # carrying it, the row kept only the one-line preview and the detail was
+            # lost (measured: `details` stayed empty after a tool.result).
+            if event.get("details") is not None:
+                row.details = str(event.get("details"))
+            if event.get("args") is not None and isinstance(event.get("args"), Mapping):
+                row.args.update(dict(event["args"]))
             return
     # a result without a matching start still has to be visible
     kind = {

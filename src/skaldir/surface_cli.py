@@ -68,6 +68,7 @@ _CONTRACT = product_contract()
 COMMAND_EVIDENCE: dict[str, str] = {
     "tui.preview": "src/skaldir/tui.py:TUI.render",
     "tui.live": "src/skaldir/tui_live.py:LiveTui.step",
+    "tui.app": "src/skaldir/tui_app.py:TuiApp.run",
     "tui.layout": "src/skaldir/tui.py:layout",
     "tui.figure": "src/skaldir/tui.py:figure_frame",
     "tui.approve": "src/skaldir/approval_modes.py:ApprovalModeStore",
@@ -185,6 +186,42 @@ def _cmd_tui_preview(args: argparse.Namespace) -> int:
     else:
         for line in lines:
             print(line.rstrip())
+    return EXIT_OK
+
+
+def _cmd_tui_app(args: argparse.Namespace) -> int:
+    """The full-screen application at the real entry (Abschnitt 6 / Nutzerbefund 3).
+
+    Not a renderer with sample data and not a transcript preview: it takes the
+    terminal (alt screen), draws the agreed layout from live state, reads real keys
+    and reacts to resize. Without a TTY it refuses and names the command that works
+    in a pipe, instead of hanging an automated caller.
+    """
+    from .tui_app import NO_TTY_HINT, TuiApp, TuiAppConfig
+
+    app = TuiApp(config=TuiAppConfig(
+        unicode=not bool(getattr(args, "ascii", False)),
+        motion=not bool(getattr(args, "no_motion", False)),
+        project=str(getattr(args, "project", "") or ""),
+        fps=float(getattr(args, "fps", 12.0) or 12.0),
+    ))
+    try:
+        frames = app.run(max_frames=int(getattr(args, "frames", 0) or 0),
+                         timeout_s=float(getattr(args, "timeout", 0.0) or 0.0))
+    except RuntimeError as exc:
+        return blocked(str(exc) or NO_TTY_HINT, reason="no_tty",
+                       next_command="skaldir agent run \"<task>\" --json")
+    payload = {
+        "kind": "skaldir.tui-app",
+        "frames": frames,
+        "layout": app.screen_name(),
+        "keys_handled": ["TAB", "ENTER", "BACKSPACE", "characters"],
+        "approval_rule": ("Tab at an empty prompt with no completion menu cycles the "
+                          "approval mode; active completion keeps its Tab behaviour"),
+    }
+    report_envelope(payload, [{"ref": COMMAND_EVIDENCE.get("tui.live", ""),
+                               "kind": "code", "note": ""}])
+    dump(payload)
     return EXIT_OK
 
 
@@ -1040,8 +1077,14 @@ def contract_entries() -> dict[str, Any]:
             source_report_schema,
             "availability is a measurement; an unmeasured source reports 'unknown', and "
             "the report carries the disclaimer that online availability is not universal"),
+        "tui.app": entry(
+            "tui.app", "kernel",
+            "the full-screen application at the real entry (Abschnitt 6)",
+            {"type": "object", "properties": {}, "additionalProperties": False},
+            "takes the terminal, draws the agreed layout from live state, reads real "
+            "keys, reacts to resize; refuses without a TTY and names the JSON command"),
         "tui.live": entry(
-            "tui.live", "presentation",
+            "tui.live", "kernel",
             "the interactive loop over live events (Paket 5)",
             {"type": "object", "properties": {}, "additionalProperties": False},
             "events in, frames out, keys handled; no second execution engine"),
@@ -1182,6 +1225,15 @@ def register_cli(subparsers: Any) -> Any:
     lv.add_argument("--ascii", action="store_true")
     lv.add_argument("--no-motion", action="store_true")
     lv.set_defaults(func=_cmd_tui_live)
+
+    ap = tui_sub.add_parser("app", help="the full-screen application (the real entry)")
+    ap.add_argument("--project", default="")
+    ap.add_argument("--frames", type=int, default=0, help="bounded so this is a check")
+    ap.add_argument("--timeout", type=float, default=0.0)
+    ap.add_argument("--fps", type=float, default=12.0)
+    ap.add_argument("--ascii", action="store_true")
+    ap.add_argument("--no-motion", action="store_true")
+    ap.set_defaults(func=_cmd_tui_app)
 
     fig = tui_sub.add_parser("figure", help="the animated figure at a clock reading")
     fig.add_argument("--at", type=float, default=0.0)
