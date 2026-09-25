@@ -42,11 +42,13 @@ Checked dimensions (all deterministic, no LLM, no I/O):
 
 from __future__ import annotations
 
+import os
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
 
+from .env import first_env
 from .untrusted import TRUSTED_SOURCES, UNTRUSTED_RULE
 
 ALLOW = "ALLOW"
@@ -253,6 +255,37 @@ class ToolDecision:
         lines = [f"{head}: {self.directive}".rstrip()]
         for reason in self.reasons[:4]:
             lines.append(f"- {reason}")
+        if self.classification is not ALLOW:
+            # every refusal names what the user has to act on (host-agent contract):
+            # the deciding component, the access in question, the rule, and the way out.
+            checks = self.checks or {}
+            affected = sorted(
+                {
+                    str(item)
+                    for key in ("foreign_paths", "traversal_paths", "managed_tmp_paths",
+                                "out_of_scope", "destructive", "secret_paths")
+                    for item in (checks.get(key) or [])
+                }
+            )
+            if affected:
+                lines.append(f"- access affected: {', '.join(affected[:6])}")
+            # The label is not the decider. `[voice·guard]` is what the user sees; the
+            # verdict here comes from the path classification, and saying otherwise
+            # would point the owner at the wrong component.
+            lines.append(
+                "- decided by: path classification (`skaldir.toolcall`), "
+                "not by the voice model"
+            )
+            lines.append(
+                "- rule: writes stay inside the project or the managed temporary area; "
+                "reads anywhere, and the device targets /dev/null|stdout|stderr are "
+                "never file writes"
+            )
+            lines.append(
+                "- next step: pick a path inside the workspace, or use the managed "
+                "temporary area for this run's own logs, or open an approval for the "
+                "named host path"
+            )
         return "\n".join(lines)
 
 
@@ -263,6 +296,56 @@ def _command(intent: ToolIntent) -> str:
         if value:
             return str(value)
     return ""
+
+
+#: Device and redirect targets that are not *files* in the sense of the workspace fence.
+#: ``2>/dev/null`` discards output; ``tee /dev/stdout`` writes to the caller's own stream.
+#: Neither is a foreign write, so neither may trigger one (user P0: "harmlose
+#: Shell-Umleitungen nach /dev/null ... als Projektflucht" verweigert).
+DEVICE_TARGETS = frozenset({"/dev/null", "/dev/stdout", "/dev/stderr", "/dev/tty"})
+
+#: The managed temporary area for this host's own logs and artefacts.
+#: A diagnosis run writing its own log there is *not* leaving the project — it is the
+#: scratch space the agent owns. XDG-compliant, so no hard-coded ``/tmp`` assumption.
+_MANAGED_TMP = (first_env(
+    ("SKALDIR_TMPDIR", "TMPDIR"), default="/tmp"
+) or "/tmp").rstrip("/") or "/tmp"
+
+
+def in_managed_tmp(path: str) -> bool:
+    """True when ``path`` is this host's managed temporary area."""
+    if not path.startswith("/"):
+        return False
+    normalized = os.path.normpath(path)
+    return normalized == _MANAGED_TMP or normalized.startswith(_MANAGED_TMP + "/")
+
+
+def redirect_target(command: str) -> list[str]:
+    """The *redirect* targets of a command, with their access kind.
+
+    This is what separates a redirect from an argument: ``soffice --calc x.ods`` names a
+    file to READ, while ``soffice ... 2>/dev/null`` DISCARDS the caller's own stream. The
+    old ``_paths`` regex pulled both into one flat list, so ``/dev/null`` was judged as
+    a write into a foreign tree — the exact P0. ``/dev/...`` is filtered here, before any
+    workspace question is asked.
+    """
+    targets: list[str] = []
+    for match in re.finditer(
+        r"(?P<fd>\d*)(?P<kind>>>?)\s*(?P<path>[^\s;&|<>'\"()]+)", command
+    ):
+        fd = match.group("fd")
+        raw = match.group("path")
+        if raw.startswith("/dev/"):
+            targets.append(raw)
+            continue
+        # 2> is stderr; 2>> appends to it. Both are the *caller's* diagnostics,
+        # not a write into the target file (they still may create/append the file).
+        if fd in ("2", ""):
+            targets.append(raw)
+    # `tee -a <path>` and `tee <path>` write into the named file too.
+    for match in re.finditer(r"\btee\s+(?:-a\s+)?([~./\w][^\s;&|<>'\"()]*)", command):
+        targets.append(match.group(1))
+    return targets
 
 
 def _paths(intent: ToolIntent) -> list[str]:
@@ -278,9 +361,9 @@ def _paths(intent: ToolIntent) -> list[str]:
             found.extend(str(item) for item in value)
     command = _command(intent)
     if command:
-        found.extend(
-            re.findall(r"(?:>>?|tee\s+(?:-a\s+)?)\s*([~./\w][^\s\"'<>|;)]*)", command)
-        )
+        # only the redirect targets of a command are write candidates; the named
+        # arguments stay where they were (they are reads/opens, judged separately)
+        found.extend(redirect_target(command))
     return [path for path in found if path]
 
 
@@ -583,7 +666,17 @@ def _judge(intent: ToolIntent) -> ToolDecision:
     # docs, /tmp) is normal work; treating that as suspicion is over-intervention.
     # Writing outside the project is the case the boundary exists for.
     paths = _paths(intent)
+    # A redirect to a device is a *discard*, not a file: `2>/dev/null` throws away the
+    # caller's own stream. Judging it as a write into a foreign tree is what blocked the
+    # user's LibreOffice diagnosis, so it never reaches the workspace question.
+    paths = [p for p in paths if not p.startswith("/dev/")]
     foreign = [path for path in paths if not _in_workspace(intent, path)]
+    # The managed temporary area is the agent's own scratch space: a diagnosis run
+    # writing its own log there is not "escaping the project" (user P0). It stays a WRITE
+    # for the destructive/danger checks — only the project fence no longer applies.
+    managed = [path for path in foreign if in_managed_tmp(path)]
+    foreign = [path for path in foreign if not in_managed_tmp(path)]
+    checks["managed_tmp_paths"] = managed
     traversal = [path for path in paths if _escapes_by_traversal(path)]
     checks["foreign_paths"] = foreign
     checks["traversal_paths"] = traversal
