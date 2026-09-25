@@ -91,6 +91,12 @@ def core_capability_tools(
         tools.append(tool)
 
 
+    # -- supervised processes (Paket 3): a dev server must not block the round - #
+    if keep("process"):
+        tool = _process_tool(ws, rt, run_id)
+        if tool is not None:
+            tools.append(tool)
+
     # -- browser (the layer already built; refused by name when absent) ----- #
     if keep("browser"):
         tool = _browser_tool(ws, rt, run_id)
@@ -237,6 +243,94 @@ def _adapt_registry_tool(spec: Any, ws: Path, rt: Path | None, *, store: Any) ->
         mutating=mutating,
         source="core",
         source_name=f"skaldir.tools_core.{name}",
+    )
+
+
+#: one manager per run, so a cancel stops *this* run's children and nothing else
+_PROCESS_MANAGERS: dict[str, Any] = {}
+_PROCESS_LOCK = __import__("threading").Lock()
+
+
+def _process_tool(ws: Path, rt: Path | None, run_id: str) -> Any | None:
+    """Start/poll/cancel long-lived processes without blocking the agent round.
+
+    Paket 3: "Ein Devserver darf die Agentenrunde nicht bis zum Timeout blockieren; der
+    Agent muss ihn starten, auf Bereitschaft prüfen, nutzen und seine eigene Instanz
+    beenden können."
+    """
+    from .agent_loop import AgentTool
+
+    def manager() -> Any:
+        from .processes import ProcessManager
+
+        key = run_id or str(ws)
+        with _PROCESS_LOCK:
+            found = _PROCESS_MANAGERS.get(key)
+            if found is None:
+                found = _PROCESS_MANAGERS[key] = ProcessManager(
+                    runtime=rt or ws, stream_limit_bytes=64_000
+                )
+            return found
+
+    def handler(do: str = "start", argv: list | None = None, process_id: str = "",
+                data: str = "", timeout_s: float = 0.0, **_ignored: Any) -> Any:
+        from .processes import ProcessState
+
+        mgr = manager()
+        action = str(do).lower()
+        if action in ("start", "spawn"):
+            if not argv:
+                return {"ok": False, "error": "usage", "reason": "`argv` is required to start a process"}
+            try:
+                result = mgr.spawn(
+                    [str(a) for a in argv], cwd=str(ws),
+                    timeout_s=float(timeout_s) if timeout_s else None,
+                )
+            except Exception as exc:  # noqa: BLE001
+                return {"ok": False, "error": type(exc).__name__, "reason": str(exc)[:300]}
+            return {
+                "ok": True, "process_id": result.process_id, "pid": result.pid,
+                "state": result.state, "cwd": result.cwd,
+                "note": ("started in its own process group — the round continues; use "
+                         "`do=poll` for output and `do=cancel` to stop it"),
+            }
+        if action == "poll":
+            return mgr.poll(process_id)
+        if action in ("cancel", "stop"):
+            return mgr.cancel(process_id, reason="agent")
+        if action == "stdin":
+            return {"ok": mgr.write_stdin(process_id, data), "process_id": process_id}
+        if action == "list":
+            return {"ok": True, "processes": mgr.list()}
+        return {
+            "ok": False, "error": "usage",
+            "reason": f"{do!r} is not a process verb — known: start, poll, cancel, stdin, list",
+        }
+
+    return AgentTool(
+        name="process",
+        description=(
+            "Start, poll and stop long-lived processes (a dev server, a watcher) without "
+            "blocking: {do: start|poll|cancel|stdin|list, argv, process_id, data}. "
+            "Returns a stable process_id at once; output is streamed and bounded. "
+            "Process state is not task success — decide that yourself."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "do": {"type": "string", "enum": ["start", "poll", "cancel", "stdin", "list"]},
+                "argv": {"type": "array", "items": {"type": "string"}},
+                "process_id": {"type": "string"},
+                "data": {"type": "string"},
+                "timeout_s": {"type": "number"},
+            },
+            "required": ["do"],
+        },
+        handler=handler,
+        parallel_safe=False,
+        mutating=True,
+        source="core",
+        source_name="skaldir.processes",
     )
 
 

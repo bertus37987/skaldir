@@ -486,6 +486,21 @@ def turn_tools(
                 ),
             )
         )
+
+    # Paket 1 (audit F01): the goal run used to stop at six file builtins, so a goal could
+    # not use the shell, the web or the browser through its own tools at all. The shared,
+    # run-bound capability set is the same one the agent entry uses — one capability, one
+    # model tool, no duplicate spellings.
+    from .core_capabilities import core_capability_tools
+
+    already = {getattr(t, "name", "") for t in tools}
+    for cap_tool in core_capability_tools(
+        workspace=workspace,
+        runtime=state_dir,
+        run_id=str(session or ""),
+        exclude=already,
+    ):
+        tools.append(cap_tool)
     return tools
 
 
