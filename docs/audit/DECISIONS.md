@@ -254,6 +254,38 @@ nächsten Aufrufweg“) und schließt die P0, für die diese Testdatei überhaup
 
 ---
 
+## D-11 — Offen: zwei Kriterienregister statt eines
+
+**Befund aus dem Codeabgleich (Anhang C5, AUD-02).** Es existieren zwei Stellen, die
+Anforderungen führen:
+
+1. `docs/masterplan/05-ANFORDERUNGSMATRIX.md` — die 134 IDs des **bestätigten**
+   Planpakets, als Arbeitsvorlage mit der Spalte „Codebeleg: zu ermitteln“.
+2. `audit/REQUIREMENTS.json` (+ `audit/CODE_MAP.md`, `audit/verification-mapping.json`) —
+   das Kriterienregister der **Quelle**, mit eigenen IDs (S/PX/RF/JEV/VD) und bereits
+   verifizierten Belegen.
+
+AUD-02 sagt: „Keine zweite Registry, kein konkurrierender Goal-/Memory-/Approval-Store.“
+Zwei *Kriterienregister* sind kein Laufzeit-Doppel wie ein zweiter Goal-Store, aber sie
+verwässern die eine Wahrheitsquelle.
+
+**Entscheidung jetzt:** Keine Löschung. Beide bleiben, mit klarer Rollenverteilung:
+`05-ANFORDERUNGSMATRIX.md` = Soll (Nutzerbestätigung), `IMPLEMENTATION-AUDIT.md` = Ist
+(Belege), `audit/REQUIREMENTS.json` = historisches Register der Quelle mit dessen eigener
+Kriteriums-Taxonomie.
+
+**Warum nicht sofort vereinheitlicht:** Die Quell-Register tragen bereits verifizierte
+Evidence-Zuordnungen, die ein bloßes Zusammenlegen zerstören würde, und die beiden
+Taxonomien (134 Masterplan-IDs vs. S/PX/RF/JEV/VD) sind nicht deckungsgleich. Eine
+Zuordnungstabelle `Masterplan-ID → Quellkriterium` ist der richtige nächste Schritt, nicht
+eine Ersatzlöschung.
+
+**Nächster Schritt:** Mapping-Tabelle in `docs/audit/` ergänzen; dann entscheiden, ob das
+Quellregister als `docs/reference/` archiviert wird. Bis dahin ist der Zustand als **offen**
+geführt, nicht als gelöst.
+
+---
+
 **Privatsphäre-Hinweis.** Dokumentationsartefakte unter
 `docs/artifacts-94-token-economy/` enthalten absolute lokale Pfade
 (`/home/willy/projects/gods-voice/…`). Das ist ein Maschinenpfad, kein Geheimnis; im
