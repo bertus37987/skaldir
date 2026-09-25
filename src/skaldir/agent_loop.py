@@ -1250,6 +1250,8 @@ class AgentLoop:
         history: Sequence[Mapping[str, Any]] = (),
         archive: ToolArchive | None = None,
         retry_gate: RetryGate | None = None,
+        approval_mode: Any = None,
+        approval_gate: Any = None,
     ) -> None:
         self.client = client
         self.tools = tools if isinstance(tools, ToolSet) else ToolSet.of(list(tools))
@@ -1263,6 +1265,13 @@ class AgentLoop:
         self.tier = str(tier or "main")
         self.policy = bool(policy)
         self.approvals = frozenset(str(item) for item in approvals)
+        # APR-01/02/04 — how often a human is asked. Built here so every loop has one;
+        # callers may pass a prebuilt gate (e.g. one sharing a mode store across runs).
+        self.approval_gate = approval_gate
+        if self.approval_gate is None and approval_mode is not None:
+            from .approval_gate import ApprovalGate as _ApprovalGate
+
+            self.approval_gate = _ApprovalGate(approval_mode)
         self.max_result_chars = int(max_result_chars)
         self.max_workers = max(1, int(max_workers))
         self.cancel_path = Path(cancel_path).expanduser() if cancel_path else None
@@ -2327,6 +2336,39 @@ class AgentLoop:
                             f"the call was not executed (policy: {decision.classification}). "
                             f"{decision.render()}"
                         )
+
+                    # APR-01/02/04 — the approval *mode* decides how often a human is
+                    # asked. It can only tighten the judge's verdict (see
+                    # approval_gate.ApprovalGate: never FORBID -> ALLOW, never
+                    # PROMPT -> ALLOW), so this sits after the judge and not instead of it.
+                    if allowed and self.approval_gate is not None:
+                        from .approval import Decision as _Decision
+
+                        judge_decision = (
+                            _Decision.ALLOW if decision.allowed else _Decision.FORBID
+                        )
+                        gate_verdict = self.approval_gate.decide(
+                            tool=tool.name,
+                            text=" ".join(str(v) for v in outcome.arguments.values()),
+                            judge_decision=judge_decision,
+                            run_id=str(
+                                getattr(self, "run_id", "") or getattr(self, "session_id", "") or ""
+                            ),
+                        )
+                        if gate_verdict.decision is not _Decision.ALLOW:
+                            allowed = False
+                            outcome.decision = f"approval_{gate_verdict.decision.value}"
+                            outcome.policy_reasons = list(outcome.policy_reasons) + [
+                                f"approval[{gate_verdict.mode}]: {gate_verdict.reason}"
+                            ]
+                            outcome.error = (
+                                f"the call was not executed (approval: {gate_verdict.decision.value}). "
+                                f"{gate_verdict.reason}"
+                                + (
+                                    " — this needs your explicit approval"
+                                    if gate_verdict.requires_explicit else ""
+                                )
+                            )
                 if allowed:
                     outcome.executed = True
                     try:
