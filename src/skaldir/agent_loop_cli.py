@@ -535,23 +535,72 @@ def cmd_run(args: argparse.Namespace) -> int:
     state = _state_dir(context.runtime_dir)
     store = None
     store_path = Path(str(context.tools_db))
+    discovery_note = ""
     if str(getattr(args, "tools", "builtin")) in ("registry", "both"):
         store, store_path = _store_for(args, context)
         if store is None:
-            _stop_progress(progress, f"no tool registry at {store_path}")
-            return _blocked(
-                f"no tool registry at {store_path} — there is no approved tool to expose",
-                reason="no_registry",
-                next_command="skaldir tools list",
-                hint="build or propose a tool first, or run with --tools builtin",
+            # A fresh setup must still work: "Grundfaehigkeiten muessen nach einem
+            # unterstuetzten frischen Setup verfuegbar oder ueber funktionierende Discovery
+            # unmittelbar aufrufbar sein." Blocking the whole run because no tool has been
+            # *built* yet meant the entry was unusable on day one. The run continues with
+            # the shared capabilities and gains a `tool_discovery` tool that answers the
+            # question honestly instead of the run refusing to start.
+            discovery_note = (
+                f"no tool registry at {store_path} yet — nothing has been built or "
+                f"registered; the tool_discovery tool reports this and the built-in "
+                f"capabilities are available regardless"
             )
     try:
+        # `tool_set_for` deliberately refuses to invent a store (a test pins that). So the
+        # *caller* decides what a fresh setup means: with no registry the run gets the
+        # built-in capabilities plus `tool_discovery`, instead of refusing to start.
+        effective_kind = str(getattr(args, "tools", "builtin"))
+        if discovery_note and effective_kind in ("both", "registry"):
+            effective_kind = "builtin"
         toolset = tool_set_for(
             workspace=workspace,
-            kind=str(getattr(args, "tools", "builtin")),
+            kind=effective_kind,
             store=store,
             runtime=context.runtime_dir,
         )
+        if discovery_note:
+            # "Lazy Loading muss Discovery -> Schema -> Ausfuehrung vollstaetig
+            # unterstuetzen. Ohne verfuegbare Registry darf --agent-tools nicht
+            # blockieren, sondern soll ein Modellwerkzeug 'tool_discovery' und danach
+            # vollstaendige Tools ausgeben."
+            from .agent_loop import AgentTool as _AgentTool
+
+            note = discovery_note
+
+            def _tool_discovery(query: str = "") -> dict:
+                return {
+                    "registered_tools": [],
+                    "registry": note,
+                    "available_now": sorted(
+                        t.name for t in toolset.tools if t.name != "tool_discovery"
+                    ),
+                    "how_to_get_more": (
+                        "build one with `skaldir toolbuild`, or register an existing "
+                        "binary; until then the capabilities above are the full set"
+                    ),
+                }
+
+            toolset.tools.append(_AgentTool(
+                name="tool_discovery",
+                description=(
+                    "List what this run can actually call. Use this first when a "
+                    "capability seems missing — it names the real tools and how to add "
+                    "more, instead of guessing."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {"query": {"type": "string"}},
+                    "additionalProperties": False,
+                },
+                handler=_tool_discovery,
+                parallel_safe=True,
+                mutating=False,
+            ))
         if bool(getattr(args, "agent_tools", False)):
             from .agent_toolset import build_agent_toolset
 

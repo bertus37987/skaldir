@@ -172,7 +172,15 @@ def test_agent_run_answers_with_the_product_envelope(workspace: Path, runtime: P
     assert data["tool_calls"] == 1
     assert data["executed_calls"] == 1
     assert data["exit_code"] == 0
-    assert data["tools"] == ["read_text", "list_dir", "sha256_file", "write_text"]
+    # Was der Nutzer meldete: "behauptet danach aber, keine Shell- oder
+    # Python-Ausfuehrung zu besitzen" — vier reine Dateiwerkzeuge. Der Satz muss
+    # die Ausfuehrung enthalten, sonst ist genau dieser Fehler wieder da.
+    offered = data["tools"]
+    assert "read_text" in offered and "write_text" in offered
+    for execution_tool in ("run_code", "terminal"):
+        assert execution_tool in offered, (
+            f"{execution_tool} fehlt im Toolsatz — der Agent kann nicht ausfuehren: {offered}"
+        )
     assert data["provider"]["model"] == "stub-model"
     assert Path(data["transcript_path"]).is_file()
     assert document["evidence"], "a success without evidence is a contract violation"
@@ -337,7 +345,7 @@ def test_no_provider_configured_exits_4(workspace: Path, runtime: Path, capsys, 
     assert "SKALDIR_LLM_BASE_URL" in (document["error"]["hint"] + document["error"]["message"])
 
 
-def test_the_registry_tool_set_without_a_db_is_blocked(workspace: Path, runtime: Path, capsys):
+def test_the_registry_tool_set_without_a_db_does_not_block_a_fresh_setup(workspace: Path, runtime: Path, capsys):
     with StubEndpoint([answer("x")]) as stub:
         code, document, _err = _run(
             capsys,
@@ -357,11 +365,18 @@ def test_the_registry_tool_set_without_a_db_is_blocked(workspace: Path, runtime:
                 "stub-model",
             ],
         )
-    assert code == 3
-    assert document["error"]["code"] == "blocked"
-    assert document["error"]["details"]["reason"] == "no_registry"
-    assert document["next_actions"][0]["command"] == "skaldir tools list"
-    assert len(stub.requests) == 0  # no request without a tool surface
+    # "Ohne verfuegbare Registry darf --agent-tools nicht blockieren, sondern soll ein
+    # Modellwerkzeug 'tool_discovery' und danach vollstaendige Tools ausgeben." Ein frisches
+    # Setup muss also ARBEITEN, nicht ablehnen.
+    assert code == 0, f"ein frisches Setup wurde abgebrochen: {document.get('error')}"
+    assert document["ok"] is True
+    data = document["data"]
+    assert "tool_discovery" in data["tools"], (
+        f"tool_discovery fehlt in einem frischen Setup: {data['tools']}"
+    )
+    # ... und die Grundfaehigkeiten sind trotzdem da
+    assert "run_code" in data["tools"] and "terminal" in data["tools"]
+    assert len(stub.requests) == 1  # the run actually asked the model
 
 
 def test_a_human_run_prints_the_answer_and_writes_the_transcript(

@@ -66,7 +66,8 @@ EXIT_NOT_FOUND = 5
 _CONTRACT = product_contract()
 
 COMMAND_EVIDENCE: dict[str, str] = {
-    "tui.preview": "src/skaldir/tui.py:Screen.render",
+    "tui.preview": "src/skaldir/tui.py:TUI.render",
+    "tui.live": "src/skaldir/tui_live.py:LiveTui.step",
     "tui.layout": "src/skaldir/tui.py:layout",
     "tui.figure": "src/skaldir/tui.py:figure_frame",
     "tui.approve": "src/skaldir/approval_modes.py:ApprovalModeStore",
@@ -1039,6 +1040,11 @@ def contract_entries() -> dict[str, Any]:
             source_report_schema,
             "availability is a measurement; an unmeasured source reports 'unknown', and "
             "the report carries the disclaimer that online availability is not universal"),
+        "tui.live": entry(
+            "tui.live", "presentation",
+            "the interactive loop over live events (Paket 5)",
+            {"type": "object", "properties": {}, "additionalProperties": False},
+            "events in, frames out, keys handled; no second execution engine"),
         "tui.preview": entry(
             "tui.preview", "kernel", "the confirmed full-screen layout rendered as text",
             {"type": "object",
