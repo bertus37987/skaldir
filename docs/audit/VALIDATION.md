@@ -218,6 +218,33 @@ Probe, die korrekt sagt „hier ist noch nichts“. Als Abnahme zählt der Lauf 
 befüllten Runtime; der leere Lauf belegt umgekehrt, dass die Probes nicht auf einem
 Zufallsergebnis grün werden.
 
+### 4.1 Nachtrag: verspätete Meldung eines Altlaufs
+
+Es ging eine Abschlussmeldung für `logs/fix3.log` ein, die 10 Fehler zeigte
+(`test_tool_search_integration` 4×, `test_schemathesis_cli` 6×). Das ist ein **Alterstand**,
+keine Regression:
+
+| Artefakt | Zeit |
+|---|---|
+| `logs/fix3.log` (die gemeldeten 10 Fehler) | 12:37:58 |
+| Fix `tool_search`-Aufrufvertrag (P0) | 14:31 |
+| Fix `schemathesis`-Deklaration + `_store_for` | zwischen 12:37 und 14:05 |
+| `logs/final-suite3.log` (7648 grün) | 14:55:56 |
+| Commit `2c358c6` | 15:13:35 |
+
+**Reproduktion des Befundes:** derselbe Befehl, ausgeführt am 25.09.2026 um 15:20:
+
+```
+env -u HERMES_HOME -u GODSV_HOME -u SKALDIR_HOME -u GODSV_LLM_API_KEY -u GODSV_LLM_BASE_URL \
+  PYTHONPATH=$PWD/src TMPDIR=/tmp \
+  .venv/bin/python -m pytest tests/test_logo_art.py tests/test_tool_search_integration.py \
+  tests/test_schemathesis_cli.py -q -o addopts="" -p no:cacheprovider -p no:randomly
+→ 37 passed in 37.59s, EXIT=0   (logs/recheck-after-stale-notice.log)
+```
+
+Es wurde **nichts** daran geändert, um die Meldung zum Verschwinden zu bringen — die
+beiden Ursachen waren bereits vorher behoben (`VALIDATION.md` §3.1 und §3).
+
 ## 5. Wiederholbarkeit
 
 Rohlogs liegen unter `logs/` (git-ignored): `baseline-suite.log`, `final-suite.log`,
