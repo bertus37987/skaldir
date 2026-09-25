@@ -102,8 +102,33 @@ def _modes(args: argparse.Namespace) -> ApprovalModeStore:
 
 
 def _cmd_tui_preview(args: argparse.Namespace) -> int:
+    """Render the full-screen TUI.
+
+    With ``--transcript`` this draws a **real** run instead of the built-in example: the
+    renderer is fed from actual run/tool events through
+    :mod:`skaldir.tui_feed`, which is the GOAL §4 connection ("vorhandenen Renderer an
+    echte Run-/Tool-Events anschließen"). The example stays for layout work.
+    """
     width = int(getattr(args, "width", 100) or 100)
     height = int(getattr(args, "height", 30) or 30)
+    transcript = str(getattr(args, "transcript", "") or "")
+    if transcript:
+        from .tui_feed import state_from_transcript
+
+        state = state_from_transcript(transcript)
+        state.project = str(getattr(args, "project", "") or "")
+        state.approval = _modes(args).mode_for(str(getattr(args, "run", "") or "preview"))
+        state.desktop = _store(args).indicator()
+        lines = TUI.render(state, width, height,
+                           unicode=not bool(getattr(args, "ascii", False)),
+                           motion=not bool(getattr(args, "no_motion", False)))
+        report_envelope({"transcript": transcript, "run_id": state.run_id,
+                         "calls": len(state.calls), "chat": len(state.chat),
+                         "cursor": state.cursor},
+                        [{"ref": COMMAND_EVIDENCE.get("tui.preview", ""), "kind": "code", "note": ""}])
+        for line in lines:
+            print(line)
+        return EXIT_OK
     state = TUI.TuiState(
         project=str(getattr(args, "project", "") or "example"),
         run_id="42",
@@ -698,6 +723,8 @@ def register_cli(subparsers: Any) -> Any:
     prev.add_argument("--run", default="")
     prev.add_argument("--ascii", action="store_true", help="ASCII only, no Unicode glyphs")
     prev.add_argument("--no-motion", action="store_true", help="static figure")
+    prev.add_argument("--transcript", default="",
+                      help="render a REAL run from this transcript instead of the example")
     prev.set_defaults(func=_cmd_tui_preview)
 
     lay = tui_sub.add_parser("layout", help="the pane geometry at a terminal size, as data")
