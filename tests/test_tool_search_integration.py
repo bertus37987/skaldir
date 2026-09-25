@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import pytest
 
-from skaldir.agent_loop import tool_set_for
+from skaldir.agent_loop import AgentLoopError, tool_set_for
 from skaldir.agent_toolset import build_agent_toolset, tool_search_tool
 
 
@@ -84,7 +84,12 @@ def test_registry_tools_are_callable_as_agent_tools(tmp_path):
     """Registry tools must appear as AgentTool with a callable handler."""
     runtime = _registered_runtime(tmp_path)
 
-    tools = tool_set_for(workspace=str(tmp_path), kind="both", runtime=str(runtime))
+    # `tool_set_for` is the loop surface and refuses to invent a store (see
+    # test_the_loop_surface_still_refuses_to_invent_a_store) — hand it the runtime's own.
+    from skaldir.tools import ToolStore
+
+    tools = tool_set_for(workspace=str(tmp_path), kind="both", runtime=str(runtime),
+                         store=ToolStore(str(runtime / "tools.db")))
     names = [t.name for t in tools.tools]
     # the core toolset is registered, so it must show up alongside the builtin ones
     assert len(tools.tools) > 0
@@ -113,24 +118,39 @@ def test_knowledge_search_tool_is_callable(tmp_path):
     assert "matches" in result
 
 
-def test_the_registry_toolset_needs_no_caller_supplied_store(tmp_path):
-    """`store=None` is a usable default, not a trap (it used to raise).
+def test_build_agent_toolset_resolves_the_store_it_was_not_given(tmp_path):
+    """`build_agent_toolset(store=None)` resolves `<runtime>/tools.db` — it used to raise.
 
-    Regression guard for the repair above: ``build_agent_toolset(..., kind="both")`` and
-    ``tool_set_for(..., kind="both")`` both accept the documented ``store=None`` default
-    and resolve ``<runtime>/tools.db`` themselves.
+    Regression guard for the repair: the signature advertises ``store: ToolStore | None =
+    None`` and two tests here called it exactly like that, so the default had to become
+    usable. ``skaldir.agent_toolset._store_for`` already knew how; the two tool-set
+    builders simply did not ask it.
     """
     runtime = tmp_path / "runtime"
     runtime.mkdir()
-
-    # `build_agent_toolset` is the assembly that adds the discovery/knowledge trio on top
-    # of the selection; `tool_set_for` is the narrower loop surface (builtin + registry
-    # only). Both must accept store=None without raising.
     assembled = build_agent_toolset(workspace=str(tmp_path), kind="both",
                                     runtime=str(runtime))
     assert {t.name for t in assembled.tools} >= {"tool_search", "knowledge_search",
                                                  "knowledge_read"}
+    assert all(callable(t.handler) for t in assembled.tools)
 
-    loop_set = tool_set_for(workspace=str(tmp_path), kind="both", runtime=str(runtime))
-    assert loop_set.tools, "kind='both' must yield tools without a caller-supplied store"
-    assert all(callable(t.handler) for t in loop_set.tools)
+
+def test_the_loop_surface_still_refuses_to_invent_a_store(tmp_path):
+    """The opposite contract, on purpose: `tool_set_for` is the loop surface.
+
+    ``tests/test_agent_loop.py::test_the_registry_tool_set_mixes_builtin_and_registered_tools``
+    pins ``tool_set_for(kind="registry", store=None)`` as an ``AgentLoopError`` — a caller
+    bug must fail loudly there rather than quietly opening a stray ``tools.db``. The two
+    surfaces deliberately differ; this test stops the next person from "unifying" them.
+    """
+    with pytest.raises(AgentLoopError):
+        tool_set_for(workspace=str(tmp_path), kind="registry", store=None)
+    with pytest.raises(AgentLoopError):
+        tool_set_for(workspace=str(tmp_path), kind="both", store=None)
+
+    # and the documented happy path still works
+    from skaldir.tools import ToolStore
+
+    store = ToolStore(str(tmp_path / "tools.db"))
+    loop_set = tool_set_for(workspace=str(tmp_path), kind="both", store=store)
+    assert loop_set.tools and all(callable(t.handler) for t in loop_set.tools)

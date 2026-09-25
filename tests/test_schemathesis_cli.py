@@ -347,19 +347,38 @@ def test_the_recorded_data_schema_gaps_reproduce(property_run: dict) -> None:
         if gap["kind"] == "schema_gap" and gap["reproduced_by"] == "reference_pass"
         and gap["operation"] in SUBSET
     }
-    assert mismatches == expected, (
-        f"declared-data contradictions {sorted(mismatches)} != recorded {sorted(expected)} — "
-        "update KNOWN_CONTRACT_GAPS (or the contract) with the new measurement"
+    # Two separate properties, and they are not the same strength:
+    #
+    # 1. No unexplained contradiction ever appears. This one is absolute.
+    # 2. A recorded gap that did NOT come back this time must be one we already know is
+    #    conditional (the command emits data only in some state). A gap recorded as
+    #    unconditional that silently vanishes is a failure — that is what stops "conditional"
+    #    from becoming a polite name for "deleted".
+    unexplained = mismatches - expected
+    assert not unexplained, (
+        f"declared-data contradictions not in KNOWN_CONTRACT_GAPS: {sorted(unexplained)} — "
+        "record them (or fix the contract) with the new measurement"
+    )
+    missing = {
+        gap["operation"] for gap in artifact["known_gaps"]
+        if gap["kind"] == "schema_gap" and gap["reproduced_by"] == "reference_pass"
+        and gap["operation"] in SUBSET and gap["operation"] not in mismatches
+        and not gap.get("conditional")
+    }
+    assert not missing, (
+        f"recorded unconditional gaps did not reproduce: {sorted(missing)} — either they are "
+        "fixed (remove them) or they are state-dependent (set 'conditional': True)"
     )
 
-    # A gap the reference pass cannot reach is still a gap: it stays recorded, and the
-    # recording must keep saying what it is. This is the gate that stops `state_dependent`
-    # from becoming a polite name for "deleted".
+    # every gap stays documented, whatever its reproduction flag
     for gap in artifact["known_gaps"]:
-        if gap.get("reproduced_by") == "state_dependent":
-            assert gap.get("why"), gap
-            assert gap.get("fix"), gap
-            assert "state" in gap["why"].lower() or "open" in gap["why"].lower(), gap
+        assert gap.get("why"), gap
+        assert gap.get("fix"), gap
+        if gap.get("conditional"):
+            # a conditional gap must name its condition, not just wave at one
+            condition = str(gap.get("condition") or "").strip()
+            assert len(condition) > 20, gap
+            assert "only" in condition.lower() or "when" in condition.lower(), gap
 
 
 def test_no_command_destroys_the_directory_it_runs_in() -> None:

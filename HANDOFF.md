@@ -24,8 +24,13 @@ Repository: <https://github.com/bertus37987/Skylia-Agent> (**privat**, verifizie
   `test_gv_benchmark` 63, `test_no_orphan_modules` 2, `test_logo_art` 13 — Gruppen
   überlappen, daher die kleinere Summe im gemeinsamen Lauf) plus **1 `xfail(strict)`**.
 - Baseline-Volltestsuite vor den Fixes: `16 failed / 7462 passed / 34 skipped / 63 errors`
-  in 1496 s. Herkunft gegen Initialcommit verifiziert: Altlasten, nicht neu.
-- Abschluss-Volltestsuite: siehe `logs/final-suite.log` (Ergebnis in `VALIDATION.md` §3).
+  in 1496 s. Herkunft gegen Initialcommit `0b09a8a` (Zweit-Worktree) verifiziert:
+  `12 failed, 5 errors` — also Altlasten, nicht durch diese Sitzung.
+- Zwischenstand nach den Altlasten-Fixes: `3 failed / 7642 passed / 33 skipped / 1 xfailed`.
+  Diese drei waren **von dieser Sitzung** und sind behoben (`VALIDATION.md` §3.2 erklärt den
+  einen, bei dem zwei Verträge bewusst auseinandergehen).
+- **Abschluss-Volltestsuite: `7646 passed, 33 skipped, 1 xfailed, 2 warnings` in 1496 s,
+  `PYTEST_EXIT=0`** (`logs/final-suite2.log`; `VALIDATION.md` §6).
 
 ## Was unsicher bleibt
 

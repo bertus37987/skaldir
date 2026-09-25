@@ -71,8 +71,33 @@ Eingabezeile; ASCII-Modus ließ Unicode durch; `at=0.0` wurde als „kein Zeitst
 gelesen). Drei Altlasten im Quellcode behoben (D-01, D-06, `_store_for`-Auflösung).
 `schemathesis>=4` in die `dev`-Extras aufgenommen (war undeklariert).
 
+### Nachtrag: drei Fehler des Abschlusslaufs, alle von dieser Sitzung
+
+Der Zwischenstand der Volltestsuite zeigte `3 failed` — geprüft und **nicht** der Quelle
+zugeschrieben, sondern hier entstanden und behoben:
+
+1. `tests/test_agent_loop.py` pinnt `tool_set_for(kind="registry", store=None)` als
+   `AgentLoopError`. Meine ursprüngliche `_store_for`-Lösung hatte auch diese Fläche
+   „bequem“ gemacht. **Zurückgenommen:** Die Loop-Fläche verwirft weiter, nur
+   `build_agent_toolset` (dessen Signatur `store=None` zusagt) löst selbst auf. Der
+   Kontrast ist als eigener Regressionstest gepinnt, damit ihn niemand „vereinheitlicht“.
+2. `tests/test_cli_shared.py` fand meinen zweiten `register_contract_entries`-Helper als
+   neuen Duplikatfund. Entfernt; `cli_shared.install_contract_entries` bleibt die eine
+   Heimat.
+3. `tests/test_schemathesis_cli.py`: Die Reproduktion von Vertragslücken hängt vom
+   Kommandozustand ab — `completion.override` und `memory-retrieval-check` wechseln sich
+   ab. Statt die Liste bei jedem Lauf umzubiegen, ist die Bedingtheit jetzt modelliert
+   (`conditional: true` + `condition`) und das Gate ist zweistufig: keine unerklärte
+   Widersprüche (absolut), und eine aufgezeichnete Lücke darf nur fehlen, wenn sie als
+   bedingt markiert ist.
+
+Danach: `184 passed, 1 xfailed` in 35 s für die betroffenen Dateien.
+
+**Abschluss-Volltestsuite:** `7646 passed, 33 skipped, 1 xfailed, 2 warnings in 1496.05 s`,
+`PYTEST_EXIT=0` — kein einziger Fehlschlag.
+
 ### Ergebnisse
-- Neue/gezielte Tests: **109 grün**, plus 1 `xfail(strict)` für die offene
+- Neue/gezielte Tests: **184 grün**, plus 1 `xfail(strict)` für die offene
   `tool_search`-Lücke. Details: [VALIDATION.md](VALIDATION.md).
 - Baseline-Volltestsuite (vor den Fixes): `16 failed, 7462 passed, 34 skipped, 63 errors`
   in 1496 s. Herkunft gegen Initialcommit `0b09a8a` in einem Zweit-Worktree verifiziert:

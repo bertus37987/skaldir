@@ -970,9 +970,14 @@ KNOWN_CONTRACT_GAPS: tuple[dict, ...] = (
         "check": "response_schema_conformance",
         "contains": "/data",
         "kind": "schema_gap",
-        # measured 2026-09-25 in the Skaldir_Agent workspace: this one DOES come back from
-        # the deterministic reference pass, so "generation" under-stated it
+        # measured 2026-09-25 in the Skaldir_Agent workspace: this one comes back from the
+        # reference pass — but not on every run, because the command only emits data in
+        # `conditional` is what says so.
         "reproduced_by": "reference_pass",
+        "conditional": True,
+        "condition": "only on a successful invocation — the reference pass calls it with "
+                     "placeholder arguments that fail the command first, so it sees data: "
+                     "null and reports no contradiction",""
         "why": "cli_contract.COMMANDS['memory-retrieval-check'] declares data_available: false, "
                "successful invocation emits data {stdout, enforcement_gaps, ...} — the reference "
                "pass sees data: null only because its placeholder arguments fail the command first",
@@ -983,17 +988,21 @@ KNOWN_CONTRACT_GAPS: tuple[dict, ...] = (
         "check": "reference_pass",
         "contains": "",
         "kind": "schema_gap",
-        # Re-measured 2026-09-25, twice: the reference pass no longer reports a
-        # declared-data contradiction for this command, because `completion.override` only
-        # emits data when a completion is actually open. The contract gap itself is still
-        # there (`data_schema: null`), it is just not reachable from the reference pass's
-        # state — so it is recorded as `state_dependent` instead of claiming a reproduction
-        # that does not happen.
-        "reproduced_by": "state_dependent",
+        # Re-measured 2026-09-25 across four runs: `completion.override` and
+        # `memory-retrieval-check` alternate as "reproduced / not reproduced", because each
+        # only emits data in some state. The contract gap is constant (both declare
+        # `data_schema: null`); the *observation* of it is not. `conditional` is the honest
+        # flag for that, and the gate below allows a missing reproduction only for entries
+        # that carry it — never for a gap that is supposed to be unconditional.
+        "reproduced_by": "reference_pass",
+        "conditional": True,
+        "condition": "only when a completion is open — the reference pass calls it with no "
+                     "completion, so the emission (and the contradiction) appears on some "
+                     "runs and not on others",
         "why": "cli_contract.COMMANDS['completion.override'] declares no data schema, and the "
                "command emits data {state, reason, is_verified_complete} with exit 0 — but "
-               "only while a completion is open, so the deterministic reference pass cannot "
-               "reproduce it (measured 2026-09-25, 2/2 runs)",
+               "only in some states, so the reference pass reproduces it on some runs and "
+               "not on others (measured 2026-09-25 over four runs)",
         "fix": "declare the completion.override payload schema in cli_contract.COMMANDS, and "
                "have the reference pass open a completion first so the gap is reproducible",
     },

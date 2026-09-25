@@ -106,10 +106,29 @@ Zweit-Worktree `/tmp/skaldir-pristine` ausgeführt (`/tmp/pristine-run.log`):
 |---|---|---|---|
 | `docs/BENCHMARK-RUN-SCHEMA.json` nicht gefunden (63 Errors) | 63 ERROR | **0** | D-01: Dokumentpfade zurück an den ursprünglichen Ort |
 | `logo.ansi`/`cli-logo.txt` trägt alten absoluten Pfad | 1 FAIL | **0** | D-06: Ableitung neu erzeugt |
-| `build_agent_toolset`/`tool_set_for` werfen bei `store=None` | 4 FAIL | **0** | `_store_for`-Auflösung statt `raise`; Regressionstest ergänzt |
+| `build_agent_toolset` wirft bei `store=None` | 4 FAIL | **0** | `_store_for`-Auflösung in `build_agent_toolset` (dessen Signatur `store=None` zusagt) |
 | `schemathesis`-Binär fehlt (nicht deklariert) | 6 FAIL + 5 ERROR | **0** | `schemathesis>=4` in die `dev`-Extras aufgenommen |
 | `tool_search` liefert kein `input_schema` | (im Test versteckt) | **1 xfail(strict)** | **Offene Produktlücke**, siehe unten |
-| `completion.override` Referenz-Reproduktion trifft nicht zu | 1 FAIL | **0** | Aufzeichnung korrigiert (`state_dependent`), Test behält eine Dokumentationswächter |
+| Lücken-Reproduktion der Property-Suite | 1 FAIL | **0** | bedingte Reproduktion als `conditional` + `condition` modelliert, Gate zweistufig |
+| doppelter Helper `register_contract_entries` | 1 FAIL | **0** | entfernt; `cli_shared.install_contract_entries` bleibt die eine Heimat |
+
+### 3.2 Zwei bewusst verschiedene Verträge für Tool-Listen
+
+Während der Behebungen stellte sich ein Widerspruch zwischen zwei Tests heraus, der **nicht**
+durch Angleichung gelöst werden darf:
+
+* `tests/test_agent_loop.py::test_the_registry_tool_set_mixes_builtin_and_registered_tools`
+  verlangt ausdrücklich: `tool_set_for(kind="registry", store=None)` wirft
+  `AgentLoopError`. Die **Loop**-Fläche soll keinen Store erfinden; ein fehlender `--db`
+  ist ein Aufruferfehler und muss laut werden.
+* `tests/test_tool_search_integration.py` ruft `build_agent_toolset(..., store=None)` auf
+  und erwartet ein funktionierendes Toolset — dessen Signatur sagt
+  `store: ToolStore | None = None` ausdrücklich zu.
+
+Beides ist korrekt und bleibt so. `agent_toolset.build_agent_toolset` löst
+`<runtime>/tools.db` selbst auf; `agent_loop.tool_set_for` verwirft weiter. Der Kontrast ist
+durch `test_the_loop_surface_still_refuses_to_invent_a_store` gepinnt, damit ihn niemand
+später „vereinheitlicht“.
 
 ### 3.1 Offene Produktlücke — `tool_search` ohne Aufrufvertrag
 
@@ -141,15 +160,28 @@ muss auf eine positive Aussage umgestellt werden. **Kein Wegwerfen, kein Schönr
 | Produktprüfung D (Video) | **offen** | Editor noch nicht gewählt (02 §7 verlangt ausdrücklich die Auswahl durch den Nutzer) |
 | Produktprüfung E (Blender) | **offen** | Objekt/Szene vor Testbeginn festlegen |
 | Produktprüfung F (Kreativprogramm) | **offen** | Anwendung noch nicht festgelegt |
-| Volltestsuite Abschlusslauf | läuft | Ergebnis siehe `logs/final-suite.log` |
+| Abschluss-Volltestsuite | **fertig** | siehe §6 |
 
 Diese Punkte sind **nicht** als bestanden gemeldet. Unabhängige Arbeit wurde fortgesetzt;
 die Produktprüfungen C–F verlangen eine Nutzerentscheidung über Anwendung/Testobjekt, bevor
 sie ehrlich lauffähig sind (02 §7, §8).
 
+## 6. Abschluss-Volltestsuite
+
+| Lauf | Zeitpunkt | Ergebnis |
+|---|---|---|
+| Baseline (vor den Fixes) | 25.09.2026 | `16 failed, 7462 passed, 34 skipped, 63 errors` in 1496 s |
+| Referenz Initialcommit `0b09a8a` (Zweit-Worktree) | 25.09.2026 | `12 failed, 1 passed, 5 errors` — Herkunftsbeleg |
+| Zwischenstand | 25.09.2026 | `3 failed, 7642 passed, 33 skipped, 1 xfailed` in 1487 s |
+| **Abschluss** | 25.09.2026 | **`7646 passed, 33 skipped, 1 xfailed, 2 warnings in 1496.05 s`** — `PYTEST_EXIT=0` (`logs/final-suite2.log`) |
+
+Die drei Fehler des Zwischenstands (`test_agent_loop`, `test_cli_shared`,
+`test_schemathesis_cli`) waren **durch diese Sitzung entstanden** und sind behoben; §3.2
+erklärt den einen davon, bei dem zwei Verträge bewusst auseinandergehen.
+
 ## 5. Wiederholbarkeit
 
 Rohlogs liegen unter `logs/` (git-ignored): `baseline-suite.log`, `final-suite.log`,
-`fix1.log` … `fix6.log`, `migration-excluded.txt`. Jeder Eintrag oben ist über den
+`final-suite2.log`, `fix1.log` … `fix8.log`, `migration-excluded.txt`. Jeder Eintrag oben ist über den
 genannten Befehl reproduzierbar; `logs/` wird nicht committed, die hier stehenden
 Zusammenfassungen sind die versionierte Evidence.

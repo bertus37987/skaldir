@@ -54,7 +54,6 @@ __all__ = [
     "COMMAND_EVIDENCE",
     "contract_entries",
     "register_cli",
-    "register_contract_entries",
 ]
 
 EXIT_OK = 0
@@ -444,10 +443,6 @@ def contract_entries() -> dict[str, Any]:
     }
 
 
-def register_contract_entries() -> list[str]:
-    return install_contract_entries(contract_entries(), _CONTRACT)
-
-
 def register_cli(subparsers: Any) -> Any:
     """Add the ``tui``/``stop``/``desk`` groups to the product CLI."""
     sub = as_subparsers(subparsers)
@@ -523,5 +518,7 @@ def register_cli(subparsers: Any) -> Any:
     rs.add_argument("--run", required=True)
     rs.set_defaults(func=_cmd_desk_resume)
 
-    register_contract_entries()
+    # `cli_shared.install_contract_entries` is the single home for this; a second local
+    # wrapper would be the duplicate `tests/test_cli_shared.py` refuses.
+    install_contract_entries(contract_entries(), _CONTRACT)
     return tui
