@@ -59,7 +59,22 @@ Repository: <https://github.com/bertus37987/Skylia-Agent> (**privat**, verifizie
    (`sudo usermod -aG input willy`, Neu-Login) und danach `skaldir stop report` erneut
    ausführen; anschließend physischen Doppel-Escape-Test (02 §3).
 4. Produktprüfung B (Browserrecherche) als erste Computer-Use-Abnahme.
-5. Produktprüfungen C–F: Testobjekte/Anwendungen mit dem Nutzer festlegen.
+5. Produktprüfungen C–F: Testobjekte/Anwendungen mit dem Nutzer festlegen (02 §7, §8).
+
+### Prioritäten aus dem detaillierten Codeabgleich (`IMPLEMENTATION-AUDIT.md`, Anhang C3/E)
+
+Reihenfolge ist ein Arbeitsvorschlag aus dem Befund, **nicht** eine bestätigte Nutzerpriorität:
+
+1. **SCHED-01..04 `fehlt`** — kein Zeitplanmodul. Größte zusammenhängende Lücke; eigene
+   Etappe, nicht nebenbei.
+2. **FLOW-04 `teilweise`** — keine natursprachliche Workflow-Erkennung, keine
+   Parameterergänzung, keine Klärung bei Mehrdeutigkeit.
+3. **DOCKER-05 `fehlt`** — keine Positionierung zu Zugriffsrechten/Nutzungsbedingungen der
+   Beispiel-Tools.
+4. **MEM-03 `teilweise`** — „kurze Frage auf ausgewählte Dokumente mit Originalreferenzen“
+   fehlt als dritte Kernfunktion des Wissenszugriffs.
+5. **GOAL-02 / RUN-03 / UI-04-Anbindung** — gezieltes Nachfragen, Doppel-Escape→Pausenstatus,
+   Tab-Einbindung in `chatbar.read_key`.
 
 ## Sichere Statusabfrage
 
