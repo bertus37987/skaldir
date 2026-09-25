@@ -21,7 +21,8 @@ always   Approve Everything   actions inside the user's assignment automatically
 
 APR-02's exceptions are not a mode and cannot be turned off by one: new spending and
 irreversible or permanently harmful effects need specific approval in **every** mode. That
-rule lives in :func:`policy_for` and is asserted in ``tests/test_approval_modes.py``.
+rule lives in :func:`policy_for` and is asserted in ``tests/test_tui_layout.py`` (the APR
+block).
 
 APR-05: the mode is per goal/run with a configurable default for new runs. Nothing here
 silently switches a global to Approve Everything.
@@ -170,9 +171,15 @@ def policy_for(mode: ApprovalMode) -> dict[str, Any]:
 class ApprovalModeStore:
     """APR-05: the mode per goal/run, plus a configurable default for new runs.
 
-    Nothing here is global. ``default_mode`` is read once from the runtime config, applied to
-    *new* runs only; an existing run keeps the mode it was given until the user changes it.
-    Changing the mode does not retroactively release an already-finished action (APR-04).
+    Nothing here is global. The default lives in this store's own file (``default_mode``)
+    and is applied to *new* runs only; an existing run keeps the mode it was given until the
+    user changes it. Changing the mode does not retroactively release an already-finished
+    action (APR-04).
+
+    Deliberately **not** read from a global runtime config: APR-05 names that as an
+    implementation decision, and a default that a config file could silently raise to
+    ``Approve Everything`` is exactly the "stiller globaler Wechsel" APR-05 forbids. The
+    only ways in are :meth:`set_default` (an explicit action) and the constructor.
     """
 
     path: str | Path

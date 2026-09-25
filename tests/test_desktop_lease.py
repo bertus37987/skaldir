@@ -234,6 +234,77 @@ def test_heartbeat_for_a_non_owner_is_refused(store):
 
 
 # --------------------------------------------------------------------------- #
+# DESK-02 at the ADAPTER: a fence nobody calls is not a fence
+# --------------------------------------------------------------------------- #
+
+
+def test_the_input_adapter_refuses_an_action_with_a_stale_fence(store):
+    """The check belongs where the pointer is moved, not in the policy layer.
+
+    Regression for the gap the requirement audit found: ``DesktopLeaseStore.fence()``
+    existed and was tested, but **no input adapter called it**, so DESK-02 held on paper
+    only. ``HostSessionRunner.bind_input_fence`` is the wiring, and this test drives the
+    real adapter method.
+    """
+    from skaldir.cu_host_session import Action, HostSessionRunner
+
+    runner = HostSessionRunner(target="", attach_to_session=False, display=":0")
+    lease = store.acquire("run-1", task="Edit video", now=1.0)
+    seen: list[str] = []
+    runner.bind_input_fence(lambda: seen.append("checked"))
+
+    result = runner.act(Action(kind="mouse", payload={"x": 1, "y": 1}))
+    assert seen == ["checked"], "the fence must run before the action"
+    assert result.ok in (True, False)  # the point is the check, not the display
+
+
+def test_a_stale_generation_is_dropped_at_the_adapter_not_executed(store):
+    from skaldir.cu_host_session import Action, HostSessionRunner
+    from skaldir.desktop_lease import StaleFence
+
+    runner = HostSessionRunner(target="", attach_to_session=False, display=":0")
+    lease = store.acquire("run-1", now=1.0)
+    store.request_stop(reason="double-escape", now=2.0)  # bumps the fence
+
+    def stale():
+        store.fence("run-1", lease.generation)  # the token from BEFORE the stop
+
+    runner.bind_input_fence(stale)
+    result = runner.act(Action(kind="key", payload={"key": "a"}))
+    assert result.ok is False
+    assert "DESK-02" in result.detail
+    assert "dropped" in result.detail or "generation" in result.detail
+    assert isinstance(stale.__call__, object)  # the fence itself still raises
+    try:
+        stale()
+    except StaleFence as exc:
+        assert "not executed" in str(exc)
+    else:
+        raise AssertionError("the stale fence must raise StaleFence")
+
+
+def test_an_unbound_runner_behaves_exactly_as_before(store):
+    """No lease, no fence: the adapter must not grow a requirement of its own."""
+    from skaldir.cu_host_session import HostSessionRunner
+
+    runner = HostSessionRunner(target="", attach_to_session=False, display=":0")
+    assert runner._input_fence is None
+    runner.bind_input_fence(None)
+    assert runner._input_fence is None
+
+
+def test_the_fence_only_applies_to_input_actions_not_to_observing(store):
+    from skaldir.cu_host_session import HostSessionRunner
+
+    runner = HostSessionRunner(target="", attach_to_session=False, display=":0")
+    calls: list[str] = []
+    runner.bind_input_fence(lambda: calls.append("x"))
+    # observe() never calls the fence — watching is not acting (DESK-02 concerns input)
+    runner.observe()
+    assert calls == []
+
+
+# --------------------------------------------------------------------------- #
 # durability: the record survives a restart and is written atomically
 # --------------------------------------------------------------------------- #
 

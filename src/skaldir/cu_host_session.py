@@ -69,6 +69,7 @@ import time
 import weakref
 from dataclasses import dataclass
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any
 
 from .computer_use import (
@@ -942,6 +943,12 @@ class HostSessionRunner(BaseRunner):
         self._owned: OwnedDisplay | None = None
         self._started = False
         self._closed = False
+        # DESK-02: the fencing check an input adapter performs before it touches the
+        # pointer or the keyboard. Bound by the owner (see `bind_input_fence`); while it is
+        # unbound this runner behaves exactly as before. When it is bound, an action
+        # carrying a stale generation is **dropped here**, at the last place before the
+        # hardware, which is the only place a fence actually means something.
+        self._input_fence: Callable[[], None] | None = None
         self._window: str = ""
         self._registry = ""
         self._reaped: dict = {}
@@ -1404,9 +1411,31 @@ class HostSessionRunner(BaseRunner):
             return -1, f"{type(exc).__name__}: {exc}"
         return proc.returncode, ((proc.stdout or "") + (proc.stderr or "")).strip()
 
+    def bind_input_fence(self, fence: Callable[[], None] | None) -> None:
+        """Attach the DESK-02 fence for this runner's input path.
+
+        ``fence`` is called before **every** input action and must raise
+        ``skaldir.desktop_lease.StaleFence`` when the action's fencing generation is no
+        longer the desktop's. The runner then refuses and returns; it never executes a
+        dropped action. Binding is explicit on purpose: nothing here decides who owns the
+        desktop, the caller that holds the lease does.
+        """
+        self._input_fence = fence
+
     def act(self, action: Action) -> ActionResult:
         if action.kind in GUI_KINDS and not self.display:
             return ActionResult(ok=False, detail="no display: nothing to drive")
+        if action.kind in GUI_KINDS and self._input_fence is not None:
+            # DESK-02 — check at the adapter, not at the policy layer. A late action from
+            # before a pause, crash or owner change must never move the pointer.
+            try:
+                self._input_fence()
+            except Exception as exc:  # noqa: BLE001 — any fence failure means "do not act"
+                return ActionResult(
+                    ok=False,
+                    detail=f"input refused at the adapter (DESK-02 fence): {exc}"[:300],
+                    stdout="",
+                )
         ok, detail = self.start()
         if not ok:
             return ActionResult(ok=False, detail=detail)
