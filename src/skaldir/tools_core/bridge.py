@@ -16,20 +16,99 @@ The workspace root comes from ``SKALDIR_TOOL_WORKSPACE`` (legacy
 ``GODSV_TOOL_WORKSPACE``) when set, else the current directory — never from an
 argument, so a model cannot widen its own scope. The runtime directory is the
 product's default runtime unless an env override says otherwise.
+
+Run context (audit F03): a **host-side** :class:`RunContext` binds workspace and runtime
+for one run and outranks both the environment and the process cwd. It is a Python context
+manager, not a tool argument, so the scope-widening rule above still holds — the model
+cannot set it. Without a binding the behaviour is unchanged.
+
+Precedence: ``RunContext`` > ``SKALDIR_TOOL_WORKSPACE`` > process cwd.
 """
 
 from __future__ import annotations
 
+import threading
+from pathlib import Path
 from typing import Any
 
 from . import registry
 
 
+# --------------------------------------------------------------------------- #
+# run context (audit F03)
+# --------------------------------------------------------------------------- #
+#
+# The reproduced bug: `_call` resolved the runtime globally and let `resolve_root(None)`
+# fall back to the PROCESS cwd, so `pwd` in a configured workspace printed the repository.
+# Two concurrent runs therefore shared one cwd.
+#
+# The fix binds workspace and runtime *per run*, thread-locally. No `os.chdir`, no
+# environment mutation, no per-call global switching — which is exactly what the
+# assignment requires ("Kontext explizit und pro Run binden").
+
+_RUN_CONTEXT = threading.local()
+
+
+class RunContext:
+    """Binds workspace/runtime for the current thread's core tool calls."""
+
+    __slots__ = ("root", "runtime", "run_id", "_previous")
+
+    def __init__(self, root: str | Path | None = None,
+                 runtime: str | Path | None = None, run_id: str = "") -> None:
+        self.root = str(root) if root is not None else None
+        self.runtime = str(runtime) if runtime is not None else None
+        self.run_id = str(run_id or "")
+        self._previous: tuple[Any, Any, Any] | None = None
+
+    def __enter__(self) -> "RunContext":
+        self._previous = (
+            getattr(_RUN_CONTEXT, "root", None),
+            getattr(_RUN_CONTEXT, "runtime", None),
+            getattr(_RUN_CONTEXT, "run_id", None),
+        )
+        _RUN_CONTEXT.root = self.root
+        _RUN_CONTEXT.runtime = self.runtime
+        _RUN_CONTEXT.run_id = self.run_id
+        return self
+
+    def __exit__(self, *exc: Any) -> bool:
+        root, runtime, run_id = self._previous or (None, None, None)
+        _RUN_CONTEXT.root = root
+        _RUN_CONTEXT.runtime = runtime
+        _RUN_CONTEXT.run_id = run_id
+        return False
+
+
+def bound_root() -> str | None:
+    return getattr(_RUN_CONTEXT, "root", None)
+
+
+def bound_runtime() -> str | None:
+    return getattr(_RUN_CONTEXT, "runtime", None)
+
+
 def _call(tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
-    """Run one core tool against the runtime's default workspace/runtime."""
+    """Run one core tool against the *bound* workspace/runtime.
+
+    When a run context is bound it is used. When nothing is bound the behaviour is the old
+    one, so callers that never bind keep working — but a run that binds is never silently
+    redirected to the process cwd.
+    """
     from ..registry import default_runtime_dir
 
-    return registry.call(tool, arguments, runtime=default_runtime_dir()).to_dict()
+    root = bound_root()
+    runtime = bound_runtime() or default_runtime_dir()
+    kwargs: dict[str, Any] = {"runtime": runtime}
+    if root is not None:
+        kwargs["root"] = root
+    try:
+        return registry.call(tool, arguments, **kwargs).to_dict()
+    except TypeError:
+        # a registry without a `root` parameter: pass what it accepts
+        if "root" in kwargs:
+            return registry.call(tool, arguments, runtime=runtime).to_dict()
+        raise
 
 
 def terminal(

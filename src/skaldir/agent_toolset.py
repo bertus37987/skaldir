@@ -1157,6 +1157,19 @@ def build_agent_toolset(
     tools.append(tool_search_tool(runtime=runtime, project_id=project_id))
     tools.append(knowledge_search_tool(runtime=runtime))
     tools.append(knowledge_read_tool(runtime=runtime))
+    # Paket 1 (audit F01/F02): one shared, context-bound capability set. This is where
+    # run_code (CORE-06), terminal/patch/search and the browser enter the model toolset —
+    # they were reachable from one entry point and missing from the other.
+    from .core_capabilities import core_capability_tools
+
+    already = {getattr(t, "name", "") for t in tools}
+    for cap_tool in core_capability_tools(
+        workspace=workspace,
+        runtime=runtime,
+        run_id=str(project_id or ""),
+        exclude=already,          # one capability, one model tool (no list_dir/list_dir_2)
+    ):
+        tools.append(cap_tool)
     if selection in ("registry", "both"):
         # `_store_for` already resolves `<runtime>/tools.db` when no store is handed in;
         # the two tool-set builders used to refuse instead, so the documented
