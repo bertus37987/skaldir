@@ -598,6 +598,43 @@ def _record_advisory_arg(parser: Any) -> None:
                              "into the store it inspects)")
 
 
+def cmd_rebrief(args: Any) -> int:
+    """VOICE-03: a rebrief names four things, may not do two.
+
+    This verb validates one before it is allowed to end a pause. It is deliberately a
+    *check*, not a writer: nothing here clears a pause.
+    """
+    from .voice_rebrief import Rebrief, RebriefInvalid, validate_rebrief
+
+    rebrief = Rebrief(
+        finding=str(getattr(args, "finding", "") or ""),
+        evidence=str(getattr(args, "evidence", "") or ""),
+        criteria=tuple(str(c) for c in (getattr(args, "criterion", []) or [])),
+        next_step=str(getattr(args, "next_step", "") or ""),
+        goal=str(getattr(args, "goal", "") or ""),
+    )
+    try:
+        validate_rebrief(rebrief)
+    except RebriefInvalid as exc:
+        payload = {"ok": False, "valid": False, "reason": str(exc),
+                   "rebrief": rebrief.to_dict()}
+        _dump(payload, args)
+        return 3
+    payload = {
+        "ok": True, "valid": True, "rebrief": rebrief.to_dict(),
+        "note": ("VOICE-03: finding, evidence, affected goal criteria and a concrete next "
+                 "step — a rebrief never rewrites the goal and never widens rights"),
+    }
+    _dump(payload, args)
+    return 0
+
+
+def _dump(payload: dict, args: Any) -> None:
+    import json as _json
+
+    print(_json.dumps(payload, indent=2, ensure_ascii=False))
+
+
 def _add_voice_verbs(sub: Any) -> Any:
     """Add the four ``voice`` verbs to a subparsers handle (one definition)."""
     p_status = sub.add_parser("status", help="what the supervisor is watching (read-only)")
@@ -621,7 +658,22 @@ def _add_voice_verbs(sub: Any) -> Any:
     _record_advisory_arg(p_explain)
     p_explain.set_defaults(func=cmd_explain, command_path="voice.explain")
 
-    for parser in (p_status, p_check, p_triage, p_explain):
+    p_rebrief = sub.add_parser(
+        "rebrief",
+        help="validate a rebrief before it ends a Voice pause (VOICE-03)",
+    )
+    p_rebrief.add_argument("--finding", required=True, help="what is wrong")
+    p_rebrief.add_argument("--evidence", required=True, help="how we know")
+    p_rebrief.add_argument("--criterion", action="append", default=[],
+                           help="a goal criterion this affects (repeatable)")
+    p_rebrief.add_argument("--next-step", dest="next_step", required=True,
+                           help="the concrete next action")
+    p_rebrief.add_argument("--goal", default="",
+                           help="the goal as it already was (restated, never rewritten)")
+    p_rebrief.add_argument("--json", action="store_true")
+    p_rebrief.set_defaults(func=cmd_rebrief, command_path="voice.rebrief")
+
+    for parser in (p_status, p_check, p_triage, p_explain, p_rebrief):
         share_common_flags(parser)
     return sub
 

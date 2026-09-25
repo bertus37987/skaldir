@@ -520,8 +520,12 @@ class TestCli:
             action for action in group._actions
             if isinstance(action, argparse._SubParsersAction)
         )
-        assert set(verbs.choices) == {"status", "check", "triage", "explain"}
-        for name in ("status", "check", "triage", "explain"):
+        # FIVE verbs, deliberately. This test used to demand exactly four; VOICE-03
+        # ("Rebrief nennt Befund, Evidence, betroffene Zielkriterien und konkreten
+        # nächsten Schritt") needed a place to check one, so `rebrief` was added. The
+        # set is asserted exactly so the next addition has to be deliberate too.
+        assert set(verbs.choices) == {"status", "check", "triage", "explain", "rebrief"}
+        for name in ("status", "check", "triage", "explain", "rebrief"):
             assert callable(verbs.choices[name].get_default("func"))
 
     def test_check_json_envelope_carries_data_and_evidence(self, runtime: Path,

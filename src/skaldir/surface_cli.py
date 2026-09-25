@@ -82,6 +82,7 @@ COMMAND_EVIDENCE: dict[str, str] = {
     "schedule.due": "src/skaldir/scheduler.py:ScheduleStore.due",
     "sources.add": "src/skaldir/data_sources.py:SourceRegistry.attach",
     "sources.report": "src/skaldir/data_sources.py:SourceRegistry.report",
+    "voice.rebrief": "src/skaldir/voice_rebrief.py:validate_rebrief",
     "browser.discover": "src/skaldir/browser_layer.py:SessionManager.discover",
     "browser.ensure": "src/skaldir/browser_layer.py:SessionManager.ensure",
     "browser.tabs": "src/skaldir/browser_layer.py:BrowserLayer.tabs",
@@ -258,6 +259,41 @@ def _cmd_tui_approve(args: argparse.Namespace) -> int:
 # --------------------------------------------------------------------------- #
 # stop
 # --------------------------------------------------------------------------- #
+
+
+# --------------------------------------------------------------------------- #
+# voice rebrief (VOICE-03)
+# --------------------------------------------------------------------------- #
+
+
+def _cmd_voice_rebrief(args: argparse.Namespace) -> int:
+    """Validate a Voice rebrief against VOICE-03 before a pause is ended by it."""
+    from .voice_rebrief import Rebrief, RebriefInvalid, validate_rebrief
+
+    rebrief = Rebrief(
+        finding=str(getattr(args, "finding", "") or ""),
+        evidence=str(getattr(args, "evidence", "") or ""),
+        criteria=tuple(str(c) for c in (getattr(args, "criterion", []) or [])),
+        next_step=str(getattr(args, "next_step", "") or ""),
+        goal=str(getattr(args, "goal", "") or ""),
+    )
+    try:
+        validate_rebrief(rebrief)
+    except RebriefInvalid as exc:
+        payload = {"ok": False, "reason": str(exc), "rebrief": rebrief.to_dict(),
+                   "valid": False}
+        report_envelope(payload, [{"ref": COMMAND_EVIDENCE.get("voice.rebrief", ""),
+                                   "kind": "code", "note": ""}])
+        dump(payload)
+        return EXIT_BLOCKED
+    payload = {"ok": True, "valid": True, "rebrief": rebrief.to_dict(),
+               "note": ("VOICE-03: finding, evidence, affected criteria and a concrete "
+                        "next step — a rebrief never rewrites the goal and never widens "
+                        "rights")}
+    report_envelope(payload, [{"ref": COMMAND_EVIDENCE.get("voice.rebrief", ""),
+                               "kind": "code", "note": ""}])
+    dump(payload)
+    return EXIT_OK
 
 
 # --------------------------------------------------------------------------- #
@@ -875,6 +911,16 @@ def contract_entries() -> dict[str, Any]:
             source_schema,
             "a money-costing source cannot be attached silently and needs a named "
             "approver (APR-02)"),
+        "voice.rebrief": entry(
+            "voice.rebrief", "kernel",
+            "validate a Voice rebrief before it ends a pause (VOICE-03)",
+            {"type": "object",
+             "properties": {"finding": {"type": "string"}, "evidence": {"type": "string"},
+                            "criteria": {"type": "array", "items": {"type": "string"}},
+                            "next_step": {"type": "string"}, "valid": {"type": "boolean"}},
+             "required": ["finding", "evidence", "criteria", "next_step", "valid"]},
+            "a rebrief names the finding, the evidence, the affected goal criteria and a "
+            "concrete next step; it never rewrites the goal and never widens rights"),
         "sources.report": entry(
             "sources.report", "kernel",
             "what is honestly known about a tool's data sources (DOCKER-05)",
