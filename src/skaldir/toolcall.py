@@ -298,26 +298,93 @@ def _command(intent: ToolIntent) -> str:
     return ""
 
 
-#: Device and redirect targets that are not *files* in the sense of the workspace fence.
-#: ``2>/dev/null`` discards output; ``tee /dev/stdout`` writes to the caller's own stream.
-#: Neither is a foreign write, so neither may trigger one (user P0: "harmlose
-#: Shell-Umleitungen nach /dev/null ... als Projektflucht" verweigert).
-DEVICE_TARGETS = frozenset({"/dev/null", "/dev/stdout", "/dev/stderr", "/dev/tty"})
+#: A discard target: writing here throws away the caller's own stream. It is not a file
+#: write, so the project fence must never fire on it.
+DEVICE_DISCARD = frozenset({"/dev/null", "/dev/tty"})
 
-#: The managed temporary area for this host's own logs and artefacts.
-#: A diagnosis run writing its own log there is *not* leaving the project — it is the
-#: scratch space the agent owns. XDG-compliant, so no hard-coded ``/tmp`` assumption.
-_MANAGED_TMP = (first_env(
-    ("SKALDIR_TMPDIR", "TMPDIR"), default="/tmp"
-) or "/tmp").rstrip("/") or "/tmp"
+#: A *forward* target: it hands the stream on to the caller's own stdout/stderr. Like a
+#: discard it is not a file write — but calling it "a discard" would be wrong, so the two
+#: are separate sets (user correction: "/dev/stdout und /dev/stderr sind
+#: Weiterleitungen, keine Verwerfziele").
+DEVICE_FORWARD = frozenset({"/dev/stdout", "/dev/stderr", "/dev/fd/1", "/dev/fd/2"})
+
+DEVICE_TARGETS = DEVICE_DISCARD | DEVICE_FORWARD
+
+#: The runtime's own data directory, i.e. ``<SKALDIR_HOME>/tmp``. NOT ``/tmp``: the whole
+#: shared /tmp holds other people's files, and a manipulated ``TMPDIR`` pointing at /etc
+#: must not turn system files into "our own" (user correction, measured before the fix:
+#: ``SKALDIR_TMPDIR=/etc`` made ``/etc/passwd`` count as managed).
+_MANAGED_TMP_CACHE: tuple[tuple[str, str], tuple[str, ...]] | None = None
+_MANAGED_TMP_ROOTS: tuple[str, ...] = ()
+
+
+def _managed_tmp_roots() -> tuple[str, ...]:
+    """The directories this runtime really owns for its own logs and artefacts.
+
+    ``SKALDIR_TMPDIR`` is honoured only when it points *inside* the runtime directory
+    or a Skaldir-owned path — a value like ``/etc`` or ``/`` is a manipulated setting and
+    is ignored rather than believed.
+
+    The result is cached per resolved home: a process that changes ``SKALDIR_HOME``
+    (a test switching runtimes, a host run handing over a session) must not keep judging
+    the *old* home, so the cache key is the home itself.
+    """
+    home = first_env(("SKALDIR_HOME", "GODSV_HOME"), default="") or ""
+    override = (first_env(("SKALDIR_TMPDIR",), default="") or "").strip()
+    cache_key = (home, override)
+    global _MANAGED_TMP_CACHE
+    if _MANAGED_TMP_CACHE is not None and _MANAGED_TMP_CACHE[0] == cache_key:
+        return _MANAGED_TMP_CACHE[1]
+    roots: list[str] = []
+    if home:
+        roots.append(os.path.join(home, "tmp"))
+    # the shared but *owned* scratch area: `/tmp/skaldir` (or `$SKALDIR_TMPDIR` when it
+    # points there). Plain `/tmp` deliberately stays OUT: it holds other people's files,
+    # and the user's correction named exactly that ("Ganz /tmp ist kein eigener
+    # verwalteter Arbeitsraum").
+    roots.append("/tmp/skaldir")
+    for candidate in override.split(os.pathsep):
+        candidate = (candidate or "").rstrip("/")
+        if not candidate:
+            continue
+        # a hostile value must not widen our own scope to the whole machine
+        if candidate in ("/", "/tmp", "/etc", "/var", "/usr", "/home", "/opt", "/boot"):
+            continue
+        if home and (candidate == home or candidate.startswith(home + "/")):
+            roots.append(candidate)
+        elif candidate.startswith("/tmp/skaldir"):
+            roots.append(candidate)
+    resolved = tuple(dict.fromkeys(roots))
+    _MANAGED_TMP_CACHE = (cache_key, resolved)
+    return resolved
 
 
 def in_managed_tmp(path: str) -> bool:
-    """True when ``path`` is this host's managed temporary area."""
+    """True when ``path`` is a directory this runtime owns, verified on disk.
+
+    Three things are checked, because each one alone is bypassable:
+    the path is under an owned root, it is **not a symlink** (a symlink inside our own
+    tree can point anywhere), and its *real* target is still inside that root.
+    """
     if not path.startswith("/"):
         return False
     normalized = os.path.normpath(path)
-    return normalized == _MANAGED_TMP or normalized.startswith(_MANAGED_TMP + "/")
+    roots = _managed_tmp_roots()
+    if not roots:
+        return False
+    if not any(normalized == r or normalized.startswith(r + "/") for r in roots):
+        return False
+    # follow links before trusting the placement
+    try:
+        real = os.path.realpath(normalized)
+    except OSError:
+        return False
+    return any(real == r or real.startswith(r + "/") for r in roots)
+
+
+def owns_path(path: str) -> bool:
+    """Alias kept for call sites that ask about ownership rather than scope."""
+    return in_managed_tmp(path)
 
 
 def redirect_target(command: str) -> list[str]:
@@ -348,6 +415,95 @@ def redirect_target(command: str) -> list[str]:
     return targets
 
 
+#: Commands that WRITE into the file they name as an argument. "Only redirects write"
+#: was my own wrong assumption — `cp a /etc/passwd` and `sed -i /etc/hosts` never open a
+#: redirect and still overwrite the target (user correction, measured: all four were
+#: ALLOW before this table existed).
+_WRITE_VIA_ARGUMENT: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("copy_over", re.compile(r"(?i)\bcp\s+(?:-\w+\s+)*\S+\s+")),
+    ("copy_recursive", re.compile(r"(?i)\b(?:cp|rsync)\s+(?:-\w*r\w*\s+)")),
+    ("move_over", re.compile(r"(?i)\bmv\s+(?:-\w+\s+)*\S+\s+")),
+    ("in_place_edit", re.compile(r"(?i)\bsed\s+(?:-\w+\s+)*-i")),
+    ("in_place_perl", re.compile(r"(?i)\bperl\s+(?:-\w+\s+)*-i")),
+    ("install_over", re.compile(r"(?i)\binstall\s+(?:-\w+\s+)*-m")),
+    ("truncate", re.compile(r"(?i)\btruncate\s+-s")),
+    ("link_over", re.compile(r"(?i)\bln\s+-sf?")),
+    ("chmod_chown", re.compile(r"(?i)\b(?:chmod|chown|chgrp|setfacl)\s")),
+    ("mount_write", re.compile(r"(?i)\bmount\s+(?!-o\s+ro\b)")),
+    ("dd_output", re.compile(r"(?i)\bdd\b[^\n]*\bof=")),
+    ("redirect_helper", re.compile(r"(?i)\bsponge\b")),
+)
+
+_WRITE_ARG_KIND = {name for name, _ in _WRITE_VIA_ARGUMENT}
+
+
+def writes_via_argument(command: str) -> list[str]:
+    """The names of the write-by-argument patterns a command matches."""
+    if not command:
+        return []
+    return [name for name, pattern in _WRITE_VIA_ARGUMENT if pattern.search(command)]
+
+
+def argument_write_targets(command: str) -> list[str]:
+    """The files a write-by-argument command names on its command line.
+
+    Only the *destination* side is returned, and only when the command actually writes
+    that way: ``cp src dst`` names ``dst``, ``sed -i file`` names ``file``. Everything
+    that is not a destination stays out, so a read-only command is not widened.
+    """
+    if not command:
+        return []
+    kinds = writes_via_argument(command)
+    if not kinds:
+        return []
+    targets: list[str] = []
+
+    def collect(part: str) -> None:
+        for token in _split_tokens(part):
+            token = token.rstrip("'\"")
+            if not token or token.startswith("-"):
+                continue
+            if token.startswith("/dev/"):
+                continue
+            # an absolute path is checked as written; a relative one is resolved against
+            # the caller's cwd, because `cp a.txt /etc/x` and `cp a.txt ../x` both
+            # write outside the tree
+            if token.startswith("/"):
+                targets.append(token)
+            else:
+                targets.append(os.path.abspath(token))
+
+    for match in re.finditer(r"(?i)\bcp\s+(?:-\w+\s+)*(\S+)\s+(\S+)", command):
+        collect(match.group(2))
+    for match in re.finditer(r"(?i)\brsync\s+[^\n]*?\s(\S+)/?\s*$", command):
+        collect(match.group(1))
+    for match in re.finditer(r"(?i)\bmv\s+(?:-\w+\s+)*(\S+)\s+(\S+)", command):
+        collect(match.group(2))
+    for match in re.finditer(
+        r"(?i)\b(?:sed|perl)\s+(?:-\w+\s+)*-i[^\n]*?[\s'\"](\S+)\s*$", command
+    ):
+        collect(match.group(1))
+    for match in re.finditer(
+        r"(?i)\b(?:install|truncate|sponge|ln)\s+(?:-\w+\s+)*-?[a-zA-Z]*\s*(\S+)", command
+    ):
+        collect(match.group(1))
+    for match in re.finditer(
+        r"(?i)\b(?:chmod|chown|chgrp|setfacl)\s+(?:-\w+\s+)*[0-7ugo+=\w,\s-]+\s+(\S+)", command
+    ):
+        collect(match.group(1))
+    return [t for t in targets if t]
+
+
+def _split_tokens(part: str) -> list[str]:
+    """Split on whitespace, respecting simple quoting."""
+    return [tok for tok in re.split(r"\s+", part.strip()) if tok]
+
+
+def _argument_write_paths(intent: ToolIntent) -> list[str]:
+    """The absolute targets a write-by-argument command names (cp/mv/sed -i/chmod/...)."""
+    return argument_write_targets(_command(intent))
+
+
 def _paths(intent: ToolIntent) -> list[str]:
     args = intent.args or {}
     found: list[str] = []
@@ -364,6 +520,9 @@ def _paths(intent: ToolIntent) -> list[str]:
         # only the redirect targets of a command are write candidates; the named
         # arguments stay where they were (they are reads/opens, judged separately)
         found.extend(redirect_target(command))
+        # ... but a command that W R I T E S into its own argument (cp/mv/sed -i/chmod)
+        # names a real target there. "Only redirects write" was my wrong assumption.
+        found.extend(argument_write_targets(command))
     return [path for path in found if path]
 
 
@@ -666,17 +825,35 @@ def _judge(intent: ToolIntent) -> ToolDecision:
     # docs, /tmp) is normal work; treating that as suspicion is over-intervention.
     # Writing outside the project is the case the boundary exists for.
     paths = _paths(intent)
-    # A redirect to a device is a *discard*, not a file: `2>/dev/null` throws away the
-    # caller's own stream. Judging it as a write into a foreign tree is what blocked the
-    # user's LibreOffice diagnosis, so it never reaches the workspace question.
-    paths = [p for p in paths if not p.startswith("/dev/")]
+    # A redirect to a device is a *discard* or a *forward*, never a file: `2>/dev/null`
+    # throws away the caller's own stream, `>/dev/stdout` hands it on. Judging either as a
+    # write into a foreign tree is what blocked the user's LibreOffice diagnosis, so they
+    # never reach the workspace question.
+    paths = [p for p in paths if p not in DEVICE_TARGETS]
     foreign = [path for path in paths if not _in_workspace(intent, path)]
-    # The managed temporary area is the agent's own scratch space: a diagnosis run
-    # writing its own log there is not "escaping the project" (user P0). It stays a WRITE
-    # for the destructive/danger checks — only the project fence no longer applies.
+    # The runtime's own directories are its scratch space: a diagnosis run writing its
+    # own log there is not "escaping the project" (user P0). It stays a WRITE for the
+    # destructive/danger checks — only the project fence no longer applies.
     managed = [path for path in foreign if in_managed_tmp(path)]
     foreign = [path for path in foreign if not in_managed_tmp(path)]
-    checks["managed_tmp_paths"] = managed
+    # A symlink escape: the path *looks* like it sits in our own area, but following it
+    # lands somewhere else entirely. `in_managed_tmp` already resolves links, so the
+    # escape has to be recognised on the link itself — otherwise the target is silently
+    # classified as managed (measured: `echo x > /tmp/skaldir/escape -> /etc/passwd`
+    # reported `symlink_escape_paths=[]` and blocked with the WRONG reason).
+    escape: list[str] = []
+    for path in paths:
+        if path in escape or in_managed_tmp(os.path.realpath(path)):
+            continue
+        try:
+            if os.path.islink(os.path.normpath(path)):
+                escape.append(path)
+        except OSError:
+            continue
+    checks["managed_tmp_paths"] = [p for p in managed if p not in escape]
+    checks["symlink_escape_paths"] = escape
+    foreign.extend(p for p in escape if p not in foreign)
+    checks["argument_write_paths"] = _argument_write_paths(intent)
     traversal = [path for path in paths if _escapes_by_traversal(path)]
     checks["foreign_paths"] = foreign
     checks["traversal_paths"] = traversal

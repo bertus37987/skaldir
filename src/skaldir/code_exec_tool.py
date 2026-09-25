@@ -22,6 +22,7 @@ What this is and is not:
 
 from __future__ import annotations
 
+import re
 import time
 from pathlib import Path
 from typing import Any, Mapping
@@ -110,6 +111,77 @@ def _result(payload: Mapping[str, Any], *, started: float, **extra: Any) -> dict
     return out
 
 
+def _coerce_number(value: Any, field: str) -> float | dict[str, Any]:
+    """Coerce a tool argument to a number, or return a NAMED, ACTIONABLE error.
+
+    The contract the acceptance asks for runs the whole chain:
+    provider schema -> received arguments -> validation -> executor -> *structured*
+    feedback -> the next model decision. A bare ``ValueError`` stops that chain at the
+    executor, which is why the model repeated the same call unchanged.
+    """
+    if isinstance(value, bool):  # a bool is not a timeout
+        return {
+            "ok": False,
+            "error": "invalid_argument",
+            "field": field,
+            "reason": (f"{field} expects a number of seconds; got a boolean "
+                       f"({value!r}), which is not a duration"),
+            "expected": "number (seconds), e.g. 30",
+            "received": repr(value),
+            "usage_hint": (f"pass {field}=30 (a number), not {field}={value!r}"),
+        }
+    if isinstance(value, (int, float)):
+        number = float(value)
+        if number <= 0:
+            return {
+                "ok": False, "error": "invalid_argument", "field": field,
+                "reason": f"{field} must be greater than zero, got {number}",
+                "expected": "a positive number of seconds",
+                "received": repr(value),
+            }
+        return number
+    if isinstance(value, str):
+        text = value.strip()
+        # "30 Sekunden", "30s", "30 s" are recoverable: the unit is the only wrong part.
+        # This is deliberately generous for a *dominated* unit, not for arbitrary text.
+        match = re.match(r"^([0-9]*\.?[0-9]+)\s*(ms|s|sec|secs|second|seconds|m|min|"
+                         r"minute|minutes|sekunde|sekunden|seconde|sekunden)?$",
+                         text, re.IGNORECASE)
+        if match:
+            number = float(match.group(1))
+            unit = (match.group(2) or "s").lower()
+            if unit in ("m", "min", "minute", "minutes"):
+                number *= 60.0
+            elif unit == "ms":
+                number /= 1000.0
+            if number <= 0:
+                return {
+                    "ok": False, "error": "invalid_argument", "field": field,
+                    "reason": f"{field} must be greater than zero, got {text!r}",
+                    "expected": "a positive number of seconds", "received": text,
+                }
+            return number
+        return {
+            "ok": False,
+            "error": "invalid_argument",
+            "field": field,
+            "reason": (f"{field} expects a number of seconds; {text!r} is neither a "
+                       f"number nor a number with a unit I can read"),
+            "expected": "number (seconds), e.g. 30",
+            "received": text,
+            "usage_hint": (f"did_you_mean: {field}=30 — send the number alone, "
+                           f"without a word"),
+        }
+    return {
+        "ok": False,
+        "error": "invalid_argument",
+        "field": field,
+        "reason": f"{field} expects a number of seconds; got type {type(value).__name__}",
+        "expected": "number (seconds), e.g. 30",
+        "received": repr(value),
+    }
+
+
 def run_code_tool(
     *,
     workspace: str | Path,
@@ -148,9 +220,19 @@ def run_code_tool(
 
         overrides: dict[str, Any] = {}
         if timeout_s is not None:
-            overrides["timeout_s"] = float(timeout_s)
+            # A type violation must come back as NAMED, ACTIONABLE data, not a raw
+            # `ValueError: could not convert string to float`. The user's transcript
+            # showed the model receiving that bare message and then repeating the very
+            # same call three times — a loop an honest message could not break.
+            converted = _coerce_number(timeout_s, "timeout_s")
+            if isinstance(converted, dict):
+                return converted
+            overrides["timeout_s"] = converted
         if max_output_bytes is not None:
-            overrides["max_output_bytes"] = int(max_output_bytes)
+            converted_bytes = _coerce_number(max_output_bytes, "max_output_bytes")
+            if isinstance(converted_bytes, dict):
+                return converted_bytes
+            overrides["max_output_bytes"] = int(converted_bytes)
 
         try:
             result = code_exec.run_code(

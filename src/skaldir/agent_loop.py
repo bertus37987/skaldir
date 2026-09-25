@@ -842,7 +842,13 @@ def _call_registry_tool(wrapped: Callable[[dict[str, Any]], Any], **arguments: A
 
 
 def _argument_problem(schema: Mapping[str, Any], arguments: Mapping[str, Any]) -> str:
-    """Schema check that matters for *calling*: required present, no unknown key."""
+    """Schema check that matters for *calling*: required present, no unknown key, types.
+
+    The type check was missing, and its absence is the root of the user's loop:
+    ``run_code(timeout_s="irgendwann")`` passed this gate, reached the executor, and came
+    back as a bare ``ValueError: could not convert string to float`` — a message with no
+    field and no next step, so the model resent the identical call.
+    """
     properties = schema.get("properties") or {}
     required = [str(name) for name in (schema.get("required") or [])]
     missing = [name for name in required if arguments.get(name) is None]
@@ -853,7 +859,107 @@ def _argument_problem(schema: Mapping[str, Any], arguments: Mapping[str, Any]) -
         if unknown:
             known = ", ".join(sorted(properties)) or "(none)"
             return f"unexpected argument(s): {', '.join(unknown)}; allowed: {known}"
+    # types: named per field, so the feedback can point at one argument instead of a
+    # bare traceback. A declared enum is checked as well.
+    for name in sorted(str(key) for key in arguments):
+        spec = properties.get(name) if isinstance(properties, Mapping) else None
+        if not isinstance(spec, Mapping):
+            continue
+        expected = spec.get("type")
+        value = arguments.get(name)
+        if value is None:
+            continue  # an omitted optional value is not a type violation
+        if expected and not _matches_type(value, expected):
+            return (
+                f"argument {name!r} has type {type(value).__name__}, but the schema "
+                f"expects {expected}"
+            )
+        enum = spec.get("enum")
+        if isinstance(enum, (list, tuple)) and value not in enum:
+            return (
+                f"argument {name!r} must be one of {list(enum)}, got {value!r}"
+            )
     return ""
+
+
+def _repeat_signature(tool: str, arguments: Mapping[str, Any], problem: str) -> str:
+    """A stable key for "this exact unchanged invalid call".
+
+    The arguments are sorted, so `{"a":1,"b":2}` and `{"b":2,"a":1}` are the *same* call —
+    a different key order is not a change the model made.
+    """
+    import json as _json
+
+    try:
+        payload = _json.dumps(arguments, sort_keys=True, default=str)
+    except (TypeError, ValueError):
+        payload = repr(arguments)
+    return f"{tool}|{payload}|{problem}"
+
+
+def _repeat_refusal(tool: str, problem: str, repeats: int, *,
+                    arguments: Mapping[str, Any],
+                    schema: Mapping[str, Any]) -> str:
+    """Why the call was not executed again — with the corrected call spelled out.
+
+    Not a scolding: it names the offending argument, the schema's own contract, and the
+    exact JSON that WOULD be valid.
+    """
+    offending = ""
+    for key, value in sorted((arguments or {}).items()):
+        properties = (schema or {}).get("properties") or {}
+        expected = properties.get(key, {}).get("type")
+        if not _matches_type(value, expected):
+            offending = (f"argument {key!r} has type {type(value).__name__}, but the "
+                         f"schema for {tool} expects {expected or 'a supported type'}")
+            break
+    corrected = dict(arguments or {})
+    for key, value in list(corrected.items()):
+        properties = (schema or {}).get("properties") or {}
+        expected = properties.get(key, {}).get("type")
+        if not _matches_type(value, expected):
+            if expected == "number":
+                corrected[key] = _readable_number(value)
+            else:
+                corrected.pop(key)
+    return (
+        f"the tool call was NOT executed again ({repeats} times now with the same "
+        f"unchanged arguments). {offending or problem}. "
+        f"A repeated identical call cannot start to succeed. "
+        f"Send a corrected call instead, for example: "
+        f"{tool}({', '.join(f'{k}={v!r}' for k, v in corrected.items())}) — "
+        f"or drop the offending argument entirely if it is optional."
+    )
+
+
+def _matches_type(value: Any, expected: str | None) -> bool:
+    """The one check that decides whether a schema field is violated."""
+    if expected is None:
+        return True
+    if expected == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if expected == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if expected == "string":
+        return isinstance(value, str)
+    if expected == "boolean":
+        return isinstance(value, bool)
+    if expected == "array":
+        return isinstance(value, (list, tuple))
+    if expected == "object":
+        return isinstance(value, dict)
+    return True
+
+
+def _readable_number(value: Any) -> Any:
+    """Pull a number out of "30 Sekunden" for the corrected example."""
+    if isinstance(value, str):
+        import re as _re
+
+        match = _re.search(r"[0-9]*\.?[0-9]+", value)
+        if match:
+            return float(match.group(0))
+    return 30
 
 
 @dataclass
@@ -869,6 +975,9 @@ class ToolOutcome:
     error: str = ""
     decision: str = ""
     policy_reasons: list[str] = field(default_factory=list)
+    #: which attempt this unchanged invalid call is (1 = first time, 2+ = refused as a
+    #: repeat). 0 when the call was not an argument-schema violation at all.
+    repeat_attempt: int = 0
     duration_ms: int = 0
     digest: str = ""
     truncated: bool = False
@@ -1307,6 +1416,9 @@ class AgentLoop:
     ) -> None:
         self.client = client
         self.tools = tools if isinstance(tools, ToolSet) else ToolSet.of(list(tools))
+        # how often each unchanged invalid call was answered already, so a repeat is
+        # refused instead of run again (the user's 3x identical `run_code` loop)
+        self._invalid_signature_counts: dict[str, int] = {}
         self.state_dir = agent_state_dir(state_dir)
         self.runs_root = Path(runs_root) if runs_root is not None else runs_dir(self.state_dir)
         self.workspace = Path(workspace).expanduser().resolve()
@@ -2365,6 +2477,23 @@ class AgentLoop:
             if problem:
                 outcome.decision = "invalid_arguments"
                 outcome.error = problem
+                # The same unchanged invalid call must not be answered a second time:
+                # the user's transcript showed the model repeating the identical
+                # `run_code(timeout_s="...")` three times, and the model round after it
+                # resends the identical call unchanged. It is stopped here instead of
+                # allowed to burn another 38-second provider round.
+                signature = _repeat_signature(call.name, outcome.arguments, problem)
+                repeats = self._invalid_signature_counts.get(signature, 0) + 1
+                self._invalid_signature_counts[signature] = repeats
+                outcome.repeat_attempt = repeats
+                if repeats > 1:
+                    outcome.error = _repeat_refusal(
+                        tool.name, problem, repeats,
+                        arguments=outcome.arguments,
+                        schema=tool.input_schema,
+                    )
+                    outcome.decision = "repeated_invalid_arguments"
+                    return outcome
             else:
                 allowed = True
                 if self.policy:
