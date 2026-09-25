@@ -179,6 +179,22 @@ Die drei Fehler des Zwischenstands (`test_agent_loop`, `test_cli_shared`,
 `test_schemathesis_cli`) waren **durch diese Sitzung entstanden** und sind behoben; §3.2
 erklärt den einen davon, bei dem zwei Verträge bewusst auseinandergehen.
 
+## 7. Abschlussprüfung des Einstiegs (Live)
+
+| Prüfung | Ergebnis |
+|---|---|
+| `.venv/bin/skaldir --version` | `skaldir 1.5.0`, exit 0 |
+| `skaldir --all-commands` | `tui`, `stop`, `desk` neben `desktop` als eigene Gruppen sichtbar |
+| `skaldir contract dump --json` | 289 Contract-Einträge, davon **11** neu: `tui.preview`, `tui.layout`, `tui.figure`, `tui.approve`, `stop.report`, `stop.detect`, `desk.status`, `desk.acquire`, `desk.release`, `desk.stop`, `desk.resume`; **`unregistered: []`** |
+| `skaldir selftest --json` auf der **Live-Runtime** | `ok true`, 8 Layer, 26 Probes, `failed: []`, exit 0 |
+| `skaldir selftest --json` auf einer **leeren** Runtime (`SKALDIR_HOME=/tmp/skaldir-final-check`) | `ok false`, 26 Probes — alle 9 Fehlstellen sind „keine Datenbank vorhanden“ (`no tools db`, `no events db`, `no memory db`, `no runs db`, `no sessions db`, `no pause store`, `System-One is off`, `no provider adapter`) |
+
+Der Unterschied zwischen den beiden `selftest`-Läufen ist **erwartet und ehrlich**: eine
+frisch angelegte Runtime hat noch keine Datenbanken. Das ist kein Defekt, sondern die
+Probe, die korrekt sagt „hier ist noch nichts“. Als Abnahme zählt der Lauf auf der
+befüllten Runtime; der leere Lauf belegt umgekehrt, dass die Probes nicht auf einem
+Zufallsergebnis grün werden.
+
 ## 5. Wiederholbarkeit
 
 Rohlogs liegen unter `logs/` (git-ignored): `baseline-suite.log`, `final-suite.log`,
