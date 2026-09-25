@@ -1422,18 +1422,51 @@ class HostSessionRunner(BaseRunner):
         """
         self._input_fence = fence
 
+    @property
+    def requires_input_fence(self) -> bool:
+        """Does this runner drive the *real* host desktop and therefore need the fence?
+
+        An isolated container or an isolated host session is not the shared desktop, so it
+        does not have to carry the desktop lease. A ``live-desktop`` runner touches the
+        user's actual session, so it must. That is the distinction the requirement makes:
+        "Beobachtung und isolierte Containersteuerung brauchen nicht unnötig dieselbe
+        Host-Lease" — while no unbound host path may bypass the promised control.
+
+        This keys on ``isolation`` rather than ``is_isolated`` on purpose. ``BaseRunner``
+        defines ``is_isolated`` as ``isolation != "none"``, which makes it ``True`` for
+        ``live-desktop`` too — contradicting the module docstring above, which says a
+        live-desktop runner has ``is_isolated = False``. ``isolation`` is the field that
+        actually distinguishes "the user's session" from "an isolated session", so it is
+        the one to decide on. The contradiction is left visible rather than papered over.
+        """
+        return getattr(self, "isolation", "") == BRIDGE_LIVE_DESKTOP
+
     def act(self, action: Action) -> ActionResult:
         if action.kind in GUI_KINDS and not self.display:
             return ActionResult(ok=False, detail="no display: nothing to drive")
-        if action.kind in GUI_KINDS and self._input_fence is not None:
-            # DESK-02 — check at the adapter, not at the policy layer. A late action from
-            # before a pause, crash or owner change must never move the pointer.
-            try:
-                self._input_fence()
-            except Exception as exc:  # noqa: BLE001 — any fence failure means "do not act"
+        if action.kind in GUI_KINDS:
+            if self._input_fence is not None:
+                # DESK-02 — check at the adapter, not at the policy layer. A late action
+                # from before a pause, crash or owner change must never move the pointer.
+                try:
+                    self._input_fence()
+                except Exception as exc:  # noqa: BLE001 — any fence failure means "do not act"
+                    return ActionResult(
+                        ok=False,
+                        detail=f"input refused at the adapter (DESK-02 fence): {exc}"[:300],
+                        stdout="",
+                    )
+            elif self.requires_input_fence:
+                # An unbound *host* path must not act. Otherwise any caller that simply
+                # forgot to hold the desktop lease would drive the user's desktop
+                # unattended, which is exactly what the promise rules out.
                 return ActionResult(
                     ok=False,
-                    detail=f"input refused at the adapter (DESK-02 fence): {exc}"[:300],
+                    detail=(
+                        "input refused at the adapter: this runner drives the real host "
+                        "desktop (live-desktop) but no DESK-02 fence is bound — hold the "
+                        "desktop lease and bind it before acting"
+                    )[:300],
                     stdout="",
                 )
         ok, detail = self.start()

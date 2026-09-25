@@ -504,6 +504,68 @@ def test_a_corrupt_state_file_is_refused_not_treated_as_free(store):
     assert store.acquire("run-1", now=1.0).run_id == "run-1"
 
 
+def test_an_unbound_live_desktop_runner_refuses_to_act():
+    """GOAL §2: kein optional ungebundener Hostpfad darf die Kontrolle umgehen.
+
+    A runner that drives the *real* host desktop and simply never bound the fence must be
+    refused at the adapter. Otherwise any caller that forgot to hold the desktop lease
+    would move the user's mouse unattended.
+    """
+    from skaldir.cu_host_session import Action, HostSessionRunner
+
+    runner = HostSessionRunner.__new__(HostSessionRunner)
+    runner.display = ":0"
+    runner._input_fence = None
+    runner.attach_to_session = False
+    runner.isolation = "live-desktop"          # the user's real session
+
+    assert runner.requires_input_fence is True
+    result = runner.act(Action(kind="mouse", payload={"x": 1, "y": 1}))
+    assert result.ok is False
+    assert "no DESK-02 fence is bound" in result.detail
+
+
+def test_a_live_desktop_runner_with_a_fence_actually_checks_it(store):
+    """The bound fence must be consulted, not merely stored (DESK-02 at the adapter)."""
+    from skaldir.desktop_lease import StaleFence
+    from skaldir.cu_host_session import Action, HostSessionRunner
+
+    lease = store.acquire("run-1", now=1.0)
+
+    runner = HostSessionRunner.__new__(HostSessionRunner)
+    runner.display = ":0"
+    runner.attach_to_session = False
+    runner.isolation = "live-desktop"
+
+    checks: list[int] = []
+
+    # a fence carrying a *stale* generation: it must be consulted and must stop the act
+    # *before* anything else happens — which is also why no runner internals are touched
+    # here, they are not reached
+    def stale_fence():
+        checks.append(1)
+        store.fence(lease.run_id, lease.generation - 1)
+
+    runner.bind_input_fence(stale_fence)
+    result = runner.act(Action(kind="mouse", payload={"x": 1, "y": 1}))
+    assert result.ok is False
+    assert "input refused at the adapter (DESK-02 fence)" in result.detail
+    assert checks == [1], "the fence was not consulted"
+
+    # and the current generation is accepted by the same fence check
+    store.fence(lease.run_id, lease.generation)      # must not raise
+    assert checks == [1]
+
+
+def test_an_isolated_runner_does_not_need_the_host_lease():
+    """Containers and isolated sessions are not the shared desktop."""
+    from skaldir.cu_host_session import HostSessionRunner
+
+    runner = HostSessionRunner.__new__(HostSessionRunner)
+    runner.isolation = "host-session"          # an isolated session, not the shared desktop
+    assert runner.requires_input_fence is False
+
+
 def test_no_temporary_file_is_left_behind(store):
     store.acquire("run-1", now=1.0)
     store.request_stop(now=2.0)
