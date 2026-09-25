@@ -699,6 +699,42 @@ def builtin_tools(workspace: str | Path) -> list[AgentTool]:
     ]
 
 
+#: Verified effect metadata for the core tools (Paket 4 / audit F06).
+#:
+#: The registry tools used to be marked ``parallel_safe=False, mutating=True`` **as a
+#: whole**, which serialised reads and searches too — the opposite of the fast independent
+#: batching the product wants. These rows are derived from what each tool actually does,
+#: and they are named rather than inferred: an entry here is a claim about the code that
+#: somebody checked. Anything NOT in the table stays conservative, because "Fremde Tools
+#: bleiben ohne belastbaren Vertrag konservativ".
+#:
+#: ``True``/``False`` = (parallel_safe, mutating).
+CORE_EFFECTS: dict[str, tuple[bool, bool]] = {
+    # reads: no side effect on the workspace, safe to run alongside siblings
+    "read_file": (True, False),
+    "list_dir": (True, False),
+    "search_files": (True, False),
+    "web_search": (True, False),
+    "web_fetch": (True, False),
+    # writes: one writer at a time
+    "write_file": (False, True),
+    "patch": (False, True),
+    "terminal": (False, True),       # it can do anything a shell can
+    "docker_ensure": (False, True),  # starts infrastructure
+    "docker.ensure": (False, True),
+}
+
+
+def effect_for(name: str, *, default: tuple[bool, bool] = (False, True)) -> tuple[bool, bool]:
+    """``(parallel_safe, mutating)`` for a tool name.
+
+    The default is the conservative one. Only a name in :data:`CORE_EFFECTS` gets the
+    faster treatment — an unverified tool is never assumed read-only, because that is how a
+    parallel write race gets shipped.
+    """
+    return CORE_EFFECTS.get(str(name or ""), default)
+
+
 def registry_tools(
     store: Any,
     *,
@@ -741,8 +777,11 @@ def registry_tools(
                 handler=partial(
                     _call_registry_tool, _wrapper_for(spec, base_dir=directory)
                 ),
-                parallel_safe=False,
-                mutating=True,
+                # Paket 4 (audit F06): reads and searches may run alongside their
+                # siblings; only verified effect metadata gets the fast treatment and
+                # anything unverified stays conservative.
+                parallel_safe=effect_for(spec.name)[0],
+                mutating=effect_for(spec.name)[1],
                 source="registry",
                 source_name=spec.name,
             )

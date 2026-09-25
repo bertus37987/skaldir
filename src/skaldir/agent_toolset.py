@@ -212,6 +212,10 @@ def skill_expand_build(
     runtime: str | Path | None = None,
     store: ToolStore | None = None,
     session_id: str = "",
+    llm: Any = None,
+    budget: Any = None,
+    prompts: Any = None,
+    events: Any = None,
 ) -> dict[str, Any]:
     """EXPAND / build: run the **real** build pipeline for one capability.
 
@@ -219,6 +223,10 @@ def skill_expand_build(
     by field (unknown keys are refused, not ignored). A build with neither
     ``source_code``/``source_path`` nor a configured model client is reported
     as the precise blocker it is — never smoothed into a fake tool.
+
+    Paket 4 (audit F07): the **run's own** provider and budget are handed to the builder.
+    Without them a build from a bare need cannot reach a model at all — which is why the
+    adapter used to stay stuck at the missing client while the engine was fine.
     """
     known = {name for name in ToolBuildRequest.__dataclass_fields__}
     unknown = sorted(set(request) - known)
@@ -230,9 +238,15 @@ def skill_expand_build(
         Path(str(runtime or ".")).expanduser(),
         store=_store_for(runtime, store),
         session_id=session_id,
+        llm=llm,
+        budget=budget,
+        prompts=prompts,
+        events=events,
     )
     result = builder.build(ToolBuildRequest(**dict(request)))
     result.setdefault("ok", bool(result.get("ok")))
+    result.setdefault("llm_bound", llm is not None)
+    result.setdefault("budget_bound", budget is not None)
     return result
 
 
@@ -876,9 +890,14 @@ def knowledge_read_tool(
 
 
 def skill_expand_build_tool(
-    *, runtime: str | Path | None = None, store: ToolStore | None = None
+    *, runtime: str | Path | None = None, store: ToolStore | None = None,
+    llm: Any = None, budget: Any = None, prompts: Any = None, events: Any = None,
 ) -> AgentTool:
-    """EXPAND as a tool: run the real build pipeline for a declared need."""
+    """EXPAND as a tool: run the real build pipeline for a declared need.
+
+    The run's provider and budget ride along (audit F07): a build from a bare need has to
+    reach the *configured* client, not a missing one.
+    """
     return AgentTool(
         name="skill_expand_build",
         parallel_safe=False,
@@ -1135,6 +1154,10 @@ def build_agent_toolset(
     store: ToolStore | None = None,
     runtime: str | Path | None = None,
     project_id: str = "",
+    llm: Any = None,
+    budget: Any = None,
+    prompts: Any = None,
+    events: Any = None,
 ) -> ToolSet:
     """Assemble the agent toolset: builtin + registry + every layer tool.
 
@@ -1195,7 +1218,10 @@ def build_agent_toolset(
             tools.extend(registry_tools(store, runtime=None, base_dir=directory))
     for layer_tool in (
         skill_expand_tool(runtime=runtime, store=store),
-        skill_expand_build_tool(runtime=runtime, store=store),
+        skill_expand_build_tool(
+            runtime=runtime, store=store,
+            llm=llm, budget=budget, prompts=prompts, events=events,
+        ),
         skill_act_tool(),
         skill_act_check_tool(),
         skill_compose_tool(runtime=runtime, store=store),
