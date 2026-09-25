@@ -94,6 +94,14 @@ INPUT_SCHEMA = {
                 "like a credential) — an open string map, not a free-form object"
             ),
         },
+        "isolation_required": {
+            "type": "boolean",
+            "default": False,
+            "description": (
+                "require real isolation (bubblewrap); if the backend is unusable the "
+                "command is REFUSED instead of being run with weaker isolation"
+            ),
+        },
         "isolated": {
             "type": "boolean",
             "description": (
@@ -304,7 +312,19 @@ def run(args: dict, ctx: ToolContext) -> ToolResult:
         return failure(NAME, "usage", env_problem)
     child_env, env_report = sandbox.child_environment(root, extra=extra)
 
-    want_isolated = bool(args.get("isolated", False)) or bool(ctx.isolated)
+    # requiring isolation also *requests* it — otherwise the requirement would never
+    # reach the check below (measured: the refusal was skipped entirely)
+    want_isolated = (
+        bool(args.get("isolated", False))
+        or bool(args.get("isolation_required", False))
+        or bool(ctx.isolated)
+    )
+    # Paket 2: "Bei vorgeschriebener Isolation und fehlendem Backend verweigern, nicht
+    # still schwächer ausführen." `isolated` is a REQUEST and falls back with a warning;
+    # `isolation_required` is a REQUIREMENT and refuses instead of downgrading.
+    isolation_required = bool(args.get("isolation_required", False)) or bool(
+        getattr(ctx, "isolation_required", False)
+    )
     isolation = sandbox.isolation_report()
     unshare_net = bool(args.get("unshare_net", True))
     if ctx.isolated:
@@ -317,7 +337,18 @@ def run(args: dict, ctx: ToolContext) -> ToolResult:
         "unshare_net": False,
     }
     if want_isolated and not isolation.get("available"):
-        isolation_used["fallback_reason"] = str(isolation.get("error") or "bubblewrap unavailable")
+        reason = str(isolation.get("error") or "bubblewrap unavailable")
+        if isolation_required:
+            # REFUSE. A weaker sandbox would run the command under a guarantee the caller
+            # explicitly said it must not run without.
+            return failure(
+                NAME,
+                "blocked",
+                "isolation is required but the bubblewrap backend is not usable here "
+                f"({reason}); refusing to run weaker rather than pretending — install "
+                "bubblewrap or drop the requirement",
+            )
+        isolation_used["fallback_reason"] = reason
         warnings.append(
             "bubblewrap isolation was requested but is not usable here "
             f"({isolation_used['fallback_reason']}); ran in the process sandbox"

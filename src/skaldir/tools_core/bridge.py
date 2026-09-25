@@ -50,34 +50,47 @@ _RUN_CONTEXT = threading.local()
 
 
 class RunContext:
-    """Binds workspace/runtime for the current thread's core tool calls."""
+    """Binds workspace/runtime for the current thread's core tool calls.
 
-    __slots__ = ("root", "runtime", "run_id", "_previous")
+    ``isolation_required`` lets a run *prescribe* real isolation (Paket 2): a call that
+    would have to run without it is refused instead of being executed more weakly.
+    """
+
+    __slots__ = ("root", "runtime", "run_id", "isolation_required", "_previous")
 
     def __init__(self, root: str | Path | None = None,
-                 runtime: str | Path | None = None, run_id: str = "") -> None:
+                 runtime: str | Path | None = None, run_id: str = "",
+                 isolation_required: bool = False) -> None:
         self.root = str(root) if root is not None else None
         self.runtime = str(runtime) if runtime is not None else None
         self.run_id = str(run_id or "")
-        self._previous: tuple[Any, Any, Any] | None = None
+        self.isolation_required = bool(isolation_required)
+        self._previous: tuple[Any, Any, Any, Any] | None = None
 
     def __enter__(self) -> "RunContext":
         self._previous = (
             getattr(_RUN_CONTEXT, "root", None),
             getattr(_RUN_CONTEXT, "runtime", None),
             getattr(_RUN_CONTEXT, "run_id", None),
+            getattr(_RUN_CONTEXT, "isolation_required", None),
         )
         _RUN_CONTEXT.root = self.root
         _RUN_CONTEXT.runtime = self.runtime
         _RUN_CONTEXT.run_id = self.run_id
+        _RUN_CONTEXT.isolation_required = self.isolation_required
         return self
 
     def __exit__(self, *exc: Any) -> bool:
-        root, runtime, run_id = self._previous or (None, None, None)
+        root, runtime, run_id, iso = self._previous or (None, None, None, None)
         _RUN_CONTEXT.root = root
         _RUN_CONTEXT.runtime = runtime
         _RUN_CONTEXT.run_id = run_id
+        _RUN_CONTEXT.isolation_required = iso
         return False
+
+
+def isolation_required() -> bool:
+    return bool(getattr(_RUN_CONTEXT, "isolation_required", False))
 
 
 def bound_root() -> str | None:
@@ -120,6 +133,7 @@ def terminal(
     env: dict[str, str] | None = None,
     isolated: bool = False,
     unshare_net: bool = True,
+    isolation_required: bool = False,
 ) -> dict[str, Any]:
     """Run a shell command in the sandboxed workspace root (timeout, output cap)."""
     arguments: dict[str, Any] = {"command": command}
@@ -131,6 +145,7 @@ def terminal(
         ("env", env),
         ("isolated", isolated),
         ("unshare_net", unshare_net),
+        ("isolation_required", isolation_required),
     ):
         if value is not None and not (key == "stdin" and value == ""):
             arguments[key] = value
