@@ -41,10 +41,7 @@ Repository: <https://github.com/bertus37987/Skylia-Agent> (**privat**, verifizie
    (`org.freedesktop.portal.GlobalShortcuts` v2) ist vorhanden, garantiert aber nicht die
    Sequenz „Escape zweimal in 500 ms“. Der Host-Steuerungsmodus wird **nicht** als fertig
    freigegeben.
-2. **`tool_search` ohne Aufrufvertrag.** `build_candidates` tragen kein `input_schema`.
-   Das ist die ursprüngliche P0-Lücke; gepinnt als
-   `tests/test_tool_search_integration.py::test_tool_search_gives_the_model_a_call_contract`
-   mit `xfail(strict=True)`.
+2. ~~`tool_search` ohne Aufrufvertrag~~ — **behoben** (D-10).
 3. **Wayland- und X11-Live-Abnahme der Desktopsteuerung** offen (aktuelle Sitzung ist
    Wayland; XWayland ersetzt keine X11-Abnahme).
 4. **Produktprüfungen B–F** offen; C–F brauchen eine Nutzerentscheidung über Anwendung
@@ -55,10 +52,10 @@ Repository: <https://github.com/bertus37987/Skylia-Agent> (**privat**, verifizie
 
 ## Nächste Aktion (in dieser Reihenfolge)
 
-1. `logs/final-suite.log` auswerten, in `docs/audit/VALIDATION.md` §3 nachtragen.
-2. `tool_search`-P0 beheben: `input_schema`/`output_schema` in `build_candidates`;
-   dann `xfail(strict)`-Test positiv umstellen.
-3. STOP-05: beim Besitzer die Aufnahme in Gruppe `input` anfragen
+1. ~~`tool_search`-P0 beheben~~ — **erledigt** (D-10): der typisierte Vertrag wird aus
+   dem Descriptor durchgereicht; der `xfail(strict)`-Test steht positiv und ist
+   verschärft, plus ein Negativtest gegen erfundene Schemata.
+2. STOP-05: beim Besitzer die Aufnahme in Gruppe `input` anfragen
    (`sudo usermod -aG input willy`, Neu-Login) und danach `skaldir stop report` erneut
    ausführen; anschließend physischen Doppel-Escape-Test (02 §3).
 4. Produktprüfung B (Browserrecherche) als erste Computer-Use-Abnahme.

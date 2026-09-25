@@ -50,7 +50,7 @@ Eintrag ist aus einer Command-Anzahl oder einem grünen Unit-Test abgeleitet.
 | AUD-02 | **getestet** | `docs/audit/IMPLEMENTATION-AUDIT.md` (diese Datei) | eine Gap-Matrix; `tests/test_no_orphan_modules.py` verhindert zweite unerreichbare Registry | Nachverfolgung je ID fortsetzen |
 | AUD-03 | **getestet** | `docs/audit/MIGRATION-MANIFEST.md`, `.gitignore` | Datenmigration versioniert, Quelle unverändert, Rückweg benannt | Live-Runtime-Migration separat |
 | TOOL-01 | teilweise | `tools_core/registry.py`, `tools_core/contract.py` | `register()` liefert 9 Core-Tools mit Descriptor+Manifest | `input_schema` in `tool_search` fehlt (xfail) |
-| TOOL-02 | teilweise | `agent_toolset.py:tool_search_tool` | Aufrufweg vorhanden | **kein `input_schema` in `build_candidates`** — P0-Restlücke |
+| TOOL-02 | **getestet** | `skaldir tools …` / `agent_toolset.py:tool_search_tool` | `discovery.py:_public_row` reicht `input_schema`/`output_schema` durch; `capability_mining._typed_contract` liest den Descriptor | ohne Descriptor bleibt der Schlüssel weg (nie erfunden) |
 | TOOL-03 | implementiert-unbestätigt | `cli_contract.py`, `agent_loop.py` | Feldsatz vorhanden | 5 Commands ohne `data_schema` (siehe `KNOWN_CONTRACT_GAPS`) |
 | CORE-01..16 | überwiegend implementiert-unbestätigt | `agent_loop.py`, `agent_toolset.py`, `tools_core/*`, `edit_tx.py`, `code_exec.py`, `codectx.py`, `knowledge.py` | 21 Tool-Zeilen, 9 Core-Tools HEALTHY (`skaldir selftest --json`, 26 Probes, 0 fehlgeschlagen) | Produktprüfung A ausstehend |
 | QA-01..05 | **getestet** | `docs/audit/VALIDATION.md` | gezielte Regressionen nach Fix; Integration nach zusammenhängenden Änderungen; keine identischen Fullsuite-Serien | QA-06: Abschlussbericht diese Datei |

@@ -1802,6 +1802,37 @@ def _json_type(value) -> str:
     return "string"
 
 
+def _typed_contract(manifest: dict) -> tuple[dict | None, dict | None, str]:
+    """Read the JSON Schemas the approved descriptor declares, or say why there are none.
+
+    The manifest names the descriptor (``contract: <path>``) and its own note says the
+    typed contract lives there. A missing/unreadable descriptor yields ``(None, None, "")``
+    — never a guessed schema. ``capability_mining`` must not invent argument shapes.
+    """
+    import json as _json
+
+    raw = manifest.get("contract")
+    if not raw:
+        return None, None, ""
+    path = Path(str(raw)).expanduser()
+    if not path.is_file():
+        return None, None, ""
+    try:
+        document = _json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None, None, ""
+    if not isinstance(document, dict):
+        return None, None, ""
+    source = f"contract.descriptor:{path.name}"
+    input_schema = document.get("input_schema")
+    output_schema = document.get("output_schema")
+    return (
+        input_schema if isinstance(input_schema, dict) else None,
+        output_schema if isinstance(output_schema, dict) else None,
+        source,
+    )
+
+
 def _contract_preconditions(manifest: dict) -> list[str]:
     """Structural preconditions from the approved contract (no inventions)."""
     out: list[str] = []
@@ -1923,6 +1954,19 @@ def contract_metadata(name: str, manifest: dict, spec: dict | None = None) -> di
     if isinstance(sample, dict) and sample and not payload["inputs"]:
         payload["inputs"] = [f"{key}:{_json_type(value)}" for key, value in sorted(sample.items())]
         sources["inputs"] = "contract.sample_input"
+
+    # TOOL-02: discovery must hand the model a *call contract*, not just a name.
+    # `inputs: ["path:string"]` is a label; the typed contract is the descriptor the
+    # manifest points at (`contract: <path>`), which carries the real JSON Schema.
+    # Without this, `tool_search` told the model a capability existed and left it to
+    # guess the arguments — the exact P0 this project started from.
+    input_schema, output_schema, schema_src = _typed_contract(manifest)
+    if input_schema is not None:
+        payload["input_schema"] = input_schema
+        sources["input_schema"] = schema_src
+    if output_schema is not None:
+        payload["output_schema"] = output_schema
+        sources["output_schema"] = schema_src
 
     validation = manifest.get("validation")
     if isinstance(validation, dict):

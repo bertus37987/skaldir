@@ -217,6 +217,43 @@ konsistent.
 
 ---
 
+## D-10 — `tool_search` reicht den typisierten Vertrag durch
+
+**Reproduziertes Problem.** Die P0-Lücke der Testdatei
+`tests/test_tool_search_integration.py`: „tool_search returned tool names but the model
+couldn't call them“. Gemessen: Suchzeilen trugen `name`, `effect`, `limits`, `unknown`,
+aber **keine** Argumentform.
+
+**Warum die vorhandene Lösung nicht genügte.** `capability_mining.contract_metadata`
+erzeugte `inputs: ["path:string"]`. Das ist ein **Etikett** („ein String namens path“),
+kein Aufrufvertrag — kein Typenumfang, keine Pflichtfelder, keine `additionalProperties`-
+Regel. Ein Modell kann damit raten, nicht aufrufen.
+
+**Wo der Vertrag wirklich liegt.** Das Manifest, das `capability_mining` liest, benennt
+ihn selbst: `contract: <descriptor-pfad>` mit dem Hinweis „the typed contract lives in the
+descriptor file named above“. Der Descriptor trägt `input_schema`/`output_schema` als
+echtes JSON Schema (bei `read_file` z. B. `limit: integer, 1..5000` plus `max_bytes`,
+`offset`, `expected_revision`). Er wurde nur nie weitergereicht.
+
+**Kleinstmögliche Alternative.** Zwei Zeilen Zuständigkeit, keine neue Registry:
+`capability_mining._typed_contract()` liest den benannten Descriptor,
+`discovery._public_row()` gibt beide Schemata an die Zeile weiter.
+
+**Bewusste Unterlassung.** Kein Schema wird **erfunden**. Ohne Descriptor oder ohne
+Schema bleibt der Schlüssel weg — dafür gibt es
+`test_the_call_contract_is_absent_rather_than_invented_when_none_is_declared`. Ein
+leeres `{}` zählt nicht als Vertrag; der Test verlangt `properties` oder `required`.
+
+**Abnahme.** `test_tool_search_gives_the_model_a_call_contract` (positiv, verschärft:
+`read_file` muss `path`/`limit`/`offset` deklarieren) und der Negativtest oben. Gemessen
+9/9 Metadateneinträge und alle Suchzeilen mit `input_schema`.
+
+**Messbarer Nutzen.** Ein Entdeckungstreffer ist jetzt handlungsfähig: der nächste
+Aufrufweg steht in derselben Zeile. Das ist TOOL-02 („`tool_search` liefert einen gültigen
+nächsten Aufrufweg“) und schließt die P0, für die diese Testdatei überhaupt entstand.
+
+---
+
 **Privatsphäre-Hinweis.** Dokumentationsartefakte unter
 `docs/artifacts-94-token-economy/` enthalten absolute lokale Pfade
 (`/home/willy/projects/gods-voice/…`). Das ist ein Maschinenpfad, kein Geheimnis; im

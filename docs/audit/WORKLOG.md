@@ -96,9 +96,27 @@ Danach: `184 passed, 1 xfailed` in 35 s für die betroffenen Dateien.
 **Abschluss-Volltestsuite:** `7646 passed, 33 skipped, 1 xfailed, 2 warnings in 1496.05 s`,
 `PYTEST_EXIT=0` — kein einziger Fehlschlag.
 
+### Nachtrag 2: P0 `tool_search` ohne Aufrufvertrag — behoben
+
+`tool_search` nannte Fähigkeiten ohne Argumentform. Ursache: `capability_mining` baute
+`inputs: ["path:string"]` (ein Etikett) und las nie den Descriptor, den das Manifest mit
+`contract: <pfad>` selbst benennt. Fix: `_typed_contract()` liest den Descriptor,
+`_public_row()` reicht `input_schema`/`output_schema` durch. Ohne Descriptor bleibt der
+Schlüssel weg — kein erfundenes Schema, dafür ein eigener Negativtest. Details D-10.
+
+### Betriebslektion: `SKALDIR_HOME` in der Shell
+
+Bei einer Zwischenregression fielen 47 Tests in `test_registry_context.py`. Nicht der Code
+war schuld: in der Shell hing noch `SKALDIR_HOME=/tmp/skaldir-final-check` aus einer
+früheren Prüfung exportiert. Mit `env -u SKALDIR_HOME` laufen dieselben Tests **33/33**.
+Die Projektvorgabe, `HERMES_HOME`/`GODSV_HOME`/`SKALDIR_*` für Testläufe explizit zu
+entfernen, ist kein Formalismus — sie ist die einzige Weise, wie ein Ergebnis über den
+eigenen Shell-Zustand hinaus belastbar ist. Für Folgesitzungen: jeden Testlauf mit
+`env -u SKALDIR_HOME` starten.
+
 ### Ergebnisse
-- Neue/gezielte Tests: **184 grün**, plus 1 `xfail(strict)` für die offene
-  `tool_search`-Lücke. Details: [VALIDATION.md](VALIDATION.md).
+- Neue/gezielte Tests: **184 grün** (plus 2 für den `tool_search`-Vertrag); kein
+  `xfail` mehr offen. Details: [VALIDATION.md](VALIDATION.md).
 - Baseline-Volltestsuite (vor den Fixes): `16 failed, 7462 passed, 34 skipped, 63 errors`
   in 1496 s. Herkunft gegen Initialcommit `0b09a8a` in einem Zweit-Worktree verifiziert:
   **dieselben** Fehlergruppen traten dort auf (`12 failed, 5 errors`) — Altlasten, nicht

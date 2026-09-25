@@ -108,7 +108,7 @@ Zweit-Worktree `/tmp/skaldir-pristine` ausgeführt (`/tmp/pristine-run.log`):
 | `logo.ansi`/`cli-logo.txt` trägt alten absoluten Pfad | 1 FAIL | **0** | D-06: Ableitung neu erzeugt |
 | `build_agent_toolset` wirft bei `store=None` | 4 FAIL | **0** | `_store_for`-Auflösung in `build_agent_toolset` (dessen Signatur `store=None` zusagt) |
 | `schemathesis`-Binär fehlt (nicht deklariert) | 6 FAIL + 5 ERROR | **0** | `schemathesis>=4` in die `dev`-Extras aufgenommen |
-| `tool_search` liefert kein `input_schema` | (im Test versteckt) | **1 xfail(strict)** | **Offene Produktlücke**, siehe unten |
+| `tool_search` liefert kein `input_schema` | (im Test versteckt) | **0** | behoben — Descriptor-Vertrag wird durchgereicht, siehe §3.1 |
 | Lücken-Reproduktion der Property-Suite | 1 FAIL | **0** | bedingte Reproduktion als `conditional` + `condition` modelliert, Gate zweistufig |
 | doppelter Helper `register_contract_entries` | 1 FAIL | **0** | entfernt; `cli_shared.install_contract_entries` bleibt die eine Heimat |
 
@@ -130,11 +130,9 @@ Beides ist korrekt und bleibt so. `agent_toolset.build_agent_toolset` löst
 durch `test_the_loop_surface_still_refuses_to_invent_a_store` gepinnt, damit ihn niemand
 später „vereinheitlicht“.
 
-### 3.1 Offene Produktlücke — `tool_search` ohne Aufrufvertrag
+### 3.1 `tool_search` ohne Aufrufvertrag — **behoben** (TOOL-02)
 
-`tests/test_tool_search_integration.py::test_tool_search_gives_the_model_a_call_contract`
-steht als `xfail(strict=True)` mit vollständiger Messung im Testtext. Gemessen am
-25.09.2026 an einem frisch registrierten Core-Toolset (9 Tools):
+**Gemessen am 25.09.2026 an einem frisch registrierten Core-Toolset (9 Tools), vor dem Fix:**
 
 * `tool_search(need="read a file")` → `results: []`, `executable_count: 0`,
   `error.code: "build_candidate_only"`
@@ -142,11 +140,32 @@ steht als `xfail(strict=True)` mit vollständiger Messung im Testtext. Gemessen 
   executable, build_candidate, score, reasons, limits, unknown, components, preconditions,
   validation, effect}` — **kein `input_schema`, kein `output_schema`**
 
-Das ist genau die P0-Lücke, für die diese Testdatei ursprünglich geschrieben wurde
+Das war genau die P0-Lücke, für die diese Testdatei ursprünglich geschrieben wurde
 („tool_search returned tool names but the model couldn't call them“). Der alte Test konnte
 sie nicht sehen, weil er auf einen nicht existierenden `matches`-Schlüssel prüfte.
-`strict=True` bedeutet: der Tag, an dem das Schema ergänzt wird, schlägt dieser Test an und
-muss auf eine positive Aussage umgestellt werden. **Kein Wegwerfen, kein Schönreden.**
+
+**Ursache.** `capability_mining.contract_metadata` baute seine Metadaten aus dem Manifest
+und übernahm daraus `inputs: ["path:string"]` — ein **Etikett**, kein Aufrufvertrag. Der
+typisierte Vertrag steht im Descriptor, den das Manifest selbst benennt
+(`contract: <path>`, „the typed contract lives in the descriptor file named above“), und
+wurde nie weitergereicht.
+
+**Fix.**
+* `capability_mining._typed_contract(manifest)` liest den benannten Descriptor und liefert
+  `input_schema`/`output_schema` plus Herkunftsangabe. **Kein Rateschema:** ohne Descriptor
+  oder ohne Schema bleibt der Schlüssel schlicht weg.
+* `discovery._public_row` gibt beide Schemata an jede Ergebniszeile weiter.
+
+**Nachher gemessen:** 9/9 Metadateneinträge tragen `input_schema`; alle Suchzeilen ebenfalls.
+`read_file` meldet `properties = [expected_revision, limit, max_bytes, offset, path]` und
+`output_schema.required = [path, abs_path, exists, shape, content, total_lines, truncated]`.
+
+**Tests.** Der `xfail(strict=True)`-Eintrag ist in eine **positive** Aussage umgestellt
+(`test_tool_search_gives_the_model_a_call_contract`) und verschärft: jedes Schema muss
+`properties` oder `required` nennen, und `read_file` muss `path`/`limit`/`offset` deklarieren.
+Ergänzt um `test_the_call_contract_is_absent_rather_than_invented_when_none_is_declared`,
+die die Kehrseite pinnt: ohne Descriptor **kein** Schema-Schlüssel, nie ein erfundenes
+Argument-Shape.
 
 ## 4. Nicht ausgeführte Abnahmen (ehrlich offen)
 

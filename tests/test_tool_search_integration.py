@@ -55,29 +55,57 @@ def test_tool_search_result_shape_has_needed_fields(tmp_path):
         assert "effect" in match or "description" in match, sorted(match)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "OPEN PRODUCT GAP (the P0 this file was written for): tool_search names "
-        "capabilities but carries no `input_schema`, so the model is told a tool exists and "
-        "is not told how to call it. Measured 2026-09-25 on a freshly registered core "
-        "toolset: build_candidates[i] = {name, capability_id, version, scope, surface, "
-        "state, selectable, executable, build_candidate, score, reasons, limits, unknown, "
-        "components, preconditions, validation, effect} — no input_schema, no output_schema. "
-        "strict=True: the day someone adds the schema this test FAILS and must be upgraded "
-        "to assert it positively."
-    ),
-)
 def test_tool_search_gives_the_model_a_call_contract(tmp_path):
-    """tool_search must return input_schema so the model knows how to call the tool."""
+    """tool_search must return input_schema so the model knows how to call the tool.
+
+    This is the P0 the file was written for: "tool_search returned tool names but the
+    model couldn't call them." It was still true on 2026-09-25 — the rows carried
+    ``name``/``effect``/``limits`` and no argument shape at all, so a discovery hit was
+    not actionable.
+
+    Fixed by carrying the typed contract through: ``capability_mining._typed_contract``
+    reads the descriptor the manifest points at (``contract: <path>``) and
+    ``discovery._public_row`` puts ``input_schema``/``output_schema`` on every row.
+    Nothing is invented — a descriptor without a schema omits the key.
+    """
     runtime = _registered_runtime(tmp_path)
     search = tool_search_tool(runtime=str(runtime))
     result = search.handler(need="read a file", limit=3)
     rows = list(result.get("results", [])) + list(result.get("build_candidates", []))
     assert rows, "nothing found"
-    assert all("input_schema" in row for row in rows), [
-        sorted(row) for row in rows
-    ]
+
+    for row in rows:
+        assert "input_schema" in row, sorted(row)
+        schema = row["input_schema"]
+        assert isinstance(schema, dict), row["name"]
+        # a call contract names its arguments; `{}` would be no contract at all
+        assert schema.get("properties") or schema.get("required"), (row["name"], schema)
+
+    # the point of the contract is that a call can be *made*: read_file's arguments are
+    # the ones its descriptor declares, not a shape derived from its name
+    read_row = next(r for r in rows if r["name"] == "read_file")
+    declared = set(read_row["input_schema"].get("properties", {}))
+    assert {"path", "limit", "offset"} <= declared, sorted(declared)
+
+
+def test_the_call_contract_is_absent_rather_than_invented_when_none_is_declared(tmp_path):
+    """No descriptor, no schema key — never a fabricated argument shape."""
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    from skaldir.capability_mining import contract_metadata
+
+    payload = contract_metadata("bare_tool", {"name": "bare_tool", "effect": "does a thing"})
+    assert "input_schema" not in payload
+    assert "output_schema" not in payload
+
+    # and the search row follows the same rule
+    from skaldir.discovery import _public_row
+
+    row = _public_row({"name": "bare_tool", "meta": payload, "state": "build_candidate"},
+                      executable=False)
+    assert "input_schema" not in row
+    assert "output_schema" not in row
+    assert row["effect"] == "does a thing"
 
 
 def test_registry_tools_are_callable_as_agent_tools(tmp_path):

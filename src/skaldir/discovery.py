@@ -1057,6 +1057,13 @@ def _public_row(row: dict, *, executable: bool) -> dict:
         "preconditions": [str(item) for item in (meta.get("preconditions") or [])],
         "validation": str(meta.get("validation") or ""),
         "effect": str(meta.get("effect") or ""),
+        # TOOL-02: the call contract travels with the row, so a discovery hit is
+        # immediately actionable. Absent when the descriptor declares none — an omitted
+        # key, never a fabricated argument shape.
+        **({"input_schema": meta["input_schema"]}
+           if isinstance(meta.get("input_schema"), dict) else {}),
+        **({"output_schema": meta["output_schema"]}
+           if isinstance(meta.get("output_schema"), dict) else {}),
     }
 
 
