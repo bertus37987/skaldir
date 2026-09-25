@@ -640,7 +640,7 @@ def builtin_tools(workspace: str | Path) -> list[AgentTool]:
             "created": not existed,
         }
 
-    return [
+    tools: list[AgentTool] = [
         AgentTool(
             name="read_text",
             description="Read a UTF-8 text file inside the workspace (bounded).",
@@ -697,6 +697,7 @@ def builtin_tools(workspace: str | Path) -> list[AgentTool]:
             mutating=True,
         ),
     ]
+    return tools
 
 
 #: Verified effect metadata for the core tools (Paket 4 / audit F06).
@@ -806,6 +807,18 @@ def tool_set_for(
     tools: list[AgentTool] = []
     if selection in ("builtin", "both"):
         tools.extend(builtin_tools(workspace))
+        # The product gap behind the user finding ("behauptet danach aber, keine Shell-
+        # oder Python-Ausfuehrung zu besitzen"): `builtin_tools` alone is four file tools,
+        # so a model that had just written hello.py had to say it could not run it. The
+        # shared capability set is the one build_agent_toolset and goal_run already use.
+        # Placed HERE and not inside `builtin_tools`, because that one is what
+        # core_capability_tools itself builds on — calling back into it recursed.
+        from .core_capabilities import core_capability_tools
+
+        already = {getattr(t, "name", "") for t in tools}
+        tools.extend(core_capability_tools(
+            workspace=workspace, exclude=already,
+        ))
     if selection in ("registry", "both"):
         # Deliberate: the *loop* surface refuses to invent a store. `store=None` here is a
         # caller bug, and `tests/test_agent_loop.py::test_the_registry_tool_set_mixes_builtin_and_registered_tools`
