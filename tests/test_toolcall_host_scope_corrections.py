@@ -68,19 +68,44 @@ def test_the_owned_scratch_space_is_allowed(monkeypatch, tmp_path):
     assert not d.checks.get("foreign_paths")
 
 
-def test_the_managed_tmp_area_honours_tmpdir(monkeypatch):
-    monkeypatch.setenv("SKALDIR_TMPDIR", "/tmp/skaldir-scope")
-    import importlib
+def test_the_managed_tmp_area_honours_tmpdir(monkeypatch, tmp_path):
+    """A TMPDIR inside the runtime is honoured — but only when it really exists.
+
+    The earlier version asserted /tmp/skaldir-scope was managed; that directory was
+    never created, which is exactly the gap the user named: the name alone proves no
+    exclusive control.
+    """
+    # the override is only honoured inside the runtime home (or /tmp/skaldir): a
+    # directory under bare /tmp is somebody else's, which is the whole point
+    home = tmp_path / "runtime"
+    (home / "tmp").mkdir(parents=True, mode=0o755)
+    monkeypatch.setenv("SKALDIR_HOME", str(home))
+    root = home / "tmp"
+    monkeypatch.setenv("SKALDIR_TMPDIR", str(root))
 
     import skaldir.toolcall as tc
-    importlib.reload(tc)
-    try:
-        d = tc.judge_tool_call(tc.ToolIntent(
-            tool="terminal", args={"command": "soffice --version >/tmp/skaldir-scope/a.log"},
-            workspace=WS, project_root=WS))
-        assert d.checks.get("managed_tmp_paths") == ["/tmp/skaldir-scope/a.log"]
-    finally:
-        importlib.reload(tc)
+
+    log = root / "a.log"
+    d = tc.judge_tool_call(tc.ToolIntent(
+        tool="terminal", args={"command": f"soffice --version >{log}"},
+        workspace=WS, project_root=WS))
+    assert d.checks.get("managed_tmp_paths") == [str(log)]
+    assert not d.checks.get("foreign_paths")
+
+
+def test_a_tmpdir_that_does_not_exist_is_not_managed(monkeypatch, tmp_path):
+    """A directory that was never created is a claim, not an owned root."""
+    root = tmp_path / "never-created"
+    monkeypatch.setenv("SKALDIR_TMPDIR", str(root))
+
+    import skaldir.toolcall as tc
+
+    log = root / "a.log"
+    d = tc.judge_tool_call(tc.ToolIntent(
+        tool="terminal", args={"command": f"soffice --version >{log}"},
+        workspace=WS, project_root=WS))
+    assert d.checks.get("managed_tmp_paths") == []
+    assert d.checks.get("foreign_paths") == [str(log)]
 
 
 def test_the_managed_tmp_is_a_target_prefix_not_a_substring():

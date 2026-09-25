@@ -1033,7 +1033,87 @@ class HostSessionRunner(BaseRunner):
         self._registry = register_owned_display(display, proc.pid, geometry=self.window_size)
         self._started = True
         self._closed = False
-        return True, f"started a private Xvfb {display} (pid {proc.pid})"
+        # A window manager, or the display stays a bare framebuffer: an X server without a
+        # WM never *maps* a window, so Calc opens (process alive, file locked) and shows
+        # nothing — which is what "this path can only drive a browser" felt like from the
+        # outside. A real GUI needs the WM; a dry/probe run does not, so it stays optional.
+        wm = self._start_window_manager()
+        detail = f"started a private Xvfb {display} (pid {proc.pid})"
+        if wm:
+            return True, f"{detail} · window manager {wm[0]} (pid {wm[1]})"
+        return True, f"{detail} · no window manager found (GUI windows stay unmapped)"
+
+    #: the window manager this runner started on its own display, or None
+    _window_manager: tuple[str, int] | None = None
+
+    def _stop_window_manager(self) -> None:
+        """End the window manager this run started — never one belonging to a session."""
+        if self._window_manager is None:
+            return
+        name, pid = self._window_manager
+        # only ever kill a process that is really OUR window manager: a recycled pid must
+        # not be ended just because the number matches
+        try:
+            cmdline = Path(f"/proc/{pid}/cmdline").read_bytes().decode("utf-8", "replace")
+        except OSError:
+            cmdline = ""
+        ours = bool(pid) and _pid_alive(pid) and name in cmdline
+        if ours:
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except OSError:
+                pass
+            for _ in range(20):
+                if not _pid_alive(pid):
+                    break
+                time.sleep(0.1)
+            if _pid_alive(pid):
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except OSError:
+                    pass
+        self._window_manager = None
+
+    def _start_window_manager(self) -> tuple[str, int] | None:
+        """Start the lightest available window manager on **our own** display.
+
+        Deliberately not the user's session: the WM is started on ``self.display``, so it
+        can never see, focus or move a window on the live desktop. Order matters — the
+        smallest that actually runs wins, and a WM that cannot start is skipped rather
+        than allowed to leave a half-started process behind.
+        """
+        candidates = (
+            ("openbox", ["openbox"]),
+            ("metacity", ["metacity", "--no-composite"]),
+            ("mutter", ["mutter", "--replace"]),
+            ("icewm", ["icewm"]),
+            ("jwm", ["jwm"]),
+            ("fluxbox", ["fluxbox"]),
+        )
+        for name, argv in candidates:
+            if shutil.which(argv[0]) is None:
+                continue
+            try:
+                proc = subprocess.Popen(
+                    argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    stdin=subprocess.DEVNULL, start_new_session=True,
+                    env={**os.environ, "DISPLAY": self.display},
+                )
+            except OSError:
+                continue
+            # it must survive long enough to actually own the display
+            for _ in range(20):
+                if proc.poll() is not None:
+                    break  # it died: try the next one
+                time.sleep(0.1)
+            else:
+                self._window_manager = (name, proc.pid)
+                return name, proc.pid
+            try:
+                proc.wait(timeout=1.0)
+            except (OSError, subprocess.SubprocessError):
+                pass
+        return None
 
     # -- the scope rule ---------------------------------------------------------- #
 
@@ -1624,6 +1704,9 @@ class HostSessionRunner(BaseRunner):
         its registry entry is dropped and its stale socket/lock files are removed, so the
         display number is free again and no zombie is left behind (F5/F6).
         """
+        # the window manager first: it serves the display, so stopping the display first
+        # would leave the WM owning a dead X server
+        self._stop_window_manager()
         if self._owned is not None:
             self._owned.stop()
             self._owned = None

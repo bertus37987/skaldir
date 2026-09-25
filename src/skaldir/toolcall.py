@@ -300,7 +300,7 @@ def _command(intent: ToolIntent) -> str:
 
 #: A discard target: writing here throws away the caller's own stream. It is not a file
 #: write, so the project fence must never fire on it.
-DEVICE_DISCARD = frozenset({"/dev/null", "/dev/tty"})
+DEVICE_DISCARD = frozenset({"/dev/null"})
 
 #: A *forward* target: it hands the stream on to the caller's own stdout/stderr. Like a
 #: discard it is not a file write — but calling it "a discard" would be wrong, so the two
@@ -308,7 +308,14 @@ DEVICE_DISCARD = frozenset({"/dev/null", "/dev/tty"})
 #: Weiterleitungen, keine Verwerfziele").
 DEVICE_FORWARD = frozenset({"/dev/stdout", "/dev/stderr", "/dev/fd/1", "/dev/fd/2"})
 
-DEVICE_TARGETS = DEVICE_DISCARD | DEVICE_FORWARD
+#: The *controlling terminal*: neither a discard nor a forward — writing to /dev/tty puts
+#: the text on the terminal the process is attached to, which is an INTERACTIVE effect
+#: (it can fool a human, or read input they never gave). So it is its own kind: it never
+#: trips the project fence (it is not a file write) but it is also never waved through
+#: silently — it counts as a terminal interaction the caller has to have intended.
+DEVICE_TERMINAL = frozenset({"/dev/tty", "/dev/console"})
+
+DEVICE_TARGETS = DEVICE_DISCARD | DEVICE_FORWARD | DEVICE_TERMINAL
 
 #: The runtime's own data directory, i.e. ``<SKALDIR_HOME>/tmp``. NOT ``/tmp``: the whole
 #: shared /tmp holds other people's files, and a manipulated ``TMPDIR`` pointing at /etc
@@ -359,17 +366,62 @@ def _managed_tmp_roots() -> tuple[str, ...]:
     return resolved
 
 
+def _root_is_really_ours(root: str) -> bool:
+    """Does this root really belong to us — on disk, not by name?
+
+    "The name /tmp/skaldir alone proves no exclusive control." A directory is ours only
+    when all of these hold, and each one closes a hole on its own:
+
+    * it **exists** and is a directory (a root that was never created is a claim, not a
+      fact — measured: ``<SKALDIR_HOME>/tmp`` returned True while it did not exist);
+    * we **own** it, or we may write into it (its mode says so) — a tree another user
+      owns is not ours no matter where it sits;
+    * it is **not a symlink** and does not sit inside one;
+    * it is not a world-writable directory somebody else could be using;
+    * it is not inside another user's home either.
+    """
+    if not root.startswith("/"):
+        return False
+    normalized = os.path.normpath(root)
+    if os.path.islink(normalized):
+        return False  # a symlinked root points wherever its target points
+    if not os.path.isdir(normalized):
+        return False
+    # sitting inside someone else's home is not ours, even when the mode allows writing
+    try:
+        real = os.path.realpath(normalized)
+    except OSError:
+        return False
+    if os.path.islink(real) and real != normalized:
+        return False
+    try:
+        info = os.stat(normalized)
+    except OSError:
+        return False
+    me = os.getuid()
+    mode = info.st_mode
+    if info.st_uid != me:
+        # another owner is only acceptable when we may write there — and never for the
+        # well-known shared dirs, where "writable" means "everyone's"
+        if not (mode & 0o0002) or normalized in ("/tmp", "/var/tmp", "/dev/shm"):
+            return False
+    if mode & 0o0002 and normalized in ("/tmp", "/var/tmp", "/dev/shm"):
+        return False
+    return True
+
+
 def in_managed_tmp(path: str) -> bool:
     """True when ``path`` is a directory this runtime owns, verified on disk.
 
-    Three things are checked, because each one alone is bypassable:
-    the path is under an owned root, it is **not a symlink** (a symlink inside our own
-    tree can point anywhere), and its *real* target is still inside that root.
+    The root is checked with :func:`_root_is_really_ours`, so a root that does not exist,
+    that we do not own, or that is a symlink is refused instead of trusted. The target
+    itself must not be a symlink either, and its real target must stay inside a root we
+    really own.
     """
     if not path.startswith("/"):
         return False
     normalized = os.path.normpath(path)
-    roots = _managed_tmp_roots()
+    roots = [root for root in _managed_tmp_roots() if _root_is_really_ours(root)]
     if not roots:
         return False
     if not any(normalized == r or normalized.startswith(r + "/") for r in roots):
