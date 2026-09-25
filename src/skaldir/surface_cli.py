@@ -480,10 +480,24 @@ def _cmd_schedule_due(args: argparse.Namespace) -> int:
 
 
 def _cmd_stop_report(args: argparse.Namespace) -> int:
+    """The measured stop-path feasibility report (STOP-05).
+
+    ``--proof FILE`` hands in the live evidence for one backend (what was observed, from
+    which device, on which session). Without it the report says the stop is unproven — it
+    never claims a proof it was not given.
+    """
     out = Path(str(getattr(args, "out", "") or "")) if getattr(args, "out", "") else (
         runtime_dir(args) / "stop-feasibility.json"
     )
-    report = SS.write_report(out)
+    proof = None
+    proof_path = str(getattr(args, "proof", "") or "")
+    if proof_path:
+        try:
+            proof = json.loads(Path(proof_path).read_text(encoding="utf-8"))
+        except Exception as exc:  # noqa: BLE001 — an unreadable proof is not a proof
+            return blocked(f"cannot read the proof at {proof_path!r}: {exc}",
+                           reason="proof_unreadable")
+    report = SS.write_report(out, proof=proof)
     report["report_path"] = str(out)
     report_envelope(report, [{"ref": COMMAND_EVIDENCE["stop.report"], "kind": "code", "note": ""}])
     dump(report)
@@ -1071,6 +1085,8 @@ def register_cli(subparsers: Any) -> Any:
 
     rep = stop_sub.add_parser("report", help="measure the double-Escape feasibility here")
     rep.add_argument("--out", default="")
+    rep.add_argument("--proof", default="",
+                     help="JSON file with the live evidence for one backend (STOP-05)")
     rep.set_defaults(func=_cmd_stop_report)
 
     # SCHED-04: definition, activation, pause and deletion are separate commands

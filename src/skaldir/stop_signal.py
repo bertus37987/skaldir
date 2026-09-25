@@ -436,31 +436,79 @@ def probe_backends() -> list[BackendProbe]:
     ]
 
 
-def write_report(path: str | Path, *, session: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Write the measured feasibility report the release decision reads (STOP-05)."""
+def _session_type() -> str:
+    """The display session, because X11 and Wayland are separate acceptance targets.
+
+    The masterplan is explicit: "X11 und Wayland separat abnehmen; XWayland ist kein
+    Ersatz fuer beide Nachweise." Measured on this host a raw ``/dev/input/event*`` read
+    sees **no keys at all** under Wayland even with the right group, because the
+    compositor owns the stream — while ``libinput`` does see them. So the backend that
+    proves the stop depends on the session, and the report has to say which one it is in.
+    """
+    return (
+        os.environ.get("XDG_SESSION_TYPE", "").strip().lower()
+        or ("wayland" if os.environ.get("WAYLAND_DISPLAY") else
+            "x11" if os.environ.get("DISPLAY") else "unknown")
+    )
+
+
+def write_report(path: str | Path, *, session: dict[str, Any] | None = None,
+                 proof: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Write the measured feasibility report the release decision reads (STOP-05).
+
+    ``proof`` is the live evidence for one backend: what was observed, from where, and on
+    which session. Without it the report honestly says the stop is unproven — it never
+    claims a proof it was not handed.
+    """
     probes = probe_backends()
     # STOP-03: the agent's own injection path can never deliver a user stop, so it does not
     # count towards "usable stop backends" even though it is available as a tool.
     usable = [p for p in probes
               if p.availability is Availability.AVAILABLE and p.name != "agent-injection"]
+    session_type = _session_type()
+    proof = dict(proof or {})
+    proven = bool(proof.get("double_escape_proven"))
+    proven_backend = str(proof.get("source") or "")
+
+    if proven:
+        statement = (
+            f"A physical double-Escape stop is proven on {session_type} via "
+            f"{proven_backend or 'a measured backend'}: {proof.get('detected', 0)} "
+            "double-Escape(s) observed from the real keyboard. X11 and Wayland are "
+            "separate acceptance targets — this proof covers this session only."
+        )
+    else:
+        statement = (
+            "A physical double-Escape stop is NOT declared complete. The detector logic "
+            "is implemented and tested, but no backend on this host has been shown to "
+            "deliver two physical Escape presses from the real keyboard while another "
+            "application holds the focus."
+        )
+
     report: dict[str, Any] = {
         "kind": "skaldir.stop-feasibility",
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "session": dict(session or {}),
+        "session_type": session_type,
         "window_ms": DEFAULT_WINDOW_MS,
         "min_gap_ms": DEFAULT_MIN_GAP_MS,
         "backends": [p.to_dict() for p in probes],
         "verdict": {
-            # STOP-05: never "complete" while a target backend is unproven
-            "double_escape_proven": False,
+            "double_escape_proven": proven,
+            "proven_backend": proven_backend,
             "usable_backends": [p.name for p in usable],
-            "statement": (
-                "A physical double-Escape stop is NOT declared complete. The detector logic "
-                "is implemented and tested, but no backend on this host has been shown to "
-                "deliver two physical Escape presses from the real keyboard while another "
-                "application holds the focus."
-            ),
+            "proof": proof,
+            "statement": statement,
         },
+        "notes": [
+            ("X11 and Wayland are accepted separately; XWayland is not a substitute for "
+             "both (masterplan)."),
+            ("A raw /dev/input/event* read is NOT the proof path on Wayland: the "
+             "compositor owns the event stream, so it sees no keys even with the input "
+             "group. `libinput` does."),
+            ("agent-injection (ydotool/xdotool/wtype) can never prove a user stop: "
+             "synthesised input cannot show that a user can stop a run (STOP-03)."),
+        ],
     }
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
