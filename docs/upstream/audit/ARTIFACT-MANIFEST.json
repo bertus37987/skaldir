@@ -1,0 +1,596 @@
+{
+  "schema_version": 1,
+  "kind": "artifact_hash_manifest",
+  "contract": "ABNAHME.md §114 ('Screenshot-/Artefaktmanifest mit Hashes')",
+  "observed_project_head": "11300d7d0d4a8c81e24a9cf216397252176184d6",
+  "hash": "sha256",
+  "self_excluded": {
+    "path": "docs/audit/ARTIFACT-MANIFEST.json",
+    "reason": "a file cannot carry its own digest; hash it externally if you need to pin this manifest"
+  },
+  "totals": {
+    "files": 106,
+    "bytes": 9802245
+  },
+  "missing_artifacts": [
+    "docs/audit/SYSTEM_ONE_REPORT.md (expected absent — §114 artifact not produced yet)",
+    "docs/audit/benchmark-runs/*.jsonl (expected absent — §114 artifact not produced yet)"
+  ],
+  "groups": {
+    "criteria_register": {
+      "description": "§114/§115 audit package: criteria register (97 ids, three state dimensions), verified evidence mapping, generated CODE_MAP, resume, §113 findings",
+      "artifacts": [
+        {
+          "path": "audit/CODE_MAP.md",
+          "sha256": "2579fdf82623b763cc658eac5c5600759567ffad864601dcebed0813ab1e55c9",
+          "size_bytes": 59510
+        },
+        {
+          "path": "audit/REQUIREMENTS.json",
+          "sha256": "82294fd93a44e383f206029972953f92045cdfdabf0c3e910893fdafb7bd6840",
+          "size_bytes": 310837
+        },
+        {
+          "path": "audit/RESUME.md",
+          "sha256": "1b74fe664ea625c1935e42eb05cd8e93647b47218c4973731a7cb482cc4ecd8e",
+          "size_bytes": 9534
+        },
+        {
+          "path": "audit/findings.json",
+          "sha256": "fb3d464e75123ea70177693b1d34376ce42e179bf4c8b7faaa06d3c8597c3ea1",
+          "size_bytes": 58196
+        },
+        {
+          "path": "audit/verification-mapping.json",
+          "sha256": "6deb78cdf1c9661dc48a7d88c57044a74403a1f7ff05486b7c132803cc86f2c9",
+          "size_bytes": 114997
+        }
+      ]
+    },
+    "completion_folder": {
+      "description": "§114 Pflichtartefakte of the completion folder (TEST_REPORT, PERFORMANCE, BENCHMARK_MANIFEST, raw-data README, SKILLS_USED, UPDATE_COMPATIBILITY, RELEASE_NOTES, Plattformmatrix, Docker evidence, RF-09 inventory, System-One question manifest, Computer-Use subtool manifest)",
+      "artifacts": [
+        {
+          "path": "docs/audit/BENCHMARK-RAW-README.md",
+          "sha256": "57e445bd0283c517065faf659ca0167ec52db1c1f6b506c697e51d73b593931b",
+          "size_bytes": 6238
+        },
+        {
+          "path": "docs/audit/BENCHMARK_MANIFEST.json",
+          "sha256": "adf96feb162aa7e89f25bfb742026857f7ed2d8b93f4bfbe0e7248bd5f1aadea",
+          "size_bytes": 2637
+        },
+        {
+          "path": "docs/audit/COMPUTER_USE_SUBTOOLS.md",
+          "sha256": "473efafa4d2f88c633cc2a8e15d2ca6c40061e4d61f4d94370f511fae2e379dd",
+          "size_bytes": 8092
+        },
+        {
+          "path": "docs/audit/DOCKER-BUILDER-EVIDENCE.md",
+          "sha256": "25aab42cf531d004c71c05e92a032c37a83640739403da1d42fa135996a55616",
+          "size_bytes": 6520
+        },
+        {
+          "path": "docs/audit/PERFORMANCE.md",
+          "sha256": "e32a5b509cf0f5b6e5695ff2570a8751383746b5eabc56456c5ed1fdb284a33e",
+          "size_bytes": 13738
+        },
+        {
+          "path": "docs/audit/PLATFORM-MATRIX.md",
+          "sha256": "1e24fa87f61c5cbecf8af35acefd7bbc81a4e2db4ca8a6781115d7face625bbf",
+          "size_bytes": 5860
+        },
+        {
+          "path": "docs/audit/RELEASE_NOTES.md",
+          "sha256": "e8981aa87c4d363a9c8d6668a30b7371aa0c71b34e2d57a6996b34cb62629316",
+          "size_bytes": 2380
+        },
+        {
+          "path": "docs/audit/RF09-CRASH-WINDOW-INVENTORY.md",
+          "sha256": "586b0e3d4f0d9b9122d11bd645e2f41a46a8fa241959f4d7c3f9f43b3fe3213b",
+          "size_bytes": 8072
+        },
+        {
+          "path": "docs/audit/SKILLS_USED.md",
+          "sha256": "784f646bad3e2c2f8925e782fc67fadfb057146ec7f13a6110ea1dc48e261a67",
+          "size_bytes": 1687
+        },
+        {
+          "path": "docs/audit/SYSTEM_ONE_QUESTIONS.json",
+          "sha256": "c52e18f0aac8cb1c7f38198f979bd221387f8fbcb012ebd20e26ab543f53e1fe",
+          "size_bytes": 18767
+        },
+        {
+          "path": "docs/audit/TEST_REPORT.md",
+          "sha256": "eb3df01b45050fa1b22f8cf6b10e2ed1ee7a3607e56c2bb6b2d1393425588b0b",
+          "size_bytes": 9488
+        },
+        {
+          "path": "docs/audit/UPDATE_COMPATIBILITY.md",
+          "sha256": "652b7cc556f365a2972f07a1bccd405b6fd955bc04f80fe8df6c2f9be5e71451",
+          "size_bytes": 2359
+        }
+      ]
+    },
+    "host_overlays": {
+      "description": "Anchored, idempotent engine overlays (RF-02..RF-10 + agent/tool refresh) — artifacts, applied only on explicit invocation",
+      "artifacts": [
+        {
+          "path": "host-overlay/patch_agent.py",
+          "sha256": "b18f04dd4dccd8bf1ce76748ea9ff786c50567641071cfc1133c553a5ce583eb",
+          "size_bytes": 4488
+        },
+        {
+          "path": "host-overlay/patch_rf02_request_deadline.py",
+          "sha256": "4ea0cb7e104a2153b41d5ca8d0c2243ae8100a2fcc2fa9ecb329d711d9736c86",
+          "size_bytes": 9928
+        },
+        {
+          "path": "host-overlay/patch_rf03_monotonic_stream_clock.py",
+          "sha256": "81bbf63c06ab32bd2b171bfbad917c3d14a19f6105a3da99ed4ed4d74ac7f4e4",
+          "size_bytes": 9902
+        },
+        {
+          "path": "host-overlay/patch_rf04_retry_budget.py",
+          "sha256": "f1265d2af67699f421cbe7a6f1d3ab462a515755bc4048ef2b9b965779c1196c",
+          "size_bytes": 13730
+        },
+        {
+          "path": "host-overlay/patch_rf05_fallback_fitness.py",
+          "sha256": "18df21c9d8149d522f8db9679881807d92bdd7121a673bb3e695ecbbd167e3a8",
+          "size_bytes": 13978
+        },
+        {
+          "path": "host-overlay/patch_rf06_compression_preserve.py",
+          "sha256": "b270787a29276e5e681b704b8c20f7ea6408daf8169b65ea5c39afacc2bde166",
+          "size_bytes": 18433
+        },
+        {
+          "path": "host-overlay/patch_rf07_interim_report.py",
+          "sha256": "0b3e6f5c7cc08ca4fb315bea8676c9ab8dd1b968a049fbd997f12e5ebed64cb2",
+          "size_bytes": 20363
+        },
+        {
+          "path": "host-overlay/patch_rf08_segment_continuation.py",
+          "sha256": "6e0ccc860b1655560f802ec9dd8df1f0bfa23768d58d00e4dbf33b0025556964",
+          "size_bytes": 22616
+        },
+        {
+          "path": "host-overlay/patch_rf09_crash_windows.py",
+          "sha256": "ef05b77f8ec3bd0e537c71e012ad4e171ed8eed503f62e3f1903b0c0bfd07ca3",
+          "size_bytes": 33616
+        },
+        {
+          "path": "host-overlay/patch_rf10_stop_responsiveness.py",
+          "sha256": "dcac091daf983e8f7ea6b7f46e8d566f1dfe06e6253d92a89081908e3808a7da",
+          "size_bytes": 7162
+        },
+        {
+          "path": "host-overlay/patch_tool_refresh.py",
+          "sha256": "2a906c461714668f012f1b2976a6fcb8fd6ec8b89341b031927658166a812d25",
+          "size_bytes": 5517
+        }
+      ]
+    },
+    "probes": {
+      "description": "Red-first engine probes + the RF measurement harness and its isolated test provider",
+      "artifacts": [
+        {
+          "path": "tools/host_engine_regression_probe.py",
+          "sha256": "182e122876c605fe925c0fbb51c8865369e9a26d981e211f2ec0ad3edfbf1e46",
+          "size_bytes": 4362
+        },
+        {
+          "path": "tools/host_rf02_deadline_probe.py",
+          "sha256": "669e9216b0a4d72adfd2218d08717eebd2d50260a8310eaef22ed72c053c59a9",
+          "size_bytes": 4814
+        },
+        {
+          "path": "tools/host_rf04_retry_budget_probe.py",
+          "sha256": "bdaae40be0ef28ed09c89bf4273c7bc21fbe39181603361de21415b2ffb8111e",
+          "size_bytes": 5670
+        },
+        {
+          "path": "tools/host_rf05_fallback_probe.py",
+          "sha256": "5227f81c9563c45a9c0dd216f30f72be49bbdb1857dbc8e50442f8de70e70274",
+          "size_bytes": 4805
+        },
+        {
+          "path": "tools/host_rf07_interim_report_probe.py",
+          "sha256": "17d880d5f273ec1a6cb5c013a6ca543e717ab6f927ccc99b2cd7721426e764ce",
+          "size_bytes": 4581
+        },
+        {
+          "path": "tools/host_rf08_segment_probe.py",
+          "sha256": "ece2bc54a306f8442b0bc6356d08b2c1c6f6f0497368d49d43132bd850e06b21",
+          "size_bytes": 13146
+        },
+        {
+          "path": "tools/host_rf09_crash_probe.py",
+          "sha256": "53e58516b6fc39c232bc80dae2ea4089189b0000cbf575ed2b9e26b0baf15c4f",
+          "size_bytes": 8154
+        },
+        {
+          "path": "tools/host_rf10_stop_probe.py",
+          "sha256": "8538a36ee27963273ccb660fee1de645908c024621b1c33b3ea0801c089de404",
+          "size_bytes": 5045
+        },
+        {
+          "path": "tools/host_rf_monotonic_probe.py",
+          "sha256": "3198ad6d81656b19109ff51ad05c410e57eaeaab70723af2aad27696b2d85b7d",
+          "size_bytes": 3940
+        },
+        {
+          "path": "tools/rf_measure.py",
+          "sha256": "7ccafa2bf1846ef0302c085d4b3a510942d5d0ad20935067a3ef0fea9b9fa6e1",
+          "size_bytes": 10140
+        },
+        {
+          "path": "tools/rf_test_provider.py",
+          "sha256": "84e77b51730125485ecddbf7ae43bee6e0317d026f9e4e57990c1cb02e0021b6",
+          "size_bytes": 13722
+        }
+      ]
+    },
+    "pinned_tests": {
+      "description": "Hermetic pins for the overlays and for the review-16 fixes",
+      "artifacts": [
+        {
+          "path": "tests/test_host_overlay.py",
+          "sha256": "13e6b9e4f86622fa7877adfc7ef5908591c417a05b06a11b09da1c9cabf01766",
+          "size_bytes": 1860
+        },
+        {
+          "path": "tests/test_rf02_request_deadline.py",
+          "sha256": "9020c7487f85825da8acb1a9734c5d5a447efa02913e388d8849263c14013ed5",
+          "size_bytes": 4863
+        },
+        {
+          "path": "tests/test_rf03_monotonic_stream_clock.py",
+          "sha256": "0569c051214dc2b692904f7f48bcfe2093345cf11a27e7b3896071af012d0bc6",
+          "size_bytes": 4826
+        },
+        {
+          "path": "tests/test_rf07_interim_report.py",
+          "sha256": "15efcf448fa459bcbc3ecb396619ae69af6f371df0fce86742e735caf0a17cfb",
+          "size_bytes": 2352
+        },
+        {
+          "path": "tests/test_rf08_segment.py",
+          "sha256": "99f6ac4bb722e89a2f82d889c7794f8c941752e4208ed9ce56332fbbaaad2387",
+          "size_bytes": 8433
+        },
+        {
+          "path": "tests/test_rf09_crash_windows.py",
+          "sha256": "e38e43e0a8418f07a6c2d5584e772091425901d8fb01c9911eb5aa88dec16d6a",
+          "size_bytes": 9634
+        },
+        {
+          "path": "tests/test_rf10_stop_responsiveness.py",
+          "sha256": "46d3496ea32eec0f3a9b1f06e5b640adf448f4321ec0e1a7cc43d54cbbc4e43f",
+          "size_bytes": 3812
+        },
+        {
+          "path": "tests/test_rf_test_provider.py",
+          "sha256": "6aecc36150f25ba644b7079b2f4d09c09d0733480a26e6c3d83a9f923c2036c6",
+          "size_bytes": 5946
+        },
+        {
+          "path": "tests/test_secfix16.py",
+          "sha256": "ee8065f711846007e69cd6a122e7ce3742d2924e6af61b3cab09327156d6b4e1",
+          "size_bytes": 7966
+        },
+        {
+          "path": "tests/test_shared_budget.py",
+          "sha256": "0ebd60a764d435e90be9d7baa26a2127b524266f1f45d3fc794b6bd98c2404c2",
+          "size_bytes": 6465
+        },
+        {
+          "path": "tests/test_subagent_briefs.py",
+          "sha256": "feaf2307461f622ca3c76abdfba598a3e760c4bd3d27057425b3d9aa88cee3cb",
+          "size_bytes": 9024
+        }
+      ]
+    },
+    "evaluation": {
+      "description": "§109-§114 evaluation harness: audit-register builder, findings cross-check, §97 benchmark evaluation, benchmark schema, frozen discovery test set",
+      "artifacts": [
+        {
+          "path": "docs/BENCHMARK-RUN-SCHEMA.json",
+          "sha256": "99f4969c3b573ae7ba2c3e1a234ea17f67768c9e4248e9eace621368a41a6a1f",
+          "size_bytes": 6802
+        },
+        {
+          "path": "docs/DISCOVERY-TESTSET.md",
+          "sha256": "94a26dd0bd924d0c4e45c2346cf09be4f06b8b2416672e2011973035f2bc6fd7",
+          "size_bytes": 1484
+        },
+        {
+          "path": "tests/fixtures/discovery_cases.json",
+          "sha256": "6084cc5ed472d470c00f2d4f27b1c459482b9e9287f85ea75a2418a2866a6668",
+          "size_bytes": 10461
+        },
+        {
+          "path": "tools/build_audit_register.py",
+          "sha256": "15b55a24527bd87a986b1235b74d187c42f42c63b9f53cbf10b55fb7654f58cc",
+          "size_bytes": 13726
+        },
+        {
+          "path": "tools/check_findings_criteria.py",
+          "sha256": "8c0a94cc518eb9db255f3f970078278932c4d33dac28e915ddbeac6c9aba009c",
+          "size_bytes": 4139
+        },
+        {
+          "path": "tools/eval_benchmark.py",
+          "sha256": "5dd3479fc2875640d75743374a413a8a36d2e06e83314b0139d532827b066973",
+          "size_bytes": 17882
+        },
+        {
+          "path": "tools/gv_benchmark.py",
+          "sha256": "2ba257b99f845b51f522d5bc89fed2632e1449bf07a0bdabfa793dc67318174d",
+          "size_bytes": 57074
+        },
+        {
+          "path": "tools/gv_discovery_eval.py",
+          "sha256": "ceea9971efdde46976615759595859940002031feb996061a498505a446fe675",
+          "size_bytes": 26535
+        }
+      ]
+    },
+    "raw_data": {
+      "description": "Raw measurement data that exists on disk (RF test-provider round of 2026-09-16)",
+      "artifacts": [
+        {
+          "path": "outputs/rf/2026-09-16_131617/raw.jsonl",
+          "sha256": "75e38420d4dea20800d94ac09ba15ca39c7de5f96e3960e9293163badc975239",
+          "size_bytes": 7839
+        },
+        {
+          "path": "outputs/rf/2026-09-16_131617/summary.json",
+          "sha256": "6bc215f5d62a98a8f421f118bf0249b9fcf7e6a25d03b2d2932b906b90a278f5",
+          "size_bytes": 5378
+        }
+      ]
+    },
+    "screenshots": {
+      "description": "Real screenshot artifacts present in the repo (UI waves) — no screenshot is regenerated by this tool",
+      "artifacts": [
+        {
+          "path": "ui-artifacts/audit/00-current.png",
+          "sha256": "7206f780c54748a6303e5eed55f953b7a31903f7fc11849bd7c81ca69e6f88b0",
+          "size_bytes": 276659
+        },
+        {
+          "path": "ui-artifacts/audit/01-chat.png",
+          "sha256": "619fb282cf6ab3086de657c054c25d3ecf11326b6c5385375077920c789d38fc",
+          "size_bytes": 164469
+        },
+        {
+          "path": "ui-artifacts/audit/02-verification.png",
+          "sha256": "b67a9d1d5b1b14d2652b09138cc84c2647d0737bd9d842cd0cd2752c07c9f36a",
+          "size_bytes": 292515
+        },
+        {
+          "path": "ui-artifacts/audit/03-treasury.png",
+          "sha256": "79ec60ee1a4038b4f1c7af2bf11830ba8db86e2de70c3f1cc696c7d6c4308c33",
+          "size_bytes": 191042
+        },
+        {
+          "path": "ui-artifacts/audit/04-system.png",
+          "sha256": "79ec60ee1a4038b4f1c7af2bf11830ba8db86e2de70c3f1cc696c7d6c4308c33",
+          "size_bytes": 191042
+        },
+        {
+          "path": "ui-artifacts/audit/05-cockpit.png",
+          "sha256": "230876d29215770167614ac43b09f9e58befed9eee8ba22ec9919695f01be457",
+          "size_bytes": 276914
+        },
+        {
+          "path": "ui-artifacts/audit/06-chat-new-1920.png",
+          "sha256": "bc9601a1829cf856f62598ac17fbb8508d5704630d952405a0c8c2d1b8125ca9",
+          "size_bytes": 164056
+        },
+        {
+          "path": "ui-artifacts/audit/07-chat-new-1440.png",
+          "sha256": "bc9601a1829cf856f62598ac17fbb8508d5704630d952405a0c8c2d1b8125ca9",
+          "size_bytes": 164056
+        },
+        {
+          "path": "ui-artifacts/audit/08-chat-new-1280.png",
+          "sha256": "5244e9b1e253fd56f90a0c1e5e31424d61c00beffdfe43272e915d93e5d82f71",
+          "size_bytes": 164076
+        },
+        {
+          "path": "ui-artifacts/audit/09-panel-new.png",
+          "sha256": "4a48324a3f28a1ec3db724bddc2c2cb786a2e382bf310e765a9e608c6c5ca8b4",
+          "size_bytes": 275963
+        },
+        {
+          "path": "ui-artifacts/audit/10-chat-quiet-1920.png",
+          "sha256": "93e37b2d0b02d9d3e2e17f706c94da6bb37599a68f1e44708bbed478688b1033",
+          "size_bytes": 128878
+        },
+        {
+          "path": "ui-artifacts/audit/11-chat-quiet-1440.png",
+          "sha256": "93e37b2d0b02d9d3e2e17f706c94da6bb37599a68f1e44708bbed478688b1033",
+          "size_bytes": 128878
+        },
+        {
+          "path": "ui-artifacts/audit/12-panel-settings.png",
+          "sha256": "79796cca0b9574c1212a7dfeabbd3ada7a43a635aa88f1fba6ff826a3a0017cb",
+          "size_bytes": 267341
+        },
+        {
+          "path": "ui-artifacts/audit/13-settings-subtabs.png",
+          "sha256": "54d3a28cb22bb9082f2e52685842d1e836bbdbe57a3eafd6803897fc1be7ecfd",
+          "size_bytes": 218444
+        },
+        {
+          "path": "ui-artifacts/audit/14-panel-cockpit.png",
+          "sha256": "c1624f8bc795c498224a4c0c79b2f0cda94d90530fac02278d527f96e34d2fe8",
+          "size_bytes": 267397
+        },
+        {
+          "path": "ui-artifacts/audit/15-chat-c-1920.png",
+          "sha256": "85f68b35f8876620f5956f694ed7ce10bf9ed0ada72bd02b4956f62d7738dbf7",
+          "size_bytes": 141180
+        },
+        {
+          "path": "ui-artifacts/audit/16-chat-c-1280.png",
+          "sha256": "42fe34efadfbb11f425f3a32c5295a7f818adc7db51a6476ec36fde7dc7b1793",
+          "size_bytes": 141012
+        },
+        {
+          "path": "ui-artifacts/audit/17-panel-c-1920.png",
+          "sha256": "8ec4e0be7232bb98fd2e8c749aef6ea494af1b17557894b4ab02dcf9426e0632",
+          "size_bytes": 300748
+        },
+        {
+          "path": "ui-artifacts/audit/18-integrated-nav-1920.png",
+          "sha256": "e30058a1789a09202cdd1830be5f9215ee6650e2b3f84a33a7fef260abc8ae60",
+          "size_bytes": 220397
+        },
+        {
+          "path": "ui-artifacts/audit/19-integrated-cockpit-1920.png",
+          "sha256": "e30058a1789a09202cdd1830be5f9215ee6650e2b3f84a33a7fef260abc8ae60",
+          "size_bytes": 220397
+        },
+        {
+          "path": "ui-artifacts/audit/20-live-block-1920.png",
+          "sha256": "95279fbc41eb5d04b6ae224946d1ca367b299b91315d45f9fc26b5e6292100a4",
+          "size_bytes": 135811
+        },
+        {
+          "path": "ui-artifacts/audit/21-verified-complete-live.png",
+          "sha256": "b31f5657aa4e08522812c88b3f4e2242767b0ad55fdb885d06fcd4391bec474f",
+          "size_bytes": 248230
+        },
+        {
+          "path": "ui-artifacts/audit/gv-app-truth-20260913.png",
+          "sha256": "b95e0ff97e779eab499feb618a23f22d49ab939762682fafd1d55b8f77537979",
+          "size_bytes": 136647
+        },
+        {
+          "path": "ui-artifacts/baseline-completion.png",
+          "sha256": "9cc9cb32396c348a498074aa189eeb1f9bbf3e64f5ecd11da119a8a93fef8ace",
+          "size_bytes": 218189
+        },
+        {
+          "path": "ui-artifacts/baseline-live.png",
+          "sha256": "0c024fe7ea4ca92e2c855a086670ce3e6c1f4d9307e2f68240c8b441472d8c1f",
+          "size_bytes": 271855
+        },
+        {
+          "path": "ui-artifacts/baseline-system.png",
+          "sha256": "b4130db8c52a157e83eb155510457dc29b71a4e7c7b5fa86b12193af65157ffd",
+          "size_bytes": 165006
+        },
+        {
+          "path": "ui-artifacts/baseline-tools.png",
+          "sha256": "8c4662a3c6f97a334a705212b281562ba7bc943de4d5380d38bf52610e75f7ad",
+          "size_bytes": 245015
+        },
+        {
+          "path": "ui-artifacts/chat-baseline.png",
+          "sha256": "74704b001020f84609f73bb086a86fd4e0d9f965a0b6b4527c842df22087407e",
+          "size_bytes": 183642
+        },
+        {
+          "path": "ui-artifacts/chat-v1-small.png",
+          "sha256": "d9cd1ca2f3d3d96126ae937250ccf55980b3e658867ec075c0af260f4aaec55d",
+          "size_bytes": 128571
+        },
+        {
+          "path": "ui-artifacts/chat-v1-strip.png",
+          "sha256": "201fbdd62e7a046f31c9885fd7859f23f5efe8c3529cfe675ac086b951cf17b8",
+          "size_bytes": 193214
+        },
+        {
+          "path": "ui-artifacts/chat-v2-feed.png",
+          "sha256": "4952b778b0d65e1cd522cd20594e37f42e3bd3e4d6c4094ab7a0ac215550d17a",
+          "size_bytes": 201684
+        },
+        {
+          "path": "ui-artifacts/chat-v2-small.png",
+          "sha256": "2f812a33b0a9407f5a064395d9fed5d5996506a3d6755accd9376eef9cae6d3f",
+          "size_bytes": 134289
+        },
+        {
+          "path": "ui-artifacts/chat-v3-inspect.png",
+          "sha256": "142d553980de150b66d417561dbb71a3039cda7ce31229c5db0cfa58d2f44186",
+          "size_bytes": 192872
+        },
+        {
+          "path": "ui-artifacts/chat-v4-voice-visible.png",
+          "sha256": "1b937444c54b97dce53532f4d814b4aed052dce1a0ec5392c3b395f376f94ee9",
+          "size_bytes": 202342
+        },
+        {
+          "path": "ui-artifacts/chat-v5-geometry.png",
+          "sha256": "5d341c799aa7905f610a39ae9762a38c3cd7f59a8b830e65f5dfdd18ee450bd9",
+          "size_bytes": 252784
+        },
+        {
+          "path": "ui-artifacts/v1-cockpit-small.png",
+          "sha256": "799c85052dc457981ad6a121e4e5e4e22e8d0f1ee130efd25de68b1f31a1204b",
+          "size_bytes": 173754
+        },
+        {
+          "path": "ui-artifacts/v1-cockpit.png",
+          "sha256": "66bc8060f78b4922c8bebb9f84a503ae327f34e328d6fb61bc30033149fbf7af",
+          "size_bytes": 250635
+        },
+        {
+          "path": "ui-artifacts/v1-system.png",
+          "sha256": "3e405a91e85e391a5211b7e83799b087e37dc6a3718470787ccc968fe3798d8f",
+          "size_bytes": 174884
+        },
+        {
+          "path": "ui-artifacts/v1-verification.png",
+          "sha256": "5a26d41012071eb2658b0e37a422c9fd164c7fa8a61284ea150e7d5b7714f4e8",
+          "size_bytes": 232223
+        },
+        {
+          "path": "ui-artifacts/v2-cockpit.png",
+          "sha256": "05823265efe643e624524be737b7ecd6ac64b93354c51103f00ab14747a2a30d",
+          "size_bytes": 249560
+        },
+        {
+          "path": "ui-artifacts/v2-verification-small.png",
+          "sha256": "42405ed9958376b1015d240d0a3b895d048910759ba8cc22f2367d5c65ea3772",
+          "size_bytes": 180090
+        },
+        {
+          "path": "ui-artifacts/v2-verification.png",
+          "sha256": "1a27d874ff893f900ea0ef34f0df16ab0a7239139e86c26b2771a19837b98aa8",
+          "size_bytes": 250720
+        }
+      ]
+    },
+    "state_docs": {
+      "description": "Living state documents the criteria mappings cite",
+      "artifacts": [
+        {
+          "path": "docs/E2E-LIVE-PROOF-40.md",
+          "sha256": "88cdcd3eb52dc416fe1e2ed320189fab6de75ae31d8a79104e3a859f78ad847c",
+          "size_bytes": 10095
+        },
+        {
+          "path": "docs/PROJECT-STATE.md",
+          "sha256": "43eca57f9f8a9af3bae5c578d729b76917418fa5f2c71a1849f91c9b5b6c58f4",
+          "size_bytes": 53251
+        },
+        {
+          "path": "docs/RF-STATUS.md",
+          "sha256": "98d1c78568d384630cb1805894cd4ef92dfc2bdbdb657e36aff689e80852b729",
+          "size_bytes": 18740
+        },
+        {
+          "path": "docs/VERIFICATION-1.4.md",
+          "sha256": "62d5178afebeaec53cb14626c9fd927a9a81c3795c31a84a74a3924f5b791c9c",
+          "size_bytes": 9153
+        }
+      ]
+    }
+  }
+}

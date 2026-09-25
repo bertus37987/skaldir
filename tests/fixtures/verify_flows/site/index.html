@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Demo library — search</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 2rem; }
+  #results { list-style: none; padding: 0; }
+  #results li { padding: .4rem 0; border-bottom: 1px solid #ddd; }
+  #message { color: #a00; }
+</style>
+</head>
+<body>
+<h1>Search the demo library</h1>
+<form id="form" method="get" action="/search.html" onsubmit="return submitTerm();">
+  <label for="q">Term</label>
+  <input id="q" name="q" autocomplete="off">
+  <button id="go" type="submit">Search</button>
+</form>
+<p id="message" hidden></p>
+<ul id="results"></ul>
+<p><a id="about" href="/article.html?term=about">About the library</a></p>
+<script>
+function submitTerm() {
+  var term = document.getElementById('q').value.trim();
+  var message = document.getElementById('message');
+  if (!term) {
+    message.textContent = 'please type a search term';
+    message.hidden = false;
+    return false;
+  }
+  return true;
+}
+window.addEventListener('load', function () {
+  if (location.search.indexOf('empty=1') !== -1) {
+    var message = document.getElementById('message');
+    message.textContent = 'please type a search term';
+    message.hidden = false;
+  }
+});
+</script>
+</body>
+</html>

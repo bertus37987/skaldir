@@ -1,0 +1,29 @@
+== F1 · runs_store.acquire_writer after a release writes '' ==
+run 1: acquire -> action='acquired' acquired=True
+run 1: release -> True
+run 2: acquire -> action='acquired' acquired=True
+run 2: release -> True
+run 3: acquire -> action='acquired' acquired=True
+run 3: release -> True
+meta row after the last release: ''
+(three runs in a row start — before the fix, run 2 was a silent no-op)
+held by: pid=999:boot=live -> acquired
+live rival ->  refused | the store is held by pid=999:boot=live (pid alive, lease until 1789826088) — one writer only
+
+== the OLD branch shape, executed against the same released row ==
+previous = '' -> `not previous` is True
+old INSERT ... ON CONFLICT DO NOTHING -> rowcount = 0 (0 => reported as 'lost' => the run is a silent no-op, exit 6)
+the row is unchanged: ''
+
+== the fixed shape: one upsert with a WHERE that IS the compare-and-swap ==
+upsert with WHERE value = <what we read> -> rowcount = 1 (1 => acquired)
+
+== F1b · a finished contract is refused by name, not by traceback ==
+contract state: VERIFIED_COMPLETE | terminal: True
+the OLD unguarded path (run_goal called begin_goal directly):
+    ValueError: state VERIFIED_COMPLETE is terminal — a new goal needs a new identity (goal text and revision), not a rename
+    -> escaped as a traceback, exit 7 (EXIT_INTERNAL): a crash where a refusal belongs
+the NEW path refuses before start_goal, with a named reason:
+    GoalRunError(code=6): session contract is already VERIFIED_COMPLETE for this goal — a finished run is not reopened by re-running the same goal: give the work a new identity (a different goal text) or use a fresh --session
+and a genuinely different goal is still allowed:
+     WORKING

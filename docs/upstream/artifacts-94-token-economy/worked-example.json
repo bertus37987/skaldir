@@ -1,0 +1,391 @@
+{
+  "sections": {
+    "archived_tool_result": {
+      "tool": "container_logs",
+      "full_result_chars": 137200,
+      "full_result_bytes": 137200,
+      "hot_form_chars": 1135,
+      "tokens_before_estimate_chars4": 34300,
+      "tokens_after_estimate_chars4": 283,
+      "tokens_saved_estimate_chars4": 34017,
+      "saved_fraction": 0.9917,
+      "artifact_ref": "tool_archive:dd59b60a2a5e55e42d3f2b940f999c7c5e195de203c855d07ede6f0935d3f479",
+      "artifact_sha256": "dd59b60a2a5e55e42d3f2b940f999c7c5e195de203c855d07ede6f0935d3f479",
+      "artifact_path": "/home/willy/projects/gods-voice/docs/artifacts-94-token-economy/run/state/tool_archive/dd59b60a2a5e55e42d3f2b940f999c7c5e195de203c855d07ede6f0935d3f479.json",
+      "artifact_bytes_retrieved": 137200,
+      "retrieval_is_byte_identical": true,
+      "hot_form_carries_id_and_digest": true,
+      "dump_absent_from_prompt": true,
+      "run_status": "answered",
+      "executed_calls": 1,
+      "archive_stats": {
+        "puts": 1,
+        "deduped": 0,
+        "threshold_chars": 6000,
+        "summary_chars": 500,
+        "enabled": true,
+        "root": "/home/willy/projects/gods-voice/docs/artifacts-94-token-economy/run/state/tool_archive"
+      }
+    },
+    "progress_decision": {
+      "decisions": [
+        {
+          "turn": 1,
+          "stuck": false,
+          "signal": "",
+          "action": "continue",
+          "reason": "this turn produced tool activity, new evidence or a state change",
+          "conditions": {
+            "same_answer": false,
+            "no_tool_calls": true,
+            "no_new_evidence": true,
+            "no_state_delta": true
+          },
+          "signals": {
+            "turn": 1,
+            "no_progress_streak": 0,
+            "no_tool_streak": 1,
+            "last_verification": "INCOMPLETE",
+            "reply_fingerprint": "df7f5ac0ecb9ecd1503e8418d6250e5d3856e8448c7a30102dbf00eb948e0ebf",
+            "last_action": "continue",
+            "last_signal": "",
+            "tokens_used": 4096,
+            "token_budget": 8192,
+            "steps": 3,
+            "max_steps": 14
+          },
+          "notes": []
+        },
+        {
+          "turn": 2,
+          "stuck": true,
+          "signal": "pattern_no_new_evidence",
+          "action": "strategy_change_required",
+          "reason": "no_progress",
+          "conditions": {
+            "same_answer": true,
+            "no_tool_calls": true,
+            "no_new_evidence": true,
+            "no_state_delta": true
+          },
+          "signals": {
+            "turn": 2,
+            "no_progress_streak": 1,
+            "no_tool_streak": 2,
+            "last_verification": "INCOMPLETE",
+            "reply_fingerprint": "df7f5ac0ecb9ecd1503e8418d6250e5d3856e8448c7a30102dbf00eb948e0ebf",
+            "last_action": "strategy_change_required",
+            "last_signal": "pattern_no_new_evidence",
+            "tokens_used": 8192,
+            "token_budget": 8192,
+            "steps": 3,
+            "max_steps": 14
+          },
+          "notes": [
+            "the same verification verdict (INCOMPLETE) was reported again with no new run behind it"
+          ]
+        },
+        {
+          "turn": 3,
+          "stuck": true,
+          "signal": "pattern_retry_without_strategy_change",
+          "action": "stop",
+          "reason": "no_strategy_change_after_directive",
+          "conditions": {
+            "same_answer": true,
+            "no_tool_calls": true,
+            "no_new_evidence": true,
+            "no_state_delta": true
+          },
+          "signals": {
+            "turn": 3,
+            "no_progress_streak": 2,
+            "no_tool_streak": 3,
+            "last_verification": "INCOMPLETE",
+            "reply_fingerprint": "df7f5ac0ecb9ecd1503e8418d6250e5d3856e8448c7a30102dbf00eb948e0ebf",
+            "last_action": "stop",
+            "last_signal": "pattern_retry_without_strategy_change",
+            "tokens_used": 12288,
+            "token_budget": 16384,
+            "steps": 3,
+            "max_steps": 14
+          },
+          "notes": [
+            "the same verification verdict (INCOMPLETE) was reported again with no new run behind it",
+            "a strategy change was demanded 1 time(s) and the same answer came back \u2014 stopping, because looping spends budget to re-prove the same stall"
+          ]
+        }
+      ],
+      "signals": {
+        "turn": 3,
+        "no_progress_streak": 2,
+        "no_tool_streak": 3,
+        "last_verification": "INCOMPLETE",
+        "reply_fingerprint": "df7f5ac0ecb9ecd1503e8418d6250e5d3856e8448c7a30102dbf00eb948e0ebf",
+        "last_action": "stop",
+        "last_signal": "pattern_retry_without_strategy_change",
+        "tokens_used": 12288,
+        "token_budget": 16384,
+        "steps": 3,
+        "max_steps": 14
+      },
+      "named_stop_reason": "no_strategy_change_after_directive",
+      "directive_delivered_on_turn": 2,
+      "stopped_on_turn": 3
+    },
+    "retry_gate": {
+      "before_commit_point": {
+        "retry": true,
+        "action": "retry",
+        "reason": "nothing has been committed on this attempt",
+        "attempt": 1,
+        "max_attempts": 1,
+        "commit": {
+          "turn": 1,
+          "attempt": 1,
+          "visible_output": false,
+          "visible_chars": 0,
+          "tool_executed": false,
+          "committed": false,
+          "blocker": ""
+        },
+        "replan": ""
+      },
+      "after_visible_output": {
+        "retry": false,
+        "action": "replan",
+        "reason": "refused past the commit point: user-visible output was already emitted (31 chars) (after: ReadError: connection reset)",
+        "attempt": 1,
+        "max_attempts": 1,
+        "commit": {
+          "turn": 2,
+          "attempt": 1,
+          "visible_output": true,
+          "visible_chars": 31,
+          "tool_executed": false,
+          "committed": true,
+          "blocker": "user-visible output was already emitted (31 chars)"
+        },
+        "replan": "the provider call failed after this attempt had already committed (user-visible output was already emitted (31 chars)) \u2014 a blind retry would write the same answer to the screen twice. Re-plan instead: state what you have already done and continue from there, without repeating it."
+      },
+      "after_tool_executed": {
+        "retry": false,
+        "action": "replan",
+        "reason": "refused past the commit point: a tool call has already executed (after: ReadError: connection reset)",
+        "attempt": 1,
+        "max_attempts": 1,
+        "commit": {
+          "turn": 3,
+          "attempt": 1,
+          "visible_output": false,
+          "visible_chars": 0,
+          "tool_executed": true,
+          "committed": true,
+          "blocker": "a tool call has already executed"
+        },
+        "replan": "the provider call failed after this attempt had already committed (a tool call has already executed) \u2014 a blind retry would run a tool a second time. Re-plan instead: state what you have already done and continue from there, without repeating it."
+      }
+    },
+    "token_report": {
+      "schema_version": "1",
+      "run_id": "94-worked-example",
+      "session_id": "94-worked-example",
+      "transcript": "/tmp/94-worked-example.jsonl",
+      "record_path": "/tmp/94-worked-example.telemetry.json",
+      "source": "transcript",
+      "task": "",
+      "workspace": "",
+      "status": "running",
+      "reason": "",
+      "started_at": "",
+      "ended_at": "",
+      "duration_ms": null,
+      "duration": "n/a",
+      "duration_source": "the transcript carries no usable timestamps",
+      "turns": 1,
+      "turn_rows": [
+        {
+          "index": 1,
+          "step": 1,
+          "at": "",
+          "answered": true,
+          "duration_ms": null,
+          "finish_reason": "",
+          "prompt_tokens": 4096,
+          "completion_tokens": 4096,
+          "tokens_total": 8192,
+          "tokens_source": "provider",
+          "tokens_method": "reported by the provider in this answer's `usage`",
+          "tokens_per_second": null,
+          "tokens_per_second_reason": "the transcript records no measurable generation window for this turn",
+          "context_used_tokens": 4096,
+          "context_percent": 3.2,
+          "context_source": "provider",
+          "messages": null,
+          "tool_call_count": 0,
+          "tool_calls": []
+        }
+      ],
+      "tool_calls": {
+        "count": 0,
+        "executed": 0,
+        "failed": 0,
+        "parallel": 0,
+        "total_duration_ms": 0,
+        "max_duration_ms": null,
+        "mean_duration_ms": null,
+        "turns_with_calls": 0,
+        "calls": [],
+        "note": "each duration is the tool's own wall time as the loop measured it; a call refused by policy is recorded with executed=false and duration 0"
+      },
+      "tokens": {
+        "prompt": {
+          "value": 4096,
+          "source": "provider",
+          "method": "summed over the run's turns; each turn's number is the provider's own when it reported `usage`, otherwise chars/4 over the exact request body / the answer text",
+          "reason": "",
+          "estimate": false
+        },
+        "completion": {
+          "value": 4096,
+          "source": "provider",
+          "method": "summed over the run's turns; each turn's number is the provider's own when it reported `usage`, otherwise chars/4 over the exact request body / the answer text",
+          "reason": "",
+          "estimate": false
+        },
+        "total": {
+          "value": 8192,
+          "source": "provider",
+          "method": "summed over the run's turns; each turn's number is the provider's own when it reported `usage`, otherwise chars/4 over the exact request body / the answer text",
+          "reason": "",
+          "estimate": false
+        },
+        "note": "token counts are an estimate when the provider reported none: chars/4 over the exact request body the loop sent (its own fallback estimator \u2014 no tokenizer is bundled); every number here says which of the two it is"
+      },
+      "tokens_per_second": {
+        "value": null,
+        "source": "estimate",
+        "reason": "no turn has both a completion token count and a non-zero generation window \u2014 a rate would be invented",
+        "method": "sum(completion tokens) / sum(model.response.duration_ms of those turns) \u2014 each duration is the loop's monotonic clock around the provider call, streaming included",
+        "turns_measured": 0,
+        "window_ms": 0,
+        "completion_tokens": null
+      },
+      "context": {
+        "used_tokens": 4096,
+        "used_source": "provider_measured",
+        "total_tokens": 128000,
+        "total_source": "default",
+        "trigger_fraction": 0.75,
+        "trigger_fraction_source": "default",
+        "trigger_tokens": 96000,
+        "remaining_tokens": 123904,
+        "percent": 3.2,
+        "percent_display": "3%",
+        "state": "below_trigger",
+        "reason": "",
+        "estimate": null,
+        "note": "token counts are an estimate when the provider reported none: chars/4 over the exact request body the loop sent (its own fallback estimator \u2014 no tokenizer is bundled); every number here says which of the two it is"
+      },
+      "model": null,
+      "provider": {},
+      "cost": {
+        "usd": null,
+        "price_per_1k_tokens": null,
+        "price_source": "",
+        "tokens_used": 8192,
+        "reason": "no price was declared for this run: pass --price-per-1k-tokens, set SKALDIR_TELEMETRY_PRICE_PER_1K, or run with `agent run --price-per-1k-tokens <rate>` (the run's own declaration is used when the transcript carries one)",
+        "method": "cost is (total tokens / 1000) \u00d7 the declared rate \u2014 the same arithmetic the loop uses for its cost budget; no price catalogue is bundled, so nothing is inferred from the model name"
+      },
+      "limits": {},
+      "savings": {
+        "prompt_cache": {
+          "value": 3072,
+          "source": "provider",
+          "turns_with_a_cache_counter": 1,
+          "note": "the provider's own cache-hit counter, summed over the run"
+        },
+        "archived_tool_results": {
+          "results": 1,
+          "tokens_before": 34300,
+          "tokens_after": 283,
+          "tokens_saved": 34017,
+          "source": "estimate/chars-4",
+          "reason": "",
+          "artifacts": [
+            {
+              "ref": "tool_archive:dd59b60a2a5e55e42d3f2b940f999c7c5e195de203c855d07ede6f0935d3f479",
+              "sha256": "dd59b60a2a5e55e42d3f2b940f999c7c5e195de203c855d07ede6f0935d3f479",
+              "chars": 137200,
+              "name": "container_logs",
+              "source_label": "docker"
+            }
+          ]
+        },
+        "compaction": {
+          "events": 0,
+          "kept": 0,
+          "shortened": 0,
+          "dropped": 0,
+          "removed": 0,
+          "tokens_freed": null,
+          "source": "unavailable",
+          "reason": "no compaction fired on this run"
+        },
+        "brief_vs_transcript": {
+          "briefs": 0,
+          "brief_chars": null,
+          "transcript_chars": null,
+          "chars_avoided": null,
+          "tokens_saved": null,
+          "source": "unavailable",
+          "reason": "no subagent brief was recorded on this run"
+        },
+        "reasoning": {
+          "value": 3703,
+          "source": "provider",
+          "share_of_completion": 0.9041,
+          "reasoning_only_answers": 1,
+          "reason": "",
+          "note": "reasoning tokens are billed like completion tokens and produce no content: an answer with reasoning and no text is budget spent with nothing to show"
+        },
+        "lever_order": [
+          "archived_tool_results",
+          "compaction",
+          "brief_vs_transcript",
+          "prompt_cache",
+          "reasoning"
+        ],
+        "note": "each lever is reported on its own: a sum of different kinds of saving would hide which one is not working"
+      },
+      "footer": "model unknown \u00b7 ctx 3% \u00b7 tok/s n/a \u00b7 n/a",
+      "estimates": [],
+      "nulls": [
+        {
+          "field": "duration_ms",
+          "reason": "the transcript carries no usable timestamps"
+        },
+        {
+          "field": "model",
+          "reason": "the transcript records no provider note"
+        },
+        {
+          "field": "cost.usd",
+          "reason": "no price was declared for this run: pass --price-per-1k-tokens, set SKALDIR_TELEMETRY_PRICE_PER_1K, or run with `agent run --price-per-1k-tokens <rate>` (the run's own declaration is used when the transcript carries one)"
+        },
+        {
+          "field": "tokens_per_second",
+          "reason": "no turn has both a completion token count and a non-zero generation window \u2014 a rate would be invented"
+        },
+        {
+          "field": "turns[1].tokens_per_second",
+          "reason": "the transcript records no measurable generation window for this turn"
+        }
+      ],
+      "warnings": [
+        "/tmp/94-worked-example.jsonl has no `run.finished` event \u2014 the numbers below are what the run recorded up to the last event",
+        "the transcript carries no provider note \u2014 the model is unknown, not empty"
+      ]
+    }
+  }
+}

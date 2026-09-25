@@ -1,0 +1,8 @@
+#!/bin/sh
+# CGI of the HTTP fixture: GET /cgi-bin/sha256?text=<value> -> {"sha256": "<hex>"}
+# The digest comes from busybox's own sha256sum — an implementation that is
+# independent of the Python hashlib oracle the test compares it against.
+value="$(printf '%s' "$QUERY_STRING" | sed -n 's/^text=//p')"
+digest="$(printf '%s' "$value" | sha256sum | cut -d' ' -f1)"
+printf 'Content-Type: application/json\r\n\r\n'
+printf '{"sha256": "%s"}\n' "$digest"

@@ -1,0 +1,65 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Skaldir HTTP fixture API",
+    "version": "1.0.0",
+    "description": "A tiny but real HTTP service (busybox httpd + shell CGI) used to prove the godsv HTTP/API surface adapter: it is discovered from this document, adapted, tested against this real service and registered."
+  },
+  "paths": {
+    "/cgi-bin/sha256": {
+      "get": {
+        "operationId": "sha256OfText",
+        "summary": "Compute the sha-256 digest of a text",
+        "description": "Returns the hex sha-256 digest of the 'text' query parameter.",
+        "parameters": [
+          {
+            "name": "text",
+            "in": "query",
+            "required": true,
+            "schema": {"type": "string"}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "the digest",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["sha256"],
+                  "properties": {
+                    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cgi-bin/echo": {
+      "get": {
+        "operationId": "echoText",
+        "summary": "Return the text that was sent",
+        "description": "Echoes the 'text' query parameter back inside a JSON object.",
+        "parameters": [
+          {"name": "text", "in": "query", "required": true, "schema": {"type": "string"}}
+        ],
+        "responses": {
+          "200": {
+            "description": "the echoed text",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["echo"],
+                  "properties": {"echo": {"type": "string"}}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

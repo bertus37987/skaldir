@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Demo library — results</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 2rem; }
+  #results { list-style: none; padding: 0; }
+  #results li { padding: .4rem 0; border-bottom: 1px solid #ddd; }
+  #message { color: #a00; }
+</style>
+</head>
+<body>
+<h1>Search results</h1>
+<form id="form" method="get" action="/search.html">
+  <label for="q">Term</label>
+  <input id="q" name="q" autocomplete="off">
+  <button id="go" type="submit">Search</button>
+</form>
+<p id="message" hidden></p>
+<ul id="results"></ul>
+<script>
+function titleCase(value) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+(window.addEventListener('load', function () {
+  var term = (new URLSearchParams(location.search).get('q') || '').trim();
+  var message = document.getElementById('message');
+  var list = document.getElementById('results');
+  document.getElementById('q').value = term;
+  list.innerHTML = '';
+  if (!term) {
+    message.textContent = 'please type a search term';
+    message.hidden = false;
+    return;
+  }
+  var item = document.createElement('li');
+  var link = document.createElement('a');
+  link.href = '/article.html?term=' + encodeURIComponent(term);
+  link.textContent = titleCase(term);
+  item.appendChild(document.createTextNode(term + ' — '));
+  item.appendChild(link);
+  list.appendChild(item);
+}))();
+</script>
+</body>
+</html>

@@ -1,0 +1,106 @@
+{
+  "decisions": [
+    {
+      "turn": 1,
+      "stuck": false,
+      "signal": "",
+      "action": "continue",
+      "reason": "this turn produced tool activity, new evidence or a state change",
+      "conditions": {
+        "same_answer": false,
+        "no_tool_calls": true,
+        "no_new_evidence": true,
+        "no_state_delta": true
+      },
+      "signals": {
+        "turn": 1,
+        "no_progress_streak": 0,
+        "no_tool_streak": 1,
+        "last_verification": "INCOMPLETE",
+        "reply_fingerprint": "df7f5ac0ecb9ecd1503e8418d6250e5d3856e8448c7a30102dbf00eb948e0ebf",
+        "last_action": "continue",
+        "last_signal": "",
+        "tokens_used": 4096,
+        "token_budget": 8192,
+        "steps": 3,
+        "max_steps": 14
+      },
+      "notes": []
+    },
+    {
+      "turn": 2,
+      "stuck": true,
+      "signal": "pattern_no_new_evidence",
+      "action": "strategy_change_required",
+      "reason": "no_progress",
+      "conditions": {
+        "same_answer": true,
+        "no_tool_calls": true,
+        "no_new_evidence": true,
+        "no_state_delta": true
+      },
+      "signals": {
+        "turn": 2,
+        "no_progress_streak": 1,
+        "no_tool_streak": 2,
+        "last_verification": "INCOMPLETE",
+        "reply_fingerprint": "df7f5ac0ecb9ecd1503e8418d6250e5d3856e8448c7a30102dbf00eb948e0ebf",
+        "last_action": "strategy_change_required",
+        "last_signal": "pattern_no_new_evidence",
+        "tokens_used": 8192,
+        "token_budget": 8192,
+        "steps": 3,
+        "max_steps": 14
+      },
+      "notes": [
+        "the same verification verdict (INCOMPLETE) was reported again with no new run behind it"
+      ]
+    },
+    {
+      "turn": 3,
+      "stuck": true,
+      "signal": "pattern_retry_without_strategy_change",
+      "action": "stop",
+      "reason": "no_strategy_change_after_directive",
+      "conditions": {
+        "same_answer": true,
+        "no_tool_calls": true,
+        "no_new_evidence": true,
+        "no_state_delta": true
+      },
+      "signals": {
+        "turn": 3,
+        "no_progress_streak": 2,
+        "no_tool_streak": 3,
+        "last_verification": "INCOMPLETE",
+        "reply_fingerprint": "df7f5ac0ecb9ecd1503e8418d6250e5d3856e8448c7a30102dbf00eb948e0ebf",
+        "last_action": "stop",
+        "last_signal": "pattern_retry_without_strategy_change",
+        "tokens_used": 12288,
+        "token_budget": 16384,
+        "steps": 3,
+        "max_steps": 14
+      },
+      "notes": [
+        "the same verification verdict (INCOMPLETE) was reported again with no new run behind it",
+        "a strategy change was demanded 1 time(s) and the same answer came back \u2014 stopping, because looping spends budget to re-prove the same stall"
+      ]
+    }
+  ],
+  "signals": {
+    "turn": 3,
+    "no_progress_streak": 2,
+    "no_tool_streak": 3,
+    "last_verification": "INCOMPLETE",
+    "reply_fingerprint": "df7f5ac0ecb9ecd1503e8418d6250e5d3856e8448c7a30102dbf00eb948e0ebf",
+    "last_action": "stop",
+    "last_signal": "pattern_retry_without_strategy_change",
+    "tokens_used": 12288,
+    "token_budget": 16384,
+    "steps": 3,
+    "max_steps": 14
+  },
+  "named_stop_reason": "no_strategy_change_after_directive",
+  "directive_delivered_on_turn": 2,
+  "stopped_on_turn": 3
+}

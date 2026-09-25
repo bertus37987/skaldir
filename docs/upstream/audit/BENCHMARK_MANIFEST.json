@@ -1,0 +1,95 @@
+{
+ "schema_ref": "docs/BENCHMARK-RUN-SCHEMA.json#1.0",
+ "created": "2026-09-16",
+ "purpose": "Pre-registered manifest of configured benchmark arms; results land only with run evidence (Kapitel 06 §5). No result values are asserted by this file.",
+ "held_constant": {
+  "$comment": "MUSS über alle Konfigurationen eines Vergleichsblocks identisch sein (§37).",
+  "main_model": "opencode-go/deepseek-v4.1-flash",
+  "exact_model_version": "",
+  "reasoning": "",
+  "tools": [],
+  "environment": "fedora-44-wayland, DISPLAY=:0, kein sudo",
+  "context_window": "",
+  "timeout_s": null,
+  "token_budget": null,
+  "cost_budget": null,
+  "retries": 0,
+  "temperature": 0,
+  "seed": 20260913,
+  "workspace_baseline_commit": "",
+  "voice_mode": "whisper"
+ },
+ "arms": [
+  {
+   "id": "hermes_baseline",
+   "label": "Hermes baseline (kein GV)",
+   "completion": false,
+   "watcher": false,
+   "investigator": false,
+   "memory": false,
+   "learned_capabilities": false
+  },
+  {
+   "id": "hermes_completion",
+   "label": "Hermes + Completion",
+   "completion": true,
+   "watcher": false,
+   "investigator": false,
+   "memory": false,
+   "learned_capabilities": false
+  },
+  {
+   "id": "hermes_watcher",
+   "label": "Hermes + Watcher",
+   "completion": true,
+   "watcher": true,
+   "investigator": false,
+   "memory": false,
+   "learned_capabilities": false
+  },
+  {
+   "id": "hermes_watcher_investigator",
+   "label": "Hermes + Watcher + Investigator",
+   "completion": true,
+   "watcher": true,
+   "investigator": true,
+   "memory": false,
+   "learned_capabilities": false
+  },
+  {
+   "id": "full_godsv",
+   "label": "Full God's Voice",
+   "completion": true,
+   "watcher": true,
+   "investigator": true,
+   "memory": false,
+   "learned_capabilities": false
+  },
+  {
+   "id": "full_godsv_memory",
+   "label": "Full God's Voice + Memory",
+   "completion": true,
+   "watcher": true,
+   "investigator": true,
+   "memory": true,
+   "learned_capabilities": false
+  },
+  {
+   "id": "full_godsv_capabilities",
+   "label": "Full God's Voice + Learned Capabilities",
+   "completion": true,
+   "watcher": true,
+   "investigator": true,
+   "memory": true,
+   "learned_capabilities": true
+  }
+ ],
+ "runs": [],
+ "status": "schema_frozen_pending_runs",
+ "not_run_blocks": [
+  "Stage B produkt driver (12 tasks x 3 reps) — needs model budget release",
+  "Stage C calibration/holdout (24+24) — needs frozen split + tasks",
+  "Stage D discovery 30 formulations — testset v1.0.0 frozen (tests/fixtures/discovery_cases.json), runner exists (tools/gv_discovery_eval.py), live run pending",
+  "Stage E performance + 12h long run — needs authorized window"
+ ]
+}

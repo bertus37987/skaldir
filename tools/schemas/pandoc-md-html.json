@@ -1,0 +1,22 @@
+{
+  "id": "pandoc-md-html",
+  "kind": "cli-fixture",
+  "terms": ["pandoc", "markdown", "html", "convert documents"],
+  "verb": "pandoc",
+  "argv_template": ["sh", "-c", "printf %s \"$0\" | pandoc -f markdown -t html", "{text}"],
+  "inputs": {
+    "text": {"type": "string", "required": true, "description": "markdown source"}
+  },
+  "outputs": {
+    "html": {"type": "string", "from": "stdout", "pattern": "^<"}
+  },
+  "sample_input": {"text": "# Hi"},
+  "oracle": {
+    "kind": "fixture",
+    "sample_input": {"text": "# Hi"},
+    "expected": {"html": "<h1 id=\"hi\">Hi</h1>"},
+    "note": "declared golden fixture from tools/mine-schema examples (NOT a host twin) — certifies only the sample input"
+  },
+  "timeout_seconds": 60,
+  "description": "convert one markdown fragment to HTML with pandoc (declared fixture)"
+}

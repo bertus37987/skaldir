@@ -1,0 +1,8 @@
+{
+  "plugins": ["react-cosmos-plugin-vite"],
+  "vite": { "configPath": "vite.config.ts" },
+  "port": 5001,
+  "hostname": "127.0.0.1",
+  "rootDir": ".",
+  "fixturesDir": "fixtures"
+}

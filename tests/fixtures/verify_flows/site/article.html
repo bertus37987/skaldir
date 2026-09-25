@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Demo library — article</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 2rem; }
+</style>
+</head>
+<body>
+<h1>Demo library</h1>
+<div id="article" hidden>
+  <h2 id="title"></h2>
+  <p id="body"></p>
+</div>
+<p><a id="back" href="/index.html">Search again</a></p>
+<script>
+(window.addEventListener('load', function () {
+  var term = (new URLSearchParams(location.search).get('term') || '').trim();
+  var article = document.getElementById('article');
+  var title = term ? term.charAt(0).toUpperCase() + term.slice(1) : 'Nothing';
+  document.getElementById('title').textContent = title;
+  document.getElementById('body').textContent = 'Reading about ' + (term || 'nothing') + '.';
+  article.hidden = false;
+}))();
+</script>
+</body>
+</html>

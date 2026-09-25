@@ -1,0 +1,9 @@
+{
+  "name": "gods-voice",
+  "private": true,
+  "description": "God's Voice — agent harness (desktop panel toolchain). Runtime deps are vendored; see tools/vendor_thinking_orbs.mjs.",
+  "type": "module",
+  "dependencies": {
+    "thinking-orbs": "^0.3.1"
+  }
+}

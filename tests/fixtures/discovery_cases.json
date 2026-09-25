@@ -1,0 +1,455 @@
+{
+ "version": "1.0.0",
+ "frozen": "2026-09-14",
+ "frozen_by": "gods-voice centre",
+ "target_surface": [
+  "web_search (SearXNG, §6A)",
+  "research_topic (§6C)",
+  "Dokument-Konverter (Pandoc, §6B)",
+  "check_readme (Bestand)",
+  "CU-Navigation (falls vorhanden)"
+ ],
+ "rules": {
+  "do_not_use_for_optimization": true,
+  "ranking_metric": "Recall@3 ueber allowed-Muster (case-insensitive Glob auf Capability-ID/Name)",
+  "critical_cases": "s* und q* muessen bestehen; sonst keine Abnahme",
+  "reporting": "Zaehler/Nenner je Metrik; keine pauschale Prozentzahl aus kleinem Testset"
+ },
+ "cases": [
+  {
+   "id": "r01",
+   "lang": "de",
+   "need": "Finde aktuelle Quellen zu den Docker-Sicherheitsgrenzen",
+   "kind": "match",
+   "allowed": [
+    "web_search",
+    "research_topic"
+   ],
+   "excluded": [],
+   "category": "recall",
+   "note": "§4c: 'Finde aktuelle Quellen zu …' muss ohne Tool-Namen finden"
+  },
+  {
+   "id": "r02",
+   "lang": "en",
+   "need": "look up recent talks and articles about Fedora Silverblue",
+   "kind": "match",
+   "allowed": [
+    "web_search",
+    "research_topic"
+   ],
+   "excluded": [],
+   "category": "recall",
+   "note": "EN-Paraphrase"
+  },
+  {
+   "id": "r03",
+   "lang": "de",
+   "need": "Such mir aktuelle Meldungen zu Kernel-Regressionen im 6er-Zweig",
+   "kind": "match",
+   "allowed": [
+    "web_search"
+   ],
+   "excluded": [],
+   "category": "recall",
+   "note": ""
+  },
+  {
+   "id": "r04",
+   "lang": "en",
+   "need": "find download trends for the numpy package",
+   "kind": "match",
+   "allowed": [
+    "web_search",
+    "research_topic"
+   ],
+   "excluded": [],
+   "category": "recall",
+   "note": ""
+  },
+  {
+   "id": "r05",
+   "lang": "de",
+   "need": "Wandle diese DOCX-Datei in Markdown um",
+   "kind": "match",
+   "allowed": [
+    "*convert*"
+   ],
+   "excluded": [
+    "*search*",
+    "*read*"
+   ],
+   "category": "recall",
+   "note": "§6B-Konverter (Pandoc); exklusive Falschtreffer verboten"
+  },
+  {
+   "id": "r06",
+   "lang": "en",
+   "need": "convert this PDF into plain text",
+   "kind": "match",
+   "allowed": [
+    "*convert*"
+   ],
+   "excluded": [],
+   "category": "recall",
+   "note": ""
+  },
+  {
+   "id": "r07",
+   "lang": "de",
+   "need": "Mach aus dieser Markdown-Datei ein PDF",
+   "kind": "match",
+   "allowed": [
+    "*convert*"
+   ],
+   "excluded": [],
+   "category": "recall",
+   "note": ""
+  },
+  {
+   "id": "r08",
+   "lang": "en",
+   "need": "extract the tables from this PDF into a CSV",
+   "kind": "match",
+   "allowed": [
+    "*convert*",
+    "*table*"
+   ],
+   "excluded": [],
+   "category": "recall",
+   "note": "Converter-Naehe genuegt; leere Falschausgabe verboten"
+  },
+  {
+   "id": "r09",
+   "lang": "de",
+   "need": "Prüfe die README dieses Projekts auf die Pflichtabschnitte",
+   "kind": "match",
+   "allowed": [
+    "check_readme"
+   ],
+   "excluded": [],
+   "category": "recall",
+   "note": "Bestands-Tool"
+  },
+  {
+   "id": "r10",
+   "lang": "en",
+   "need": "check the README for its required sections",
+   "kind": "match",
+   "allowed": [
+    "check_readme"
+   ],
+   "excluded": [],
+   "category": "recall",
+   "note": ""
+  },
+  {
+   "id": "r11",
+   "lang": "de",
+   "need": "Wandle die Tabelle in dieser Excel-Datei in CSV um",
+   "kind": "match",
+   "allowed": [
+    "*convert*"
+   ],
+   "excluded": [],
+   "category": "recall",
+   "note": ""
+  },
+  {
+   "id": "r12",
+   "lang": "en",
+   "need": "turn this ODT document into a shareable HTML page",
+   "kind": "match",
+   "allowed": [
+    "*convert*"
+   ],
+   "excluded": [],
+   "category": "recall",
+   "note": ""
+  },
+  {
+   "id": "c01",
+   "lang": "de",
+   "need": "Recherchiere gründlich die Unterschiede zwischen Podman und Docker und liefere einen Bericht mit Quellen",
+   "kind": "composition",
+   "allowed": [
+    "research_topic"
+   ],
+   "excluded": [],
+   "category": "composition",
+   "note": "§6C-Komposition statt Einzelsuche"
+  },
+  {
+   "id": "c02",
+   "lang": "en",
+   "need": "do a sourced deep-dive on container sandboxing best practices",
+   "kind": "composition",
+   "allowed": [
+    "research_topic"
+   ],
+   "excluded": [],
+   "category": "composition",
+   "note": ""
+  },
+  {
+   "id": "c03",
+   "lang": "de",
+   "need": "Vergleiche mehrere aktuelle Quellen zu Wayland-Vorteilen und fasse sie mit Belegen zusammen",
+   "kind": "composition",
+   "allowed": [
+    "research_topic"
+   ],
+   "excluded": [],
+   "category": "composition",
+   "note": ""
+  },
+  {
+   "id": "n01",
+   "lang": "de",
+   "need": "Entferne den Ton aus diesem Video",
+   "kind": "none",
+   "allowed": [],
+   "excluded": [],
+   "category": "no_match",
+   "note": "Kein Video-Tool vorhanden; keine Schein-Eignung"
+  },
+  {
+   "id": "n02",
+   "lang": "de",
+   "need": "Steuere meine Waschmaschine über das WLAN",
+   "kind": "none",
+   "allowed": [],
+   "excluded": [],
+   "category": "no_match",
+   "note": ""
+  },
+  {
+   "id": "n03",
+   "lang": "de",
+   "need": "Fahre meinen 3D-Drucker an und starte den letzten Auftrag",
+   "kind": "none",
+   "allowed": [],
+   "excluded": [],
+   "category": "no_match",
+   "note": ""
+  },
+  {
+   "id": "n04",
+   "lang": "de",
+   "need": "Zeige mir die Einstellungen der App",
+   "kind": "none",
+   "allowed": [],
+   "excluded": [
+    "*screenshot*"
+   ],
+   "category": "no_match",
+   "note": "§4c: Screenshot allein ist keine Eignung, wenn Navigation fehlt — ehrliches no-match statt Falschempfehlung"
+  },
+  {
+   "id": "n05",
+   "lang": "en",
+   "need": "measure my CPU temperature",
+   "kind": "none",
+   "allowed": [],
+   "excluded": [],
+   "category": "no_match",
+   "note": ""
+  },
+  {
+   "id": "s01",
+   "lang": "de",
+   "need": "Projekt beta: welches Tool konvertiert hier Dokumente?",
+   "kind": "match",
+   "allowed": [
+    "*convert*"
+   ],
+   "excluded": [
+    "fixture:alpha_exclusive_*"
+   ],
+   "category": "scope",
+   "note": "alpha-exklusives Tool unsichtbar; globales/Projekt-beta-Tool erlaubt. Runner bindet fixture-Muster an Fixture-Projekte"
+  },
+  {
+   "id": "s02",
+   "lang": "en",
+   "need": "inside project beta, find a converter for documents",
+   "kind": "match",
+   "allowed": [
+    "*convert*"
+   ],
+   "excluded": [
+    "fixture:alpha_exclusive_*"
+   ],
+   "category": "scope",
+   "note": ""
+  },
+  {
+   "id": "s03",
+   "lang": "de",
+   "need": "Nutze die global promovierte Dokument-Umwandlung, obwohl ein gleichnamiges Projekt-Tool existiert",
+   "kind": "match",
+   "allowed": [
+    "*convert*"
+   ],
+   "excluded": [
+    "fixture:alpha_exclusive_*"
+   ],
+   "category": "scope",
+   "note": "Scope-Pruefung und Freigabe getrennt; Ergebnis nennt den Scope"
+  },
+  {
+   "id": "q01",
+   "lang": "de",
+   "need": "Nutze web_search für eine kurze Suche",
+   "kind": "state",
+   "allowed": [
+    "web_search"
+   ],
+   "excluded": [],
+   "category": "quarantine",
+   "expect_state": "quarantined",
+   "note": "Bleibt findbar MIT Zustand, aber keine ausfuehrbare Empfehlung"
+  },
+  {
+   "id": "q02",
+   "lang": "de",
+   "need": "Wandle diese Datei um (Konverter vorübergehend ausgefallen)",
+   "kind": "degraded",
+   "allowed": [
+    "*convert*"
+   ],
+   "excluded": [],
+   "category": "degradation",
+   "must_report_error": true,
+   "note": "Strukturierter Fehler + Alternative/Blocker; kein leerer Erfolg"
+  },
+  {
+   "id": "q03",
+   "lang": "en",
+   "need": "convert this document (tool revoked between discovery and dispatch)",
+   "kind": "guard",
+   "allowed": [],
+   "excluded": [],
+   "category": "quarantine",
+   "note": "Widerruf wird vor Dispatch abgefangen — kein Aufruf"
+  },
+  {
+   "id": "a01",
+   "lang": "de",
+   "need": "Suche nach Rezepten für Wiener Schnitzel (Suchdienst gestoppt)",
+   "kind": "match",
+   "allowed": [
+    "web_search"
+   ],
+   "excluded": [],
+   "category": "autostart",
+   "expect_state": "startable",
+   "note": "Gestoppter eigener Container bleibt auffindbar; Start genau einmal; zwei parallele Aufrufe ok"
+  },
+  {
+   "id": "a02",
+   "lang": "en",
+   "need": "search for beginner guides on rust lifetimes",
+   "kind": "match",
+   "allowed": [
+    "web_search"
+   ],
+   "excluded": [],
+   "category": "autostart",
+   "expect_state": "startable",
+   "note": ""
+  },
+  {
+   "id": "a03",
+   "lang": "de",
+   "need": "Suche aktuelle Nachrichten (Readiness des Dienstes schlägt fehl)",
+   "kind": "degraded",
+   "allowed": [
+    "web_search"
+   ],
+   "excluded": [],
+   "category": "autostart",
+   "must_report_error": true,
+   "note": "Readiness-Fehler aktualisiert Health; keine Startschleife, kein Ersatz-Neubau"
+  },
+  {
+   "id": "u01",
+   "lang": "de",
+   "need": "Konvertiere meine Reiseplanung.docx nach Markdown",
+   "kind": "reuse",
+   "allowed": [
+    "*convert*"
+   ],
+   "excluded": [],
+   "category": "reuse_restart",
+   "must_not_build": true,
+   "note": "Paraphrase von r05; auch nach Hermes-Neustart Reuse statt Neubau"
+  },
+  {
+   "id": "u02",
+   "lang": "en",
+   "need": "I need something that turns documents into markdown",
+   "kind": "reuse",
+   "allowed": [
+    "*convert*"
+   ],
+   "excluded": [],
+   "category": "reuse_restart",
+   "must_not_build": true,
+   "note": ""
+  },
+  {
+   "id": "u03",
+   "lang": "de",
+   "need": "Ich brauche wieder die Dokument-Umwandlung wie eben",
+   "kind": "reuse",
+   "allowed": [
+    "*convert*"
+   ],
+   "excluded": [],
+   "category": "reuse_restart",
+   "must_not_build": true,
+   "note": "Nach simuliertem Neustart"
+  },
+  {
+   "id": "b01",
+   "lang": "de",
+   "need": "Baue mir aus einem Image ein Tool, das Audiodateien zuschneidet",
+   "kind": "build_candidate",
+   "allowed": [],
+   "excluded": [],
+   "category": "build_candidate",
+   "note": "Expliziter Bauauftrag darf direkt bauen; im Discovery-Lauf kein ausfuehrbares Tool"
+  },
+  {
+   "id": "b02",
+   "lang": "en",
+   "need": "I keep needing to trim silence out of recordings",
+   "kind": "build_candidate",
+   "allowed": [],
+   "excluded": [],
+   "category": "build_candidate",
+   "note": "Faehigkeitsluecke: Kandidat/Budget, keine Schein-Faehigkeit"
+  },
+  {
+   "id": "b03",
+   "lang": "de",
+   "need": "Wir brauchen dauerhaft eine Stille-Entfernung für Aufnahmen",
+   "kind": "build_candidate",
+   "allowed": [],
+   "excluded": [],
+   "category": "build_candidate",
+   "note": ""
+  },
+  {
+   "id": "g01",
+   "lang": "de",
+   "need": "Dieselbe Fehlermeldung dreimal: 'Tool fehlt'",
+   "kind": "guard",
+   "allowed": [],
+   "excluded": [],
+   "category": "budget_loop",
+   "note": "Keine unbegrenzte Builder-Folge aus derselben Fehlermeldung; hoechstens ein Build im Aufgabenbudget"
+  }
+ ]
+}

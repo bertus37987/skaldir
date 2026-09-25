@@ -1,0 +1,129 @@
+{
+  "schema_version": 1,
+  "kind": "system_one_question_manifest",
+  "contract": "ABNAHME.md §114 requires SYSTEM_ONE_QUESTIONS.json or an equivalent versioned manifest. The question set is the one the contract mandates: §39 (Question Registry, atomic questions, code composition), §47 (Voice Question Pack: Loop/Completion/Drift/Research/Recovery) and §54 (Computer Use Question Pack: Precondition/Postcondition/Recovery/Safety).",
+  "created": "2026-09-16",
+  "observed_project_head": "b7a287a (branch godsv-supervisor-hardening)",
+  "source_of_truth": {
+    "statement": "The code-side registry is the authority for ids, versions and owners (JEV-03). This file is the contract-side manifest; once the code registry lands, its `QuestionRegistry.manifest()` output REPLACES the `code_registry_id` mappings below.",
+    "expected_code_file": "src/godsv/system_one_questions.py",
+    "expected_manifest_call": "QuestionRegistry(...).manifest()  →  dict keyed by pack.ref",
+    "observed_state_at_write": "file exists in the working tree (untracked, 2026-09-16 19:06:46), written by a parallel worker; it is NOT committed and does not import cleanly yet (`cannot import name 'QuestionNotRegistered'`), so its ids are recorded here as `in_flight_uncommitted` and MUST NOT be quoted as stable ids.",
+    "authority_rule": "If this file and the code registry disagree, the code registry wins and this file is updated — never the other way round."
+  },
+  "composition_rule": {
+    "atomicity": "One dimension per question; the text must end in exactly one '?'. The §39 omnibus form ('analysiere alles und entscheide, was Skaldir tun soll') is forbidden.",
+    "composition": "The combination happens in ordinary Python in src/godsv/system_one_questions.py (`compose_questions`, `compose_voice_triage`) — a testable function, never a hidden policy prompt string (§39/§82 JEV-04).",
+    "answer_types": {
+      "choice": "choice + probabilities + confidence (§38 ChoiceAnswer)",
+      "score": "score + legend + probabilities + confidence (§38 ScoreAnswer)",
+      "noul": "value 0..1 — explicitly WITHOUT a separate confidence field (§38/§79; a fabricated confidence field is a contract violation)"
+    },
+    "sanitizer_precondition": "No question is sent externally before §40's chain: Scope Filter → Secret Redaction → Project Isolation → State Minimizer (JEV-05).",
+    "escalation": "Low/unknown confidence, contradicting answers or an uncovered option must force System-2 escalation (§48) — measured as the System-2-call metric in JEV-19."
+  },
+  "packs": [
+    {
+      "pack_id": "voice_triage_v1",
+      "version": "v1",
+      "owner": "voice",
+      "section": "ABNAHME §39 / §47",
+      "code_pack_ref": "VOICE_TRIAGE_V1",
+      "questions": [
+        {"question_id": "voice_triage_v1.loop.same_root_cause", "version": "v1", "owner": "voice", "group": "loop", "kind": "choice", "options": ["same", "different", "unknown"], "text": "Same root cause as the last failure?", "code_registry_id": "voice.loop.same_root_cause", "coverage": "in_flight_uncommitted"},
+        {"question_id": "voice_triage_v1.loop.same_strategy", "version": "v1", "owner": "voice", "group": "loop", "kind": "noul", "text": "Same strategy as the last attempt?", "code_registry_id": "voice.loop.same_strategy", "coverage": "in_flight_uncommitted"},
+        {"question_id": "voice_triage_v1.loop.new_information", "version": "v1", "owner": "voice", "group": "loop", "kind": "noul", "text": "New relevant information since the last attempt?", "code_registry_id": "voice.loop.new_information", "coverage": "in_flight_uncommitted"},
+        {"question_id": "voice_triage_v1.loop.measurable_progress", "version": "v1", "owner": "voice", "group": "loop", "kind": "score", "legend": [0.0, 1.0, 2.0, 3.0], "text": "How much measurable progress happened since the last attempt?", "code_registry_id": "voice.loop.measurable_progress", "coverage": "in_flight_uncommitted"},
+        {"question_id": "voice_triage_v1.loop.repeated_ineffective_redirect", "version": "v1", "owner": "voice", "group": "loop", "kind": "noul", "text": "Was a previous redirect ineffective without a strategy change?", "code_registry_id": "voice.loop.repeated_ineffective_redirect", "coverage": "in_flight_uncommitted"},
+        {"question_id": "voice_triage_v1.completion.claims_done", "version": "v1", "owner": "voice", "group": "completion", "kind": "choice", "options": ["yes", "no"], "text": "Does the agent claim completion?", "code_registry_id": "voice.completion.claims_done", "coverage": "in_flight_uncommitted"},
+        {"question_id": "voice_triage_v1.completion.evidence_current", "version": "v1", "owner": "voice", "group": "completion", "kind": "noul", "text": "Is the current evidence complete?", "code_registry_id": "voice.completion.evidence_current", "coverage": "in_flight_uncommitted"},
+        {"question_id": "voice_triage_v1.completion.evidence_matches_revision", "version": "v1", "owner": "voice", "group": "completion", "kind": "noul", "text": "Does that evidence belong to the current revision?", "code_registry_id": "voice.completion.evidence_matches_revision", "coverage": "in_flight_uncommitted"},
+        {"question_id": "voice_triage_v1.completion.independent_verification_required", "version": "v1", "owner": "voice", "group": "completion", "kind": "noul", "text": "Is independent verification still required?", "code_registry_id": "voice.completion.independent_verification_required", "coverage": "in_flight_uncommitted"},
+        {"question_id": "voice_triage_v1.drift.supports_goal", "version": "v1", "owner": "voice", "group": "drift", "kind": "noul", "text": "Does the work support the current goal?", "code_registry_id": "voice.drift.supports_goal", "coverage": "in_flight_uncommitted"},
+        {"question_id": "voice_triage_v1.drift.scope_expansion", "version": "v1", "owner": "voice", "group": "drift", "kind": "noul", "text": "Does the work needlessly expand product scope?", "code_registry_id": "voice.drift.scope_expansion", "coverage": "in_flight_uncommitted"},
+        {"question_id": "voice_triage_v1.drift.non_goal_conflict", "version": "v1", "owner": "voice", "group": "drift", "kind": "noul", "text": "Does the work contradict a declared non-goal?", "code_registry_id": "voice.drift.non_goal_conflict", "coverage": "in_flight_uncommitted"},
+        {"question_id": "voice_triage_v1.research.external_fact_missing", "version": "v1", "owner": "voice", "group": "research", "kind": "noul", "text": "Is an external fact missing?", "code_registry_id": "voice.research.external_fact_missing", "coverage": "in_flight_uncommitted"},
+        {"question_id": "voice_triage_v1.research.version_sensitive", "version": "v1", "owner": "voice", "group": "research", "kind": "choice", "options": ["yes", "no", "unknown"], "text": "Is that missing fact version-sensitive?", "code_registry_id": "voice.research.version_sensitive", "coverage": "in_flight_uncommitted"},
+        {"question_id": "voice_triage_v1.research.existing_evidence_sufficient", "version": "v1", "owner": "voice", "group": "research", "kind": "noul", "text": "Is the existing evidence sufficient without new research?", "code_registry_id": "voice.research.existing_evidence_sufficient", "coverage": "in_flight_uncommitted"},
+        {"question_id": "voice_triage_v1.recovery.state_unclear", "version": "v1", "owner": "voice", "group": "recovery", "kind": "noul", "text": "Is the current state unclear?", "code_registry_id": "voice.recovery.state_unclear", "coverage": "in_flight_uncommitted"},
+        {"question_id": "voice_triage_v1.recovery.side_effect_maybe_happened", "version": "v1", "owner": "voice", "group": "recovery", "kind": "noul", "text": "May the side effect already have happened?", "code_registry_id": "voice.recovery.side_effect_maybe_happened", "coverage": "in_flight_uncommitted"},
+        {"question_id": "voice_triage_v1.recovery.replay_safe", "version": "v1", "owner": "voice", "group": "recovery", "kind": "noul", "text": "Is a replay of that step safe?", "code_registry_id": "voice.recovery.replay_safe", "coverage": "in_flight_uncommitted"},
+        {"question_id": "voice_triage_v1.recovery.system_two_needed", "version": "v1", "owner": "voice", "group": "recovery", "kind": "noul", "text": "Is System Two needed here?", "code_registry_id": "voice.recovery.system_two_needed", "coverage": "in_flight_uncommitted"}
+      ]
+    },
+    {
+      "pack_id": "completion_v1",
+      "version": "v1",
+      "owner": "completion",
+      "section": "ABNAHME §39 / §47 (Completion) / §91 JEV-13",
+      "code_pack_ref": "COMPLETION_V1",
+      "notes": "JEV-13: these questions may signal missing/stale completion evidence but may NEVER certify completion on their own.",
+      "questions": [
+        {"question_id": "completion_v1.completion.claims_done", "version": "v1", "owner": "completion", "group": "completion", "kind": "choice", "options": ["yes", "no"], "text": "Does the agent claim completion?", "code_registry_id": "completion.claims_done", "coverage": "in_flight_uncommitted"},
+        {"question_id": "completion_v1.completion.evidence_current", "version": "v1", "owner": "completion", "group": "completion", "kind": "noul", "text": "Is the completion evidence current?", "code_registry_id": "completion.evidence_current", "coverage": "in_flight_uncommitted"},
+        {"question_id": "completion_v1.completion.evidence_matches_revision", "version": "v1", "owner": "completion", "group": "completion", "kind": "noul", "text": "Does the completion evidence match the current revision?", "code_registry_id": "completion.evidence_matches_revision", "coverage": "in_flight_uncommitted"},
+        {"question_id": "completion_v1.completion.independent_verification_required", "version": "v1", "owner": "completion", "group": "completion", "kind": "noul", "text": "Is independent verification required before completion?", "code_registry_id": "completion.independent_verification_required", "coverage": "in_flight_uncommitted"}
+      ]
+    },
+    {
+      "pack_id": "recovery_v1",
+      "version": "v1",
+      "owner": "recovery",
+      "section": "ABNAHME §39 / §47 (Recovery)",
+      "code_pack_ref": "RECOVERY_V1",
+      "questions": [
+        {"question_id": "recovery_v1.recovery.state_unclear", "version": "v1", "owner": "recovery", "group": "recovery", "kind": "noul", "text": "Is the recovered state unclear?", "code_registry_id": "recovery.state_unclear", "coverage": "in_flight_uncommitted"},
+        {"question_id": "recovery_v1.recovery.side_effect_maybe_happened", "version": "v1", "owner": "recovery", "group": "recovery", "kind": "noul", "text": "May the interrupted side effect already have happened?", "code_registry_id": "recovery.side_effect_maybe_happened", "coverage": "in_flight_uncommitted"},
+        {"question_id": "recovery_v1.recovery.replay_safe", "version": "v1", "owner": "recovery", "group": "recovery", "kind": "noul", "text": "Is resuming or replaying safe?", "code_registry_id": "recovery.replay_safe", "coverage": "in_flight_uncommitted"},
+        {"question_id": "recovery_v1.recovery.system_two_needed", "version": "v1", "owner": "recovery", "group": "recovery", "kind": "noul", "text": "Does recovery need System Two?", "code_registry_id": "recovery.system_two_needed", "coverage": "in_flight_uncommitted"}
+      ]
+    },
+    {
+      "pack_id": "computer_use_v1",
+      "version": "v1",
+      "owner": "computer_use",
+      "section": "ABNAHME §39 / §54 (Computer Use Question Pack)",
+      "code_pack_ref": "COMPUTER_USE_V1",
+      "notes": "§54 requires the recovery question to be a CHOICE over pre-allowed candidates only (reobserve / retry_same_action / use_alternative_candidate / escalate_system2 / abort); §54.4 Safety keeps the runtime/approval gate independent of System One.",
+      "questions": [
+        {"question_id": "computer_use_v1.precondition.right_application", "version": "v1", "owner": "computer_use", "group": "precondition", "kind": "noul", "text": "Am I in the right application?", "code_registry_id": null, "coverage": "not_yet_in_the_in_flight_registry", "contract_section": "§54.1"},
+        {"question_id": "computer_use_v1.precondition.right_window", "version": "v1", "owner": "computer_use", "group": "precondition", "kind": "choice", "options": ["same", "other", "unknown"], "text": "Is the target the same window as observed?", "code_registry_id": "computer_use.same_window", "coverage": "in_flight_uncommitted", "contract_section": "§54.1"},
+        {"question_id": "computer_use_v1.precondition.right_document", "version": "v1", "owner": "computer_use", "group": "precondition", "kind": "noul", "text": "Is the right document open?", "code_registry_id": null, "coverage": "not_yet_in_the_in_flight_registry", "contract_section": "§54.1"},
+        {"question_id": "computer_use_v1.precondition.blocking_modal", "version": "v1", "owner": "computer_use", "group": "precondition", "kind": "noul", "text": "Is a blocking modal dialog open?", "code_registry_id": null, "coverage": "not_yet_in_the_in_flight_registry", "contract_section": "§54.1"},
+        {"question_id": "computer_use_v1.precondition.enough_state", "version": "v1", "owner": "computer_use", "group": "precondition", "kind": "noul", "text": "Are the preconditions for the planned action met?", "code_registry_id": "computer_use.precondition_met", "coverage": "in_flight_uncommitted", "contract_section": "§54.1"},
+        {"question_id": "computer_use_v1.postcondition.expected_transition", "version": "v1", "owner": "computer_use", "group": "postcondition", "kind": "noul", "text": "Did the action produce the intended effect?", "code_registry_id": "computer_use.action_had_effect", "coverage": "in_flight_uncommitted", "contract_section": "§54.2"},
+        {"question_id": "computer_use_v1.postcondition.visible_state_plausible", "version": "v1", "owner": "computer_use", "group": "postcondition", "kind": "noul", "text": "Is the visible state plausible for this step?", "code_registry_id": null, "coverage": "not_yet_in_the_in_flight_registry", "contract_section": "§54.2"},
+        {"question_id": "computer_use_v1.postcondition.artifact_created", "version": "v1", "owner": "computer_use", "group": "postcondition", "kind": "noul", "text": "Was the expected artifact or file created?", "code_registry_id": null, "coverage": "not_yet_in_the_in_flight_registry", "contract_section": "§54.2"},
+        {"question_id": "computer_use_v1.postcondition.action_without_effect", "version": "v1", "owner": "computer_use", "group": "postcondition", "kind": "noul", "text": "Was the action without any effect?", "code_registry_id": null, "coverage": "not_yet_in_the_in_flight_registry", "contract_section": "§54.2"},
+        {"question_id": "computer_use_v1.recovery.next_action", "version": "v1", "owner": "computer_use", "group": "recovery", "kind": "choice", "options": ["reobserve", "retry_same_action", "use_alternative_candidate", "escalate_system2", "abort"], "text": "Which pre-allowed recovery candidate applies?", "code_registry_id": "computer_use.recovery_needed", "coverage": "partially_in_flight_uncommitted", "contract_section": "§54.3", "gap": "the in-flight pack carries only a Noul 'Is a recovery action needed?' plus a separate 'reobserve_needed' — the §54.3 CHOICE over the five pre-allowed candidates is not yet expressed."},
+        {"question_id": "computer_use_v1.recovery.reobserve_needed", "version": "v1", "owner": "computer_use", "group": "recovery", "kind": "noul", "text": "Is a fresh observation needed before the next step?", "code_registry_id": "computer_use.reobserve_needed", "coverage": "in_flight_uncommitted", "contract_section": "§54.3"}
+      ]
+    },
+    {
+      "pack_id": "capability_v1",
+      "version": "v1",
+      "owner": "capability",
+      "section": "ABNAHME §39 (registry pack) — not part of §47/§54 but named in §39's pack list",
+      "code_pack_ref": "CAPABILITY_V1",
+      "questions": [
+        {"question_id": "capability_v1.capability.missing_capability", "version": "v1", "owner": "capability", "group": "capability", "kind": "noul", "text": "Is a required capability missing?", "code_registry_id": "capability.missing_capability", "coverage": "in_flight_uncommitted"},
+        {"question_id": "capability_v1.capability.tool_exists", "version": "v1", "owner": "capability", "group": "capability", "kind": "noul", "text": "Does an existing tool already cover it?", "code_registry_id": "capability.tool_exists", "coverage": "in_flight_uncommitted"},
+        {"question_id": "capability_v1.capability.build_needed", "version": "v1", "owner": "capability", "group": "capability", "kind": "noul", "text": "Is building a new tool warranted?", "code_registry_id": "capability.build_needed", "coverage": "in_flight_uncommitted"},
+        {"question_id": "capability_v1.capability.risk_of_build", "version": "v1", "owner": "capability", "group": "capability", "kind": "score", "legend": [0.0, 1.0, 2.0], "text": "How risky is building that tool?", "code_registry_id": "capability.risk_of_build", "coverage": "in_flight_uncommitted"}
+      ]
+    }
+  ],
+  "policy_invariants_not_questions": [
+    {"id": "computer_use_v1.safety.approval_gate", "section": "§54.4", "rule": "For a risky/irreversible action the runtime/approval gate stays active independently of System One. This is a Runtime-Decision-Policy rule, not a question — a System-One answer may never open a gate (§44 R4)."},
+    {"id": "voice_triage_v1.policy.policy_deny", "section": "§32", "rule": "`policy_deny` stays a runtime decision, never a free model decision."},
+    {"id": "system_one.hold_reason", "section": "§28", "rule": "System One gets no privileged resume path; a `system_one_wait` hold reason may only be a normal technical hold and must never remove user/policy holds."}
+  ],
+  "not_yet_established": [
+    "The code-side registry is uncommitted and does not import cleanly at this writing (six tests/test_system_one_*.py modules fail collection against it).",
+    "No calibration/threshold data exists for any question (§44/§89 JEV-11): thresholds must be frozen on development data before any hold-out.",
+    "No hold-out evidence exists for any question (§106 Stufe D): no question has been scored against labelled runs yet.",
+    "The §54.3 five-option recovery CHOICE is not expressed in the in-flight registry (only a Noul plus a reobserve Noul).",
+    "No `system_one_wait` hold reason is registered anywhere in src/godsv (grep: no match)."
+  ],
+  "smallest_next_action": "Commit src/godsv/system_one_questions.py, then regenerate this manifest from `QuestionRegistry().manifest()` and diff it against this file; every disagreement is resolved in favour of the code."
+}

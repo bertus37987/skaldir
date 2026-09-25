@@ -1,0 +1,21 @@
+run 94-worked-example · running
+  model    model unknown
+  duration n/a (the transcript carries no usable timestamps)
+  turns    1 · tool calls 0 (0 ms in tools)
+  tokens   prompt 4096 · completion 4096 · total 8192
+  speed    tokens/s n/a (no turn has both a completion token count and a non-zero generation window — a rate would be invented)
+  context  4096 of 128000 (3%, provider_measured) · compacts at 96000 (0.75 × default) · below_trigger
+  cost     null (no price was declared for this run: pass --price-per-1k-tokens, set SKALDIR_TELEMETRY_PRICE_PER_1K, or run with `agent run --price-per-1k-tokens <rate>` (the run's own declaration is used when the transcript carries one))
+  savings  archived-tool-results 34.0k · compaction n/a · brief-vs-transcript n/a · prompt-cache 3.1k · reasoning 3.7k
+    archive  1 result(s) 34.3k → 283 tok (estimate/chars-4)
+    reason   3.7k tok (90% of completion) · 1 answer(s) with no content
+    compaction  unavailable: no compaction fired on this run
+    brief-vs-transcript  unavailable: no subagent brief was recorded on this run
+  turn 1/1 · out 4096 tok (provider) · tok/s n/a · no tool call · ctx 3%
+  null     duration_ms: the transcript carries no usable timestamps
+  null     model: the transcript records no provider note
+  null     cost.usd: no price was declared for this run: pass --price-per-1k-tokens, set SKALDIR_TELEMETRY_PRICE_PER_1K, or run with `agent run --price-per-1k-tokens <rate>` (the run's own declaration is used when the transcript carries one)
+  null     tokens_per_second: no turn has both a completion token count and a non-zero generation window — a rate would be invented
+  null     turns[1].tokens_per_second: the transcript records no measurable generation window for this turn
+  warning  /tmp/94-worked-example.jsonl has no `run.finished` event — the numbers below are what the run recorded up to the last event
+  warning  the transcript carries no provider note — the model is unknown, not empty

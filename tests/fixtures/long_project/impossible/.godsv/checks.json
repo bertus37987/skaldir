@@ -1,0 +1,10 @@
+{
+  "run": {
+    "argv": ["python3", "tools/check_cli.py"],
+    "timeout": 120
+  },
+  "api": {
+    "argv": ["python3", "tools/check_external.py"],
+    "timeout": 120
+  }
+}

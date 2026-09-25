@@ -1,0 +1,55 @@
+# Skaldir CLI art - the logo converted once, checked in. Do not edit by hand.
+# a grid carries one hex digit per pixel: 0 = paper, f = full ink
+# source: /home/willy/projects/gods-voice/src/skaldir/assets/skaldir-logo.png
+# source: 1254x1254 px, ink box 282,213-1039,1025
+# generator: python -m skaldir.logo regenerate  (stdlib only, no Pillow)
+# rendering: one pixel row per terminal line, aspect corrected for 2:1 cells;
+#            shades .:-=+*#%@ with a grey foreground when colour is on
+
+[grid banner 46x25]
+000000000002579bddefedb94000000000000000000000
+000000005adffffffffffffffd50000000000000000000
+000005befffffffffffffffffff8000000000000000000
+0003cfffffffffffffffffffffff500000000000000000
+009fffffffffffffffffffffffffe30000000000000000
+0afffffffffffffffffffffffffffd0000000000000000
+7ffffffffffffffffffc833457aeff7000000000000000
+dffffffffffffffffffffe710002cfd000000000000000
+effffffffffffffffffffffeb8655ef600000000000000
+efffffffffffffffffffffffffffffff40000000000000
+efffffffffffffffffffffffffffffffe4000000000000
+efffffffffffffffffffffffffffffffe9000000000000
+efffffffffffffffffffffffffffff82000000000469bd
+efffffffffffffffffffffffffffff400000258beffffe
+efffffffffffffffffffffffffda631369beedccba9876
+efffffffffffffffffffffeb7300246654320000000000
+efffffffffffffffffffffb85200235765543322100000
+efffffffffffffffffffffffffda630369cefffffeddca
+dfffffffffffffffffffffffffffff100000358bdffffe
+8fffffffffffffffffffffffffffff40000000000258bd
+09ffffffffffffffffffffffffffffc100000000000000
+006dfffffffffffffffffffffffffffc00000000000000
+000048beffffffffffffffffffffffffa0000000000000
+0000000034679acdfffffffffffffffff7000000000000
+0000000000000000012356789abcddddd7000000000000
+[end]
+
+[grid mark 16x9]
+0048bdedb4000000
+3cfffffffe200000
+cffffffa68a00000
+efffffffece50000
+efffffffffb30369
+effffffe95546553
+efffffffeb6469ac
+6effffffffc10002
+014689abcdf80000
+[end]
+
+[caption:full]
+S K A L D I R
+[end]
+
+[caption:short]
+SKALDIR
+[end]

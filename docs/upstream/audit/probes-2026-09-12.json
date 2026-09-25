@@ -1,0 +1,67 @@
+{
+  "echo_pytest_certifies_missing_feature": {
+    "evidence": [
+      {
+        "name": "pytest",
+        "cmd": "terminal @ step 2",
+        "ok": true,
+        "detail": "",
+        "ts": 2.0
+      }
+    ],
+    "verdict": "VERIFIED_COMPLETE"
+  },
+  "tool_name_collapses_distinct_calls": {
+    "evidence": [
+      {
+        "name": "run",
+        "cmd": "terminal @ step 2",
+        "ok": false,
+        "detail": "",
+        "ts": 2.0
+      },
+      {
+        "name": "run",
+        "cmd": "terminal @ step 4",
+        "ok": true,
+        "detail": "",
+        "ts": 4.0
+      }
+    ],
+    "verdict": "VERIFIED_COMPLETE"
+  },
+  "error_without_exit_code": [
+    {
+      "name": "pytest",
+      "cmd": "terminal @ step 2",
+      "ok": true,
+      "detail": "process never started",
+      "ts": 2.0
+    }
+  ],
+  "chat_criterion_unverifiable": {
+    "dod": [
+      {
+        "id": "c1",
+        "text": "Login works after restart",
+        "blocking": true,
+        "verification": "",
+        "status": "open"
+      }
+    ],
+    "failures": [
+      "dod: definition-of-done not verified: Login works after restart"
+    ]
+  },
+  "chat_goal_disconnected_from_hook": {
+    "loaded_pact": "None",
+    "verdict": "VERIFIED_COMPLETE",
+    "stored_goal": "session goal",
+    "stored_dod": []
+  },
+  "second_session_shares_terminal_state": {
+    "session_B_reads": "VERIFIED_COMPLETE",
+    "strict_result": "None"
+  },
+  "untracked_python_not_test_gated": "VERIFIED_COMPLETE"
+}

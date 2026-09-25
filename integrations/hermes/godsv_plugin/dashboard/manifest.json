@@ -1,0 +1,7 @@
+{
+  "name": "godsv",
+  "label": "Skaldir Agent",
+  "description": "Live steering: pauses, completion guards, interventions and the test-money allowance (read-only).",
+  "version": "1.0.0",
+  "api": "plugin_api.py"
+}

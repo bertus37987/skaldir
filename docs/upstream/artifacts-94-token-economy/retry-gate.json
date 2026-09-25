@@ -1,0 +1,53 @@
+{
+  "before_commit_point": {
+    "retry": true,
+    "action": "retry",
+    "reason": "nothing has been committed on this attempt",
+    "attempt": 1,
+    "max_attempts": 1,
+    "commit": {
+      "turn": 1,
+      "attempt": 1,
+      "visible_output": false,
+      "visible_chars": 0,
+      "tool_executed": false,
+      "committed": false,
+      "blocker": ""
+    },
+    "replan": ""
+  },
+  "after_visible_output": {
+    "retry": false,
+    "action": "replan",
+    "reason": "refused past the commit point: user-visible output was already emitted (31 chars) (after: ReadError: connection reset)",
+    "attempt": 1,
+    "max_attempts": 1,
+    "commit": {
+      "turn": 2,
+      "attempt": 1,
+      "visible_output": true,
+      "visible_chars": 31,
+      "tool_executed": false,
+      "committed": true,
+      "blocker": "user-visible output was already emitted (31 chars)"
+    },
+    "replan": "the provider call failed after this attempt had already committed (user-visible output was already emitted (31 chars)) \u2014 a blind retry would write the same answer to the screen twice. Re-plan instead: state what you have already done and continue from there, without repeating it."
+  },
+  "after_tool_executed": {
+    "retry": false,
+    "action": "replan",
+    "reason": "refused past the commit point: a tool call has already executed (after: ReadError: connection reset)",
+    "attempt": 1,
+    "max_attempts": 1,
+    "commit": {
+      "turn": 3,
+      "attempt": 1,
+      "visible_output": false,
+      "visible_chars": 0,
+      "tool_executed": true,
+      "committed": true,
+      "blocker": "a tool call has already executed"
+    },
+    "replan": "the provider call failed after this attempt had already committed (a tool call has already executed) \u2014 a blind retry would run a tool a second time. Re-plan instead: state what you have already done and continue from there, without repeating it."
+  }
+}

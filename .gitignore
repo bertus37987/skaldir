@@ -1,0 +1,53 @@
+# Local logs and sensitive machine state
+/logs/*
+!/logs/README.md
+.env
+.env.*
+!.env.example
+!.env.template
+*.pem
+*.key
+
+# Recreate dependencies and caches in the new workspace
+.venv/
+venv/
+node_modules/
+vendor/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+build/
+dist/
+
+# Do not silently include runtime stores or browser profiles
+/runtime/
+/local-runtime/
+/browser-profiles/
+.godsv/
+chromium-profile/
+
+# Generated test outputs, UI-audit screenshots and raw probe evidence stay local
+/outputs/
+/ui-artifacts/
+/audit/evidence/
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# The long-project fixture ships its own declarations under .godsv/ (checks.json,
+# verify.json) — the bare `.godsv/` rule above hides them, and a fresh clone would
+# arrive with the "achievable" scenario carrying no criteria at all (its README
+# promises three, all reachable). Re-include the directory itself first: git never
+# descends into a directory it has excluded.
+!tests/fixtures/long_project/**/.godsv/
+!tests/fixtures/long_project/**/.godsv/**

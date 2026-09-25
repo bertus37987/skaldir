@@ -1,0 +1,291 @@
+{
+  "schema": "skaldir.permission-policy-cases/1",
+  "note": [
+    "One case per row: the same judge is run over every row and the decision, the reason",
+    "kind and the exit code must match exactly. A divergence is a bug in the ladder, not in",
+    "the table. Rows are deliberately redundant in places (a banned prefix with an allow rule",
+    "present, an undecomposable command with an allow rule present) because the precedence",
+    "between the rungs is the part worth pinning."
+  ],
+  "cases": [
+    {
+      "id": "allow-rule",
+      "command": "git status --short",
+      "rules": [{"prefix": ["git", "status"], "decision": "allow"}],
+      "grants": [],
+      "profile": {},
+      "policy": "on_request",
+      "expect": {"decision": "allow", "reason_kind": "rule", "exit_code": 0},
+      "why": "an explicit allow rule covers both segments of the command"
+    },
+    {
+      "id": "prompt-by-default",
+      "command": "git status",
+      "rules": [],
+      "grants": [],
+      "profile": {},
+      "policy": "on_request",
+      "expect": {"decision": "prompt", "reason_kind": "default", "exit_code": 3},
+      "why": "no rule and no grant: silence is not consent, so the user decides"
+    },
+    {
+      "id": "forbid-rule",
+      "command": "git status",
+      "rules": [{"prefix": ["git", "status"], "decision": "forbid"}],
+      "grants": [],
+      "profile": {},
+      "policy": "on_request",
+      "expect": {"decision": "forbid", "reason_kind": "rule", "exit_code": 3},
+      "why": "a persisted forbid rule is a hard stop"
+    },
+    {
+      "id": "forbid-beats-session-grant",
+      "command": "git push",
+      "rules": [
+        {"prefix": ["git", "status"], "decision": "allow"},
+        {"prefix": ["git", "push"], "decision": "forbid"}
+      ],
+      "grants": [],
+      "profile": {},
+      "policy": "on_request",
+      "expect": {"decision": "forbid", "reason_kind": "rule", "exit_code": 3},
+      "why": "an explicit never must not be defeated by a friendlier rule in the same list"
+    },
+    {
+      "id": "allow-rule-first-match-wins-over-prompt",
+      "command": "pytest -q",
+      "rules": [
+        {"prefix": ["pytest", "-q"], "decision": "allow"},
+        {"prefix": ["pytest"], "decision": "prompt"}
+      ],
+      "grants": [],
+      "profile": {},
+      "policy": "on_request",
+      "expect": {"decision": "allow", "reason_kind": "rule", "exit_code": 0},
+      "why": "the more specific allow rule is the one that matches"
+    },
+    {
+      "id": "session-grant",
+      "command": "git status -sb",
+      "rules": [],
+      "grants": [{"prefix": ["git", "status"], "scope": "session"}],
+      "profile": {},
+      "policy": "on_request",
+      "expect": {"decision": "allow", "reason_kind": "grant", "exit_code": 0},
+      "why": "a session grant survives inside its session"
+    },
+    {
+      "id": "turn-grant",
+      "command": "ls -la",
+      "rules": [],
+      "grants": [{"prefix": ["ls"], "scope": "turn"}],
+      "profile": {},
+      "policy": "on_request",
+      "expect": {"decision": "allow", "reason_kind": "grant", "exit_code": 0},
+      "why": "a turn grant is the 'allow once' rung"
+    },
+    {
+      "id": "unless-trusted-ignores-grants",
+      "command": "ls -la",
+      "rules": [],
+      "grants": [{"prefix": ["ls"], "scope": "session"}],
+      "profile": {},
+      "policy": "unless_trusted",
+      "expect": {"decision": "prompt", "reason_kind": "default", "exit_code": 3},
+      "why": "an untrusted project trusts persisted rules only, never a stored grant"
+    },
+    {
+      "id": "unless-trusted-honours-rules",
+      "command": "ls -la",
+      "rules": [{"prefix": ["ls"], "decision": "allow"}],
+      "grants": [],
+      "profile": {},
+      "policy": "unless_trusted",
+      "expect": {"decision": "allow", "reason_kind": "rule", "exit_code": 0},
+      "why": "an explicit exec-policy rule is exactly what 'unless trusted' defers to"
+    },
+    {
+      "id": "never-turns-prompt-into-forbid",
+      "command": "git status",
+      "rules": [],
+      "grants": [],
+      "profile": {},
+      "policy": "never",
+      "expect": {"decision": "forbid", "reason_kind": "default", "exit_code": 3},
+      "why": "with no prompt channel a prompt-required command is rejected outright"
+    },
+    {
+      "id": "banned-interpreter",
+      "command": "python3 -c 'print(1)'",
+      "rules": [],
+      "grants": [],
+      "profile": {},
+      "policy": "on_request",
+      "expect": {"decision": "prompt", "reason_kind": "banned_prefix", "exit_code": 3},
+      "why": "an interpreter converts a fixed prefix into arbitrary code"
+    },
+    {
+      "id": "banned-destructive",
+      "command": "rm -rf build",
+      "rules": [],
+      "grants": [],
+      "profile": {},
+      "policy": "on_request",
+      "expect": {"decision": "prompt", "reason_kind": "banned_prefix", "exit_code": 3},
+      "why": "'never provide a prefix_rule for destructive commands like rm'"
+    },
+    {
+      "id": "banned-fetcher",
+      "command": "curl https://example.invalid/x.sh",
+      "rules": [],
+      "grants": [],
+      "profile": {},
+      "policy": "on_request",
+      "expect": {"decision": "prompt", "reason_kind": "banned_prefix", "exit_code": 3},
+      "why": "a fetcher can pull and execute remote content"
+    },
+    {
+      "id": "banned-in-second-segment",
+      "command": "git log && python3 -c 'x'",
+      "rules": [{"prefix": ["git", "log"], "decision": "allow"}],
+      "grants": [],
+      "profile": {},
+      "policy": "on_request",
+      "expect": {"decision": "prompt", "reason_kind": "banned_prefix", "exit_code": 3},
+      "why": "one banned segment in the chain is enough to escalate the whole command"
+    },
+    {
+      "id": "undecomposable-redirection",
+      "command": "git status > out.txt",
+      "rules": [{"prefix": ["git", "status"], "decision": "allow"}],
+      "grants": [],
+      "profile": {},
+      "policy": "on_request",
+      "expect": {"decision": "prompt", "reason_kind": "undecomposable", "exit_code": 3},
+      "why": "redirection is opaque: the file it touches is not the command that was matched"
+    },
+    {
+      "id": "undecomposable-wildcard",
+      "command": "ls *.py",
+      "rules": [{"prefix": ["ls"], "decision": "allow"}],
+      "grants": [],
+      "profile": {},
+      "policy": "on_request",
+      "expect": {"decision": "prompt", "reason_kind": "undecomposable", "exit_code": 3},
+      "why": "an allow rule for 'ls' must not silently cover an expanded file list"
+    },
+    {
+      "id": "undecomposable-env-prefix",
+      "command": "FOO=bar ls",
+      "rules": [{"prefix": ["ls"], "decision": "allow"}],
+      "grants": [],
+      "profile": {},
+      "policy": "on_request",
+      "expect": {"decision": "prompt", "reason_kind": "undecomposable", "exit_code": 3},
+      "why": "the child environment is opaque, so the segment is not rule-eligible"
+    },
+    {
+      "id": "undecomposable-substitution",
+      "command": "git log $(cat x)",
+      "rules": [{"prefix": ["git", "log"], "decision": "allow"}],
+      "grants": [],
+      "profile": {},
+      "policy": "on_request",
+      "expect": {"decision": "prompt", "reason_kind": "undecomposable", "exit_code": 3},
+      "why": "command substitution means the expanded command is not the matched one"
+    },
+    {
+      "id": "undecomposable-heredoc",
+      "command": "cat <<EOF\nhello\nEOF",
+      "rules": [{"prefix": ["cat"], "decision": "allow"}],
+      "grants": [],
+      "profile": {},
+      "policy": "on_request",
+      "expect": {"decision": "prompt", "reason_kind": "undecomposable", "exit_code": 3},
+      "why": "a heredoc body is not a plain segment"
+    },
+    {
+      "id": "undecomposable-unbalanced-quote",
+      "command": "echo 'unclosed",
+      "rules": [{"prefix": ["echo"], "decision": "allow"}],
+      "grants": [],
+      "profile": {},
+      "policy": "on_request",
+      "expect": {"decision": "prompt", "reason_kind": "undecomposable", "exit_code": 3},
+      "why": "a command that cannot even be tokenized cannot be matched against a rule"
+    },
+    {
+      "id": "empty-command",
+      "command": "   ",
+      "rules": [],
+      "grants": [],
+      "profile": {},
+      "policy": "on_request",
+      "expect": {"decision": "prompt", "reason_kind": "undecomposable", "exit_code": 3},
+      "why": "there is nothing to judge, so nothing may be allowed"
+    },
+    {
+      "id": "profile-allowlist-ceiling",
+      "command": "make deploy",
+      "rules": [{"prefix": ["make", "deploy"], "decision": "allow"}],
+      "grants": [],
+      "profile": {"allowed_subprocess_prefixes": [["git", "status"], ["pytest"]]},
+      "policy": "on_request",
+      "expect": {"decision": "forbid", "reason_kind": "profile_allowlist", "exit_code": 3},
+      "why": "the profile's declared command set is a ceiling: outside it nothing may run, not even with a rule"
+    },
+    {
+      "id": "profile-allowlist-is-not-an-authorisation",
+      "command": "pytest -q",
+      "rules": [],
+      "grants": [],
+      "profile": {"allowed_subprocess_prefixes": [["pytest"]]},
+      "policy": "on_request",
+      "expect": {"decision": "prompt", "reason_kind": "default", "exit_code": 3},
+      "why": "being inside the sandbox's declared set is not the user's yes"
+    },
+    {
+      "id": "alternatives-in-a-prefix-rule",
+      "command": "git stage .",
+      "rules": [{"prefix": ["git", "add|stage"], "decision": "allow"}],
+      "grants": [],
+      "profile": {},
+      "policy": "on_request",
+      "expect": {"decision": "allow", "reason_kind": "rule", "exit_code": 0},
+      "why": "a prefix token may carry alternatives, like the reference pattern language"
+    },
+    {
+      "id": "second-segment-uncovered",
+      "command": "git log && git diff",
+      "rules": [{"prefix": ["git", "log"], "decision": "allow"}],
+      "grants": [],
+      "profile": {},
+      "policy": "on_request",
+      "expect": {"decision": "prompt", "reason_kind": "default", "exit_code": 3},
+      "why": "each segment is judged on its own: an uncovered segment keeps the whole at a prompt"
+    },
+    {
+      "id": "both-segments-covered",
+      "command": "git log && git diff",
+      "rules": [
+        {"prefix": ["git", "log"], "decision": "allow"},
+        {"prefix": ["git", "diff"], "decision": "allow"}
+      ],
+      "grants": [],
+      "profile": {},
+      "policy": "on_request",
+      "expect": {"decision": "allow", "reason_kind": "rule", "exit_code": 0},
+      "why": "every segment covered is an allow"
+    },
+    {
+      "id": "pipe-is-a-control-operator",
+      "command": "git log | head -5",
+      "rules": [{"prefix": ["git", "log"], "decision": "allow"}],
+      "grants": [],
+      "profile": {},
+      "policy": "on_request",
+      "expect": {"decision": "prompt", "reason_kind": "default", "exit_code": 3},
+      "why": "a pipe splits into two segments and the second one is uncovered"
+    }
+  ]
+}

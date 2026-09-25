@@ -1,0 +1,195 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "skaldir-agent"
+version = "1.5.0"
+description = "Skaldir — self-learning agent harness: live reasoning steering, incident memory, skill/tool mining, computer use, treasury."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Willy (bertus37987)" }]
+urls = { Homepage = "https://github.com/bertus37987/gods-voice", Repository = "https://github.com/bertus37987/gods-voice" }
+keywords = ["agent", "agent-harness", "cli", "computer-use", "llm"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Environment :: Console",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: POSIX :: Linux",
+]
+dependencies = [
+  "PyYAML>=6.0,<7",
+  # `godsv.jev` (the decision façade) imports pydantic on the CLI's runtime path and
+  # the LLM provider adapter speaks HTTP: both used to arrive only through the `dev`
+  # extra's fastapi, which made every `godsvoice jev …` import a shipping risk.
+  "httpx>=0.27,<1",
+  "pydantic>=2,<3",
+  # Measured on a real install (2026-09-18): `godsvoice --version` died with
+  # `ModuleNotFoundError: No module named 'cryptography'` before argparse ran, because
+  # `cli.py` imports `godsv.treasury` at module level and `treasury.py` imports
+  # `cryptography.fernet` at module level. A CLI import chain is a runtime dependency —
+  # `cryptography` is therefore required (not only the `treasury`/`dev` extra), otherwise
+  # the installed console script is dead on arrival. See MVP/20-shipping.md §D.
+  "cryptography>=42",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=9,<10",
+  "ruff>=0.6,<1",
+  "bandit>=1.7,<2",
+  "cryptography>=42",
+  # The API surface, the optional schema validator and the CDP screenshot path are all
+  # imported lazily (never at module level) so the core CLI works without them — but the
+  # *test suite* exercises them, so a dev install must actually have them. They used to
+  # arrive by accident through fastmcp's dependency tree; naming them here is what makes
+  # `pip install -e '.[dev]'` self-sufficient instead of fastmcp-dependent.
+  "fastapi>=0.115",
+  "uvicorn>=0.30",
+  "starlette>=0.40",
+  "httpx>=0.27",
+  "jsonschema>=4",
+  "websockets>=12",
+]
+# --- the capabilities that are *not* in the core install ---------------------------------------
+# Each one is imported lazily inside a function (never at module level) and each one is refused
+# *structurally* when it is missing: exit 3 (blocked) plus a machine-readable reason naming the
+# extra, never a traceback, never a silent skip, never a verdict that blames the detectors.
+#
+# Measured on a clean install (2026-09-19, a venv holding only the four core dependencies):
+#   `skaldir adversarial selftest --json` -> exit 2 "verification failed: the suite does not
+#   distinguish the targets", `detected: 0/11`, 12 false positives — a *false verdict*. It
+#   blamed the detectors ("a detector that never fired is decoration") for a missing
+#   `playwright` and never named the driver. `adversarial run --with-api` was worse: exit 7
+#   internal *with a traceback* ("RuntimeError: the API server exited during startup"). See
+#   MVP/81-shipping-gap.md — and `tests/test_dependency_declarations.py`, which fails when any
+#   third-party import in `src/skaldir/**` is declared nowhere.
+api = [
+  "fastapi>=0.115",
+  "uvicorn>=0.30",
+  "starlette>=0.40",
+]
+# `playwright` is the driver for the browser half of the adversarial suite and for the user-flow
+# verifier. The client package alone is not enough: the browser binary is a separate download,
+# and both commands are named verbatim in the refusal
+# (`skaldir adversarial selftest` -> exit 3).
+browser = [
+  "playwright>=1.40,<2",
+]
+# `websockets` carries the CDP screenshot/eval path the computer-use layer uses for
+# Wayland/Electron windows (`workflows.cdp_screenshot` / `workflows._cdp_eval`).
+# `python-xlib` is the third X11 focus fallback after the host binaries `xdotool`/`wmctrl`
+# (`workflows.focus_window`) — it *is* imported (lazily, guarded), so it is declared here
+# rather than left to whichever environment happened to have it.
+computer-use = [
+  "websockets>=12",
+  "python-xlib>=0.33",
+]
+# `jsonschema` is the optional strong validator behind the `jsonschema` validator backend
+# (`structured.validate_payload`): the builtin checker is the default and the report never
+# claims the package ran when it did not.
+structured = [
+  "jsonschema>=4",
+]
+mcp = [
+  "fastmcp>=2",
+]
+treasury = [
+  "cryptography>=42",
+]
+
+[project.scripts]
+# The console script is `skaldir`. `godsvoice` is the deprecated alias: the very
+# same entry point, so behaviour and exit codes are identical — `perf_lazy.main`
+# recognises the invoked name and writes one notice line to stderr *only on a TTY*
+# (a piped or redirected stderr stays byte-clean for `--json` consumers).
+skaldir = "skaldir.perf_lazy:main"
+godsvoice = "skaldir.perf_lazy:main"
+
+# --- packaging: installable CLI (`uv tool install` / `pipx install` / `pip install`) ---
+# The wheel carries the whole `skaldir` package *including its data files*: the CLI banner
+# art (`skaldir/assets/logo.ansi`), the Skaldir icons and the bundled fonts. `artifacts`
+# makes that explicit instead of relying on the collector's default file walk — a wheel
+# without `assets/` ships a `skaldir` with no banner and no icon source. Verified by
+# unpacking the built wheel in `tests/test_packaging.py`.
+#
+# `src/godsv` ships too: it is the deprecated alias package (`import godsv` still works,
+# as the same module objects, with a DeprecationWarning). Dropping it from the wheel
+# would break every existing importer of the old name in an installed tool.
+[tool.hatch.build.targets.wheel]
+packages = ["src/skaldir", "src/godsv"]
+artifacts = ["src/skaldir/assets/**"]
+
+# `skaldir.prompts.default_root()` resolves `<repo root>/prompts` or `$SKALDIR_PROMPTS`;
+# it has no notion of the installed package. A wheel cannot write outside site-packages, so
+# the prompt files also ship *inside* the package as `skaldir/prompts/` and the install doc
+# names the single env var that points the registry at them (MVP/20-shipping.md §E).
+[tool.hatch.build.targets.wheel.force-include]
+"prompts" = "skaldir/prompts"
+
+# The sdist has to build from a checkout that also contains `outputs/ui-audit/**`, whose
+# chromium profile holds an *absolute* symlink (`…/chromium-profile/SingletonSocket`).
+# Hatchling's default sdist selection is "everything not git-ignored", so the tarball died
+# with `Invalid tar file … symlink path … is absolute` and took the whole `uv build` with
+# it. Scope the sdist to what a source install actually needs.
+[tool.hatch.build.targets.sdist]
+include = [
+  "src/skaldir",
+  "src/godsv",
+  "prompts",
+  "tests",
+  "README.md",
+  "README-CLI.md",
+  "LICENSE",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "integrations/hermes"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# Anchors in the overlay must stay byte-exact — long upstream lines are the point.
+"app-overlay/patch_app.py" = ["E501"]
+# Same rule for the UI correction overlay: it carries the app's own source lines
+# byte-exact in its anchors and replacement blocks (a wrapped anchor never matches).
+"app-overlay/patch_app_ui.py" = ["E501"]
+# Audit/probe tools carry verbatim probe payload and markdown table rows; byte-exact beats wrap.
+"tools/build_audit_register.py" = ["E501"]
+"tools/rf_measure.py" = ["E501"]
+"tools/rf_test_provider.py" = ["E501"]
+"tools/host_engine_regression_probe.py" = ["E501"]
+# Host overlays carry engine code snippets byte-exact inside triple-quoted
+# replacement blocks (anchors must match the running engine verbatim) — line
+# length is the anchor's problem, not ours.
+"host-overlay/*.py" = ["E501"]
+"tools/host_rf0*.py" = ["E501"]
+"tools/host_rf1*.py" = ["E501"]
+# Probe tools print verbatim payloads, JSON dumps and markdown rows on single lines;
+# wrapping them would change what the probe actually emits/proves.
+"tools/*_probe.py" = ["E501"]
+"tools/gv_ui_audit.py" = ["E501"]
+"tools/gv_seed_turn.py" = ["E501"]
+"tools/gv_wave1_clean_install.py" = ["E501"]
+"tools/register_linkage_report.py" = ["E501"]
+
+# The plugin resolves the product package from its own location before importing it: the
+# engine venv has no `godsv` and the app passes no PYTHONPATH (measured: 636 module errors,
+# 127 HTTP 500s in one session). That shim MUST precede the `godsv` imports — E402 is the
+# point, not a slip.
+"integrations/hermes/godsv_plugin/__init__.py" = ["E402"]
+"integrations/hermes/godsv_plugin/dashboard/plugin_api.py" = ["E402"]
+# The CU GUI probe prints verbatim runner payloads (JSON of the real observed state) in its
+# check details — byte-exact beats wrap, same as the other probe tools above.
+"tools/cu_agent_gui_probe.py" = ["E501"]
+
+[tool.bandit]
+exclude_dirs = ["tests", ".venv"]

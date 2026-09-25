@@ -1,0 +1,9 @@
+[project]
+name = "textkit"
+version = "0.1.0"
+description = "Tiny text utilities — the long-project E2E fixture."
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

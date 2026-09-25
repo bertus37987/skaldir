@@ -1,0 +1,5 @@
+#!/bin/sh
+# CGI of the HTTP fixture: GET /cgi-bin/echo?text=<value> -> {"echo": "<value>"}
+value="$(printf '%s' "$QUERY_STRING" | sed -n 's/^text=//p')"
+printf 'Content-Type: application/json\r\n\r\n'
+printf '{"echo": "%s"}\n' "$value"

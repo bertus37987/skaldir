@@ -1,0 +1,100 @@
+{
+  "echo_pytest_certifies_missing_feature": {
+    "evidence": [
+      {
+        "name": "pytest",
+        "cmd": "echo pytest",
+        "ok": true,
+        "detail": "",
+        "ts": 2.0,
+        "status": "passed",
+        "check_id": "pytest",
+        "source": "events",
+        "tool_call_id": "terminal#1",
+        "revision": 0
+      }
+    ],
+    "verdict": "INCOMPLETE"
+  },
+  "tool_name_collapses_distinct_calls": {
+    "evidence": [
+      {
+        "name": "pytest",
+        "cmd": "pytest -q",
+        "ok": false,
+        "detail": "",
+        "ts": 2.0,
+        "status": "failed",
+        "check_id": "pytest",
+        "source": "events",
+        "tool_call_id": "terminal#1",
+        "revision": 0
+      },
+      {
+        "name": "run",
+        "cmd": "pwd",
+        "ok": true,
+        "detail": "",
+        "ts": 4.0,
+        "status": "passed",
+        "check_id": "run",
+        "source": "events",
+        "tool_call_id": "terminal#2",
+        "revision": 0
+      }
+    ],
+    "verdict": "INCOMPLETE"
+  },
+  "error_without_exit_code": [
+    {
+      "name": "pytest",
+      "cmd": "pytest -q",
+      "ok": false,
+      "detail": "process never started",
+      "ts": 2.0,
+      "status": "failed",
+      "check_id": "pytest",
+      "source": "events",
+      "tool_call_id": "terminal#1",
+      "revision": 0
+    }
+  ],
+  "chat_criterion_unverifiable": {
+    "dod": [
+      {
+        "id": "c1",
+        "text": "Login works after restart",
+        "blocking": true,
+        "verification": "persistence_restart",
+        "status": "open"
+      }
+    ],
+    "failures": []
+  },
+  "chat_goal_disconnected_from_hook": {
+    "loaded_pact": "None",
+    "verdict": "INCOMPLETE",
+    "stored_goal": "User goal",
+    "stored_dod": [
+      {
+        "id": "required",
+        "text": "Missing mandatory UI",
+        "blocking": true,
+        "verification": "ui_e2e",
+        "status": "open"
+      },
+      {
+        "id": "c1",
+        "text": "Must survive a restart",
+        "blocking": true,
+        "verification": "persistence_restart",
+        "status": "open"
+      }
+    ]
+  },
+  "second_session_shares_terminal_state": {
+    "session_B_reads": "WORKING",
+    "strict_result": "VerificationResult(status='INCOMPLETE', attempt_id='att-ddbfb7f79a', verified_requirements=[], blocking_failures=['evidence: completion claimed but no executed check was provided as evidence', 'tests: code changed but no test run is evidenced \u2014 run the suite now'], major_failures=[], minor_findings=[], evidence=[], next_actions=['Run the full test suite now and attach the result as evidence.', 'Provide at least one executed check per claimed requirement.'], fingerprint='d085568360f86734', repeat_count=1, escalate=False, created=1789238110.8397834)"
+  },
+  "untracked_python_not_test_gated": "INCOMPLETE"
+}

@@ -1,0 +1,70 @@
+# Skaldir Agent skin — themes the CLI, TUI and desktop GUI from one file.
+#
+# Monochrome "Rounded Functional Minimalism": neutral greys from the product
+# design (background #111111, surface #191919, primary text #F5F5F5, secondary
+# #B7B7B7, divider #383838). NO brand accent colour: the primary action is a
+# light surface with dark ink (and the inverse in light mode), so gold/gradients
+# are gone by design. The design language stays the engine's (same semantics,
+# same structure) — only the identity changes.
+#
+# Install: copied to <hermes-home>/skins/gods-voice.yaml by
+# `skaldir desktop install`, then activated explicitly with
+# `hermes config set display.skin gods-voice` (never activated silently: Hermes
+# shares the same config and keeps its own theme).
+#
+# Filename/`name` stay `gods-voice` on purpose: that value is the config key in
+# `display.skin`, not user-facing copy.
+
+name: gods-voice
+description: Skaldir Agent — monochromes Rounded Functional Minimalism (Hermes Engine)
+
+colors:
+  # Base surface — the GUI derives its whole palette from it.
+  background: "#111111"
+
+  # Brand "accent": deliberately the primary TEXT colour, not a hue. Nothing in
+  # the product is gold/coloured any more; emphasis is contrast, not chroma.
+  ui_accent: "#F5F5F5"
+  banner_accent: "#F5F5F5"
+
+  # Text hierarchy.
+  banner_title: "#F5F5F5"   # headings / primary
+  banner_text: "#F5F5F5"    # body foreground
+  ui_text: "#F5F5F5"
+  banner_dim: "#B7B7B7"     # muted / secondary
+  banner_border: "#383838"
+  ui_border: "#383838"
+
+  # Semantic status — recognizably green/amber/red, tempered for the neutral
+  # field so a status is never confused with brand chrome.
+  ui_ok: "#5FB45C"
+  ui_warn: "#D29922"
+  ui_error: "#FF6B7D"
+
+  # CLI / TUI chrome.
+  prompt: "#F5F5F5"
+  input_rule: "#383838"
+  response_border: "#383838"
+  status_bar_bg: "#191919"
+  status_bar_text: "#F5F5F5"
+  status_bar_good: "#5FB45C"
+  status_bar_warn: "#D29922"
+  status_bar_critical: "#FF6B7D"
+  session_label: "#B7B7B7"
+  session_border: "#383838"
+
+  # Extra surfaces the desktop reads when present.
+  completion_menu_bg: "#191919"
+  completion_menu_current_bg: "#232323"
+  completion_menu_meta_bg: "#191919"
+
+# Identity: the agent IS Skaldir Agent; Hermes stays the engine (named where it
+# must be — "Hermes Engine" below, runtime references in the panel).
+branding:
+  agent_name: Skaldir Agent
+  prompt_symbol: "›"
+  help_header: "Skaldir Agent — Commands (Hermes Engine)"
+  welcome: "Skaldir Agent — real work, visible and steerable (Hermes Engine)."
+  goodbye: "Skaldir out."
+
+tool_prefix: "┊"

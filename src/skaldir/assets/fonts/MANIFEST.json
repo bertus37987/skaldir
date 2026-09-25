@@ -1,0 +1,101 @@
+{
+  "vendored_from": {
+    "geist-sans": "@fontsource/geist-sans@5.3.0",
+    "space-grotesk": "@fontsource/space-grotesk@5.3.0",
+    "geist-mono": "@fontsource/geist-mono@5.3.0"
+  },
+  "fetched": "2026-09-17",
+  "generator": "fontsmith (Skaldir UI fix wave)",
+  "font_faces": [
+    {
+      "file": "GeistSans-Regular.woff2",
+      "family": "Geist Sans",
+      "weight": 400,
+      "style": "normal",
+      "bytes": 33400,
+      "license": "OFL-1.1",
+      "upstream_package": "@fontsource/geist-sans",
+      "upstream_file": "files/geist-sans-latin-400-normal.woff2",
+      "subset": "latin",
+      "name_table_family": "Geist"
+    },
+    {
+      "file": "GeistSans-Medium.woff2",
+      "family": "Geist Sans",
+      "weight": 500,
+      "style": "normal",
+      "bytes": 34716,
+      "license": "OFL-1.1",
+      "upstream_package": "@fontsource/geist-sans",
+      "upstream_file": "files/geist-sans-latin-500-normal.woff2",
+      "subset": "latin",
+      "name_table_family": "Geist,Geist Medium"
+    },
+    {
+      "file": "GeistSans-SemiBold.woff2",
+      "family": "Geist Sans",
+      "weight": 600,
+      "style": "normal",
+      "bytes": 35292,
+      "license": "OFL-1.1",
+      "upstream_package": "@fontsource/geist-sans",
+      "upstream_file": "files/geist-sans-latin-600-normal.woff2",
+      "subset": "latin",
+      "name_table_family": "Geist,Geist SemiBold"
+    },
+    {
+      "file": "SpaceGrotesk-Medium.woff2",
+      "family": "Space Grotesk",
+      "weight": 500,
+      "style": "normal",
+      "bytes": 13312,
+      "license": "OFL-1.1",
+      "upstream_package": "@fontsource/space-grotesk",
+      "upstream_file": "files/space-grotesk-latin-500-normal.woff2",
+      "subset": "latin",
+      "name_table_family": "Space Grotesk Light,Space Grotesk Light Medium"
+    },
+    {
+      "file": "SpaceGrotesk-Bold.woff2",
+      "family": "Space Grotesk",
+      "weight": 700,
+      "style": "normal",
+      "bytes": 12840,
+      "license": "OFL-1.1",
+      "upstream_package": "@fontsource/space-grotesk",
+      "upstream_file": "files/space-grotesk-latin-700-normal.woff2",
+      "subset": "latin",
+      "name_table_family": "Space Grotesk Light"
+    },
+    {
+      "file": "GeistMono-Regular.woff2",
+      "family": "Geist Mono",
+      "weight": 400,
+      "style": "normal",
+      "bytes": 9864,
+      "license": "OFL-1.1",
+      "upstream_package": "@fontsource/geist-mono",
+      "upstream_file": "files/geist-mono-latin-400-normal.woff2",
+      "subset": "latin",
+      "name_table_family": "Geist Mono"
+    },
+    {
+      "file": "GeistMono-Medium.woff2",
+      "family": "Geist Mono",
+      "weight": 500,
+      "style": "normal",
+      "bytes": 10116,
+      "license": "OFL-1.1",
+      "upstream_package": "@fontsource/geist-mono",
+      "upstream_file": "files/geist-mono-latin-500-normal.woff2",
+      "subset": "latin",
+      "name_table_family": "Geist Mono,Geist Mono Medium"
+    }
+  ],
+  "css_font_family_names": {
+    "ui": "Geist",
+    "brand": "Space Grotesk",
+    "mono": "Geist Mono",
+    "note": "Names declared by app-overlay/patch_app_ui.py @font-face rules (verified in the built app: body stack = Geist, 0 text nodes below 11px). Upstream Fontsource file names differ; @font-face naming is what binds the face."
+  }
+}

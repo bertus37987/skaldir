@@ -1,0 +1,340 @@
+#!/usr/bin/env python3
+"""Build the release audit register for the Skaldir Agent criteria set.
+
+Wave 1 of the master order is *truth about the stock*: every one of the 77
+criteria (S01-S20, V2-01-V2-13, VD-01-VD-24, PX-01-PX-08, RF-01-RF-12) gets the
+three dimensions chapter 06 defines —
+
+    implementation : unknown | missing | partial | implemented
+    evidence       : unreviewed | documented | mock_tested | live_tested | independently_verified
+    acceptance     : open | satisfied | blocked | failed
+
+— plus a verified code mapping. Nothing here may promote a state on its own:
+the design package's own matrix is explicitly
+``document_integrity_not_product_verification``, and a claim only counts once it
+is verified against the code at THIS HEAD.
+
+Inputs
+  <package>/REQUIREMENTS.json      the frozen criteria inventory
+  audit/verification-mapping.json  verified evidence collected in this repo, by id
+
+Outputs
+  audit/REQUIREMENTS.json          criteria + state dimensions + evidence refs
+  audit/CODE_MAP.md                per criterion: chat/CLI -> handler -> voice/builder/
+                                   discovery -> execution boundary -> persistence/event ->
+                                   visible result, with concrete symbols
+
+Usage
+  python3 tools/build_audit_register.py [--package DIR] [--check]
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[1]
+DEFAULT_PACKAGE = Path("/home/willy/Documents/Design_Docs/Skaldir_Release_Paket")
+AUDIT = REPO / "audit"
+
+IMPLEMENTATION_STATES = ("unknown", "missing", "partial", "implemented")
+EVIDENCE_STATES = (
+    "unreviewed",
+    "documented",
+    "mock_tested",
+    # ABNAHME.md §5.1 lists the contract rung separately: schema/parser/state
+    # machine proven against the real contract, but without several real
+    # components in play (that would be integration). The System-One foundation
+    # is exactly this class.
+    "contract_tested",
+    # ABNAHME.md §4.2 adds the integration rung: several real components, but not
+    # the full real-world effect yet (e.g. a real process SIGKILL against the
+    # engine overlay without a real provider on the wire).
+    "integration_tested",
+    "live_tested",
+    "independently_verified",
+)
+ACCEPTANCE_STATES = ("open", "satisfied", "blocked", "failed")
+
+#: Dimension defaults. An unreviewed criterion is NOT "missing" — it is unknown,
+#: which is the honest state until somebody reads the code at this HEAD.
+DEFAULTS = {
+    "implementation_state": "unknown",
+    "evidence_state": "unreviewed",
+    "acceptance_state": "open",
+}
+
+
+def load_criteria(package: Path) -> tuple[dict, list[dict]]:
+    payload = json.loads((package / "REQUIREMENTS.json").read_text(encoding="utf-8"))
+    return payload, payload["requirements"]
+
+
+def load_mapping() -> dict:
+    path = AUDIT / "verification-mapping.json"
+    if not path.is_file():
+        return {}
+    return json.loads(path.read_text(encoding="utf-8")).get("criteria", {})
+
+
+def merged(criteria: list[dict], mapping: dict) -> list[dict]:
+    out = []
+    for entry in criteria:
+        record = dict(entry)
+        for key, default in DEFAULTS.items():
+            record.setdefault(key, default)
+        found = mapping.get(entry["id"]) or {}
+        for key in (*DEFAULTS, "verified_mapping", "review_findings", "next_action"):
+            if key in found:
+                record[key] = found[key]
+        # A package claim is not evidence: the packaged snapshot stays in
+        # reported_status until a verified mapping replaces it.
+        record["reported_status_at_package"] = entry.get("reported_status")
+        out.append(record)
+    return out
+
+
+STAMP_KEY = '"observed_project_head"'
+
+
+def _without_stamp(text: str) -> str:
+    """Drop the informational head stamp before comparing.
+
+    The stamp records where the tree stood when the artifact was written, so a
+    later commit would otherwise leave every gate red forever — and a gate that
+    is always red trains an integrator to ignore it. Content is what must match.
+    """
+    return "\n".join(line for line in text.splitlines() if STAMP_KEY not in line)
+
+
+def check_states(records: list[dict]) -> list[str]:
+    problems = []
+    for record in records:
+        for key, allowed in (
+            ("implementation_state", IMPLEMENTATION_STATES),
+            ("evidence_state", EVIDENCE_STATES),
+            ("acceptance_state", ACCEPTANCE_STATES),
+        ):
+            if record[key] not in allowed:
+                problems.append(f"{record['id']}: {key}={record[key]!r} not one of {allowed}")
+    return problems
+
+
+def render_code_map(records: list[dict], mapping: dict) -> str:
+    lines = [
+        "# CODE_MAP — Skaldir Agent criteria traceability",
+        "",
+        "Generated by `tools/build_audit_register.py` from the frozen criteria inventory",
+        "(`REQUIREMENTS.json` of the release package) plus the *verified* mapping in",
+        "`audit/verification-mapping.json`. Chapter 06 §8 requires one chain per criterion:",
+        "",
+        "    Chat/CLI → handler → Voice/Builder/Discovery → execution boundary",
+        "              → persistence/event → visible result",
+        "",
+        "with concrete symbols at the final stand. `unknown` is a statement, not a gap in the",
+        "table: it means nobody has read the code for that criterion at this HEAD yet. Run",
+        "with `--check` to prove the artifacts still match their inputs.",
+        "",
+        "| ID | requirement | implementation | evidence | acceptance | verified code mapping | next action |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    for record in records:
+        text = " ".join(record["requirement"].split())[:110]
+        code = " ".join(str(mapping.get(record["id"], {}).get("verified_mapping") or "—").split())
+        nxt = " ".join(str(mapping.get(record["id"], {}).get("next_action") or "—").split())
+        lines.append(
+            f"| {record['id']} | {text} | {record['implementation_state']} | "
+            f"{record['evidence_state']} | {record['acceptance_state']} | {code[:300]} | {nxt[:160]} |"
+        )
+    totals: dict[str, int] = {}
+    for record in records:
+        key = f"{record['implementation_state']}/{record['acceptance_state']}"
+        totals[key] = totals.get(key, 0) + 1
+    lines += ["", "## Summary (implementation/acceptance)", ""]
+    lines += [f"- `{key}` — {totals[key]}" for key in sorted(totals)]
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _record_evidence(criterion_id: str) -> tuple[list[str], list[str]]:
+    """Evidence ids and run ids recorded for this criterion (may be empty)."""
+    path = AUDIT / "evidence" / "records" / f"{criterion_id}.json"
+    if not path.is_file():
+        return [], []
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return [], []
+    entries = payload if isinstance(payload, list) else [payload]
+    ids, runs = [], []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("evidence_id"):
+            ids.append(str(entry["evidence_id"]))
+        if entry.get("run_id"):
+            runs.append(str(entry["run_id"]))
+    return sorted(set(ids)), sorted(set(runs))
+
+
+#: A repo path inside mapping prose. Kept deliberately narrow: only real trees.
+_PATH_RE = re.compile(r"\b((?:src|tests|tools|docs|docker|integrations|host-overlay|app-overlay)/[\w./-]+)")
+
+#: A bare file name (no directory) that the index below resolves to exactly one repo file.
+_BARE_RE = re.compile(r"\b([\w-]+\.(?:py|mjs|md|json|sh|toml|js))\b")
+
+
+def _file_index() -> dict[str, list[str]]:
+    """Map every bare file name under the real trees to its repo-relative path(s)."""
+    index: dict[str, list[str]] = {}
+    for tree in ("src", "tests", "tools", "docker", "integrations", "host-overlay", "app-overlay"):
+        root = REPO / tree
+        if not root.is_dir():
+            continue
+        for path in root.rglob("*"):
+            if path.is_file() and "__pycache__" not in path.parts and ".venv" not in path.parts:
+                index.setdefault(path.name, []).append(str(path.relative_to(REPO)))
+    return index
+
+
+def _validated_paths(text: str) -> tuple[list[str], list[str]]:
+    """Split the prose into repo paths that really exist -> (code, tests).
+
+    Nothing is carried over on trust: a token that is not on disk is dropped, a bare file
+    name is only accepted when it resolves to exactly ONE repo file, and a
+    ``file.py::test_name`` is only accepted when that name is really IN the file. That is the
+    difference between a link and a plausible-looking one.
+    """
+    code: list[str] = []
+    tests: list[str] = []
+    prose = str(text or "")
+    # (a) full repo paths
+    for match in _PATH_RE.finditer(prose):
+        token = match.group(1).rstrip(".,;:)")
+        name_part, _, test_name = token.partition("::")
+        if not (REPO / name_part).exists():
+            continue
+        if name_part.startswith("tests/") and name_part.endswith(".py"):
+            tests.append(_check_test_name(name_part, test_name))
+        elif not name_part.startswith("tests/"):
+            code.append(token)
+    # (b) bare file names that resolve to exactly one real file
+    index = _file_index()
+    for match in _BARE_RE.finditer(prose):
+        name = match.group(1)
+        candidates = index.get(name) or []
+        if len(candidates) != 1:
+            continue  # ambiguous or unknown -> no link rather than a guess
+        resolved = candidates[0]
+        if resolved.startswith("tests/"):
+            tests.append(resolved)
+        else:
+            code.append(resolved)
+    return sorted({c for c in code if c}), sorted({t for t in tests if t})
+
+
+def _check_test_name(path: str, test_name: str) -> str:
+    """A ``::name`` link is only kept when that test function is really in the file."""
+    if not test_name:
+        return path
+    try:
+        body = (REPO / path).read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return ""
+    return f"{path}::{test_name}" if f"def {test_name}" in body else ""
+
+
+def enrich_links(records: list[dict]) -> list[dict]:
+    """Fill the link fields from real sources — evidence store plus validated prose.
+
+    The register shipped with `test_ids`/`files_symbols`/`evidence_refs`/`run_ids` present
+    but empty for all 97 criteria (finding AF-09), so no criterion could prove an end-to-end
+    link. Evidence ids come from the evidence store. Code/test references come from the
+    IMPLEMENTATION description (`verified_mapping`) only — never from `next_action`, whose
+    paths name future work and would produce a link that points at the wrong thing — and
+    every path is validated against the filesystem before it is written.
+    """
+    for record in records:
+        code, tests = _validated_paths(record.get("verified_mapping"))
+        ids, runs = _record_evidence(record["id"])
+        record["files_symbols"] = code
+        record["test_ids"] = tests
+        record["evidence_refs"] = ids
+        record["run_ids"] = runs
+    return records
+
+
+def repo_head() -> str:
+    try:
+        return subprocess.run(
+            ["git", "-C", str(REPO), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        ).stdout.strip()
+    except OSError:
+        return ""
+
+
+def manifest_hash(package: Path) -> str:
+    manifest = package / "PACKAGE_MANIFEST.json"
+    return hashlib.sha256(manifest.read_bytes()).hexdigest() if manifest.is_file() else ""
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--package", type=Path, default=DEFAULT_PACKAGE)
+    parser.add_argument("--check", action="store_true")
+    args = parser.parse_args()
+
+    package, criteria = load_criteria(args.package)
+    mapping = load_mapping()
+    records = enrich_links(merged(criteria, mapping))
+    problems = check_states(records)
+    if problems:
+        print("invalid state values:", *problems, sep="\n  ", file=sys.stderr)
+        return 2
+
+    requirements_out = {
+        "schema_version": 1,
+        "kind": "criteria_state_register",
+        "source_package": str(args.package),
+        "source_package_manifest_sha256": manifest_hash(args.package),
+        "criteria_count": len(records),
+        "status_dimensions": package.get("status_dimensions", {}),
+        "observed_project_head": repo_head(),
+        "criteria": records,
+    }
+    targets = {
+        AUDIT / "REQUIREMENTS.json": json.dumps(requirements_out, indent=2, ensure_ascii=False) + "\n",
+        AUDIT / "CODE_MAP.md": render_code_map(records, mapping),
+    }
+    AUDIT.mkdir(parents=True, exist_ok=True)
+    stale = [
+        path
+        for path, text in targets.items()
+        if not path.is_file()
+        or _without_stamp(path.read_text(encoding="utf-8")) != _without_stamp(text)
+    ]
+    if args.check:
+        if stale:
+            print("stale audit artifacts:", *(str(p) for p in stale), sep="\n  ", file=sys.stderr)
+            return 1
+        print(f"audit register current — {len(records)} criteria")
+        return 0
+    for path, text in targets.items():
+        path.write_text(text, encoding="utf-8")
+        print(f"wrote {path.relative_to(REPO)} ({len(text)} bytes)")
+    verified = sum(1 for r in records if r["implementation_state"] != "unknown")
+    print(f"{len(records)} criteria · {verified} mapped · {len(records) - verified} still unknown")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

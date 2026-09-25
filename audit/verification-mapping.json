@@ -1,0 +1,687 @@
+{
+  "kind": "verified_evidence_mapping",
+  "note": "Only entries verified against the code at the recorded HEAD. The release package's own matrix carries no authority; this file replaces it per criterion. States are chapter-06 dimensions and may only be promoted with the evidence named here. JEV-08, JEV-10, JEV-11, JEV-12, JEV-13, JEV-15, JEV-17, JEV-18 and JEV-19 are NOT mapped: no implementation was delivered or verified in this session, so they stay `unknown` in the register instead of being graded from a plan.",
+  "observed_project_head": "2860560 (branch godsv-supervisor-hardening)",
+  "observed_host_head": "fb56a7e06d (~/.hermes/hermes-agent) — release docs read 1ab32b21, live checkout is newer",
+  "criteria": {
+    "S01": {
+      "implementation_state": "partial",
+      "evidence_state": "live_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "desktop status rc=0; launcher entry ~/.local/share/applications/skaldir.desktop exists; the built tree carries the Skaldir branding (dist/electron-main.mjs, dist/assets/index-*.js) and its own userData ~/.hermes/godsv/desktop-userdata; a built app tree sits under ~/.hermes/godsv/app/linux-unpacked (binary 'gods-voice'). Implementation: src/godsv/cli.py (desktop status/install/uninstall) and integrations/hermes/godsv_plugin/desktop/plugin.js. Tests: tests/test_desktop.py::test_desktop_entry_content (covers the mechanism at the code level; a green test is not acceptance).",
+      "next_action": "Open: a real chat inside the started Skaldir app (branding is proven, the chat function is not) - needs the running desktop session."
+    },
+    "PX-01": {
+      "implementation_state": "partial",
+      "evidence_state": "mock_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "linux-x64: real native build exists and runs (see S01 evidence). windows-x64 / macos-arm64 / macos-x64: no build host in this environment — blocked, no artifact claimed. Bundled runtime: the unpacked app carries its own Chromium/Electron (203 MB binary + icudtl.dat + libEGL/libGLESv2); 'first start without dev tools' not yet verified on a clean host. Implementation: src/godsv/cli.py (desktop install/status) plus the built Linux tree under ~/.hermes/godsv/app. Tests: tests/test_desktop.py::test_desktop_entry_content (covers the mechanism at the code level; a green test is not acceptance).",
+      "next_action": "Verify first start on a clean Linux profile (no dev tools, own userData); provide Windows/macOS build hosts for the other three targets."
+    },
+    "PX-02": {
+      "implementation_state": "partial",
+      "evidence_state": "mock_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "linux-x64: launcher + desktop entry + hicolor icons deployed (`desktop status`: ✓ Eintrag, ✓ Icons 64/128/256), CLI symlink present, own app binary built and runnable. Not yet verified: install/reinstall/uninstall round trip per platform and the uninstall path removing plugin+entry+icons. Implementation: src/godsv/cli.py (desktop install/status/uninstall) plus the deployed launcher/icons. Tests: tests/test_desktop.py::test_desktop_entry_content (covers the mechanism at the code level; a green test is not acceptance).",
+      "next_action": "Run install → reinstall → uninstall on Linux and assert the artifacts are gone; repeat per platform once hosts exist."
+    },
+    "S18": {
+      "implementation_state": "partial",
+      "evidence_state": "integration_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Update-gate suite green (33 tests). Isolation measured: userData at ~/.hermes/godsv/desktop-userdata, app tree at ~/.hermes/godsv/app/linux-unpacked, both outside the engine checkout. Counter-case measured (AF-12): 12393 of 12422 files in ~/.hermes/godsv/app-src are HARDLINKS onto ~/.hermes/hermes-agent, so an in-place writer on either side hits both trees; the product's own writer avoids this by temp + os.replace in app-overlay/patch_app.py ('breaks hardlinks so the source tree is safe'). Implementation: src/godsv/desktop.py, app-overlay/patch_app.py, tests/test_gv_update_gate.py.",
+      "next_action": "Open: a real update run against the live engine checkout was NOT performed (it would touch the user's running installation) - that is the missing half of this criterion and needs the owner's go-ahead."
+    },
+    "V2-01": {
+      "implementation_state": "partial",
+      "evidence_state": "mock_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "plugin.js: cockpit + activity removed from NAV (NAV keeps verification/tools/settings/treasury), VIEW_ICONS dropped 'cockpit', SIDEBAR_NAV_AREA order updated; cockpit stays as panel home route (viewFromHash default) and via chat 'Open cockpit' actions. Smoke: 'nav keeps only unique-function views' + 'nav no longer lists Cockpit or Activity'; gv_ui_e2e.mjs pins 4 areas + tabs gone. node tools/check_desktop_plugin.mjs => desktop panel: contract OK (16 plugin tests green).",
+      "next_action": "Tools/Treasury chat-entries (composer search action, settings-adjacent connections) before removing their nav entries; real-app CDP recreation of the nav-gone checks (integrator's device step)."
+    },
+    "V2-11": {
+      "implementation_state": "partial",
+      "evidence_state": "mock_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Same surface as V2-01: the permanent functional sidebar lost cockpit+activity; remaining views serve unique function (verification=completion state, tools=capability config, settings, treasury=connections). Routes stay alive for direct-hash/panel-home access; no second nav layer inside the page (areaNavRows >= 4). Implementation: integrations/hermes/godsv_plugin/desktop/plugin.js (NAV keeps verification/tools/settings/treasury; cockpit+activity left the sidebar).",
+      "next_action": "Menu-entry justification doc for the remaining four (design §2 requires documented need per remaining entry) before final V2-11 sign-off."
+    },
+    "V2-02": {
+      "implementation_state": "partial",
+      "evidence_state": "mock_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Order→goal→tool→voice→result partially in chat: GvLiveBlock (transcript directive) + composer strip (SessionStatusStrip) + @goal middleware; plan edit and per-step tool lines still missing. Implementation: integrations/hermes/godsv_plugin/desktop/plugin.js (GvLiveBlock live block, SessionStatusStrip, @goal composer middleware). Tests: tests/test_hermes_plugin.py::test_whisper_mode_delivers_on_triggering_result (covers the mechanism at the code level; a green test is not acceptance).",
+      "next_action": "Inline plan edit + tool activity lines under the running step."
+    },
+    "VD-16": {
+      "implementation_state": "partial",
+      "evidence_state": "contract_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "subagent_briefs.SubagentBrief (assignment_id, goal_id, base_revision, allowed_write_paths, read_context, owner, owner_epoch, deadline_monotonic, acceptance, worktree, worker_kind, budget_reservation, forward-only lifecycle created/running/collecting/verifying); BriefCoordinator.create_brief/takeover/check_fencing/report_result/on_timeout/abort_all. Fencing: primary owner_epoch (pre-takeover epoch rejected as stale_epoch), secondary unknown_owner; adapted RunStore owner/monotonic pattern (no second lease system). Timeout: timed_out_partial if any non-whitespace output else timed_out_empty. abort_all sets side_effect_state=unknown for external_may_have_started. Worktree required for CODE_WORKER_KINDS (ValueError at creation). Wire-in: RunStore.enqueue_brief (UNIQUE(run_id, assignment_id), audit subagent_brief_enqueued), briefs(), record_brief_result. enqueue_continuation untouched. Verified now: tests/test_subagent_briefs.py green (brief fields, allowed_write_paths, owner+epoch, forward-only lifecycle, takeover), implementation in src/godsv/subagent_briefs.py.",
+      "next_action": "Offline wiring to real delegation: briefs are in-memory at coordinator layer (only the supervisor hook persists); multi-process fencing passes epoch through the hook, not a DB-bumped epoch. Chat-side integration of briefs open. Still open: multi-process fencing via a DB-bumped epoch instead of the epoch passed through the hook."
+    },
+    "VD-21": {
+      "implementation_state": "partial",
+      "evidence_state": "contract_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "budget.BudgetAccount (reserve/release/rollback/spend/budget_wait/remaining/reserved/spent/rate_report/dump_ledger) + Reservation/BudgetWait/TokenBucket; BudgetExceeded subclasses llm.BudgetExceeded so both layers share one type. Reserve before parallel expensive work; double-reservation raises under threading; spend never over the global account (small_spend_floor 200 without reservation); exhausted role returns structured BudgetWait (never silent unlimited). Wire-in: llm.BudgetTracker optional shared_account/shared_role/shared_reservation_id + reserve_shared(); bound = actuals recorded on the account, unbound = byte-for-byte old behavior; voice.DEFAULT_BUDGET and context._enforce_budget intact as the sanity layer. Token buckets wall-clock, reporting-only. Verified now: tests/test_shared_budget.py + tests/test_context_budget.py green - reserve before parallel work, double reservation raises, one BudgetExceeded type across layers, token bucket/rate report, degraded mode with a structured reason (src/godsv/budget.py).",
+      "next_action": "Voice-Ausfall löst nie Retry-Sturm — degraded-mode reason is structured; still needs live cross-role accounting evidence (plumb through the plugin's ctx.llm). Multi-process budget sharing open. Still open: cross-role accounting through the plugin path and budget sharing across process boundaries."
+    },
+    "RF-01": {
+      "implementation_state": "partial",
+      "evidence_state": "mock_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Fixture + raw data built: tools/rf_test_provider.py (12 deterministic provider-side fault modes, real HTTP/1.1 chunked SSE, JSONL attribution per RFC §3A) and tools/rf_measure.py (real transport via the openai SDK, engine-derived thresholds, outputs/rf/<stamp>/raw.jsonl + summary.json, two-sided client/server attribution). Fixture pinned by tests/test_rf_test_provider.py (6 cases). Measured 2026-09-16 on engine fb56a7e0: healthy/slow/reasoning/prefill streams complete; headers_no_sse → client ReadTimeout 15.0s vs provider close 6.0s; ping_only → 20.0s; partial_toolcall_disconnect → RemoteProtocolError; 429+Retry-After/503/401/400 all correct. Context finding: 152k scales stale patience to 300s while the derived cloud timeout stays 180s.",
+      "next_action": "Drive the full agent loop over the 152k/80-iteration long task (needs a model + budget release) and capture the retry/context attribution that only the agent path produces."
+    },
+    "RF-12": {
+      "implementation_state": "partial",
+      "evidence_state": "mock_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Raw-data layer exists: outputs/rf/<stamp>/raw.jsonl carries per-mode client+server phase timestamps, wire-token estimate, transport outcome and error class; summary.json carries the engine-derived stale thresholds per context size (16k/64k/96k/152k). The test provider is separated from any real provider by construction (local 127.0.0.1 fixture, no egress). No before/after pair against a real provider yet. Implementation: tools/gv_eval_longhorizon.py (raw-data layer per mode) plus outputs/rf/<stamp>/raw.jsonl.",
+      "next_action": "Produce the before/after report once RF-02 lands: same fixture before and after the deadline change, plus the real-provider arm with cost accounting; keep the test and real provider arms clearly separated."
+    },
+    "RF-02": {
+      "implementation_state": "implemented",
+      "evidence_state": "mock_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "host-overlay/patch_rf02_request_deadline.py — one monotonic request-wide budget (helpers._request_deadline_secs, HERMES_REQUEST_DEADLINE_SECS, pilot 180s; explicit agent.request_deadline_secs wins; 0 = opt-out) fixed at _StreamingCall construction; StreamingWaitMonitor._deadline_left() gives the remainder; the monitor ends the attempt on stale_timeout OR budget<=0 and _kill_stale_stream(deadline_hit=) names which bound fired. Red-first on fb56a7e06d: tools/host_rf02_deadline_probe.py reports 'FAIL A … no kill within 12s' (no request-wide deadline existed). Green on a patched copy: A budget 3s/stale 300s fires at 3.00s (overshoot +0.00s, deadline_hit=True), B disabled = unchanged, C budget 300s/stale 2s fires at 2.10s (deadline_hit=False — the deadline bounds, never loosens). Composition with RF-03 is order-independent and engine regressions stay 13/13. Pinned by tests/test_rf02_request_deadline.py (6 cases incl. non-vacuity + both application orders).",
+      "next_action": "Measure whether SDK/transport retries, backoff and fallback invent a fresh deadline beyond this bound (needs the RF-01 agent run), then calibrate the 60s/45s/180s pilot values."
+    },
+    "RF-03": {
+      "implementation_state": "implemented",
+      "evidence_state": "mock_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "host-overlay/patch_rf03_monotonic_stream_clock.py — the chunk stamp carries both clocks (helpers._touch_chunk_time) and the monitor resolves ONE clock per read (stream_monitor._chunk_clock), so durations/deadlines are monotonic while wall-only stamps keep the old behaviour. Red-first: tools/host_rf_monotonic_probe.py on the live engine fb56a7e reports 'FAIL A ... kills=[3600.3]'. Green: same probe on a patched copy PASS A (jump inert) + PASS B (real 1h silence still fires); engine regressions tests/agent/test_stream_wait_notice.py + test_nonstream_wait_notice.py 13/13 identical before/after via tools/host_engine_regression_probe.py. Pinned by tests/test_rf03_monotonic_stream_clock.py (5 cases, incl. non-vacuity + drift + idempotence).",
+      "next_action": "Apply the overlay to the live engine (host-overlay/patch_rf03_monotonic_stream_clock.py), then RF-02 (request-wide deadline) and RF-01/RF-12 before/after measurement on the real provider — the clock clause alone does not close RF-03."
+    },
+    "RF-08": {
+      "implementation_state": "implemented",
+      "evidence_state": "mock_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "host-overlay/patch_rf08_segment_continuation.py — segment-continuation cursor keyed (session_id, segment_index) as one JSON file per session under the hermes home (os.replace), written exactly once per key; gates: A goal-authorized (engine markers or read-only godsv.completion.CompletionStore via try/except local import), B safety holds absent, C progress plausible (open_items decreased OR done_events>=1), D cap HERMES_RF08_MAX_AUTO_SEGMENTS (default 2; higher needs HERMES_RF08_ALLOW_MORE_SEGMENTS=1); _rf08_record_segment_continuation called at the tail of _resolve_budget_fallback; finalize_turn attaches result[\"rf08_segment_continuation\"]. Probe: pristine RC=1 (no record); patched PASS cursor count=1 after duplicate call, second call resolves SAME segment_index (idempotent), restart (fresh interpreter re-reads same cursor, no duplicate). Composition with rf04-07+10 verified on /tmp/gv_secfix_int (all brother probes OK, engine regressions 13/13). Pin tests/test_rf08_segment.py = 8 passed.",
+      "next_action": "The scheduler consumption of result[rf08_segment_continuation] (evaluate_after_turn auto re-poke) is surfaced but NOT wired end-to-end — callers act on the payload; real restart-path via CLI/Gateway needs the RF-01-style authorized long-run window (not_run)."
+    },
+    "S13": {
+      "implementation_state": "implemented",
+      "evidence_state": "integration_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Shared execution boundary measured: tests/test_security_gate_failclosed.py (10 tests) and tests/test_mcp_stdio_e2e.py (MCP in its own stdio process) green; tools/injection_acceptance_probe.py 12/12 (the five §28 forms plus boundary conditions) and tools/docker_runtime_live_probe.py 9/9 with socket, privileged and digest refusals; secrets stay masked in reports. Implementation: src/godsv/gates.py, src/godsv/mcpserver.py, src/godsv/untrusted.py, src/godsv/docker_runtime.py.",
+      "next_action": "Open: no attack through the PANEL channel itself was measured - that needs the running desktop instance (same for the socket/mount/network cases over the panel path)."
+    },
+    "RF-04": {
+      "implementation_state": "implemented",
+      "evidence_state": "mock_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "host-overlay/patch_rf04_retry_budget.py — per-logical-request wire-attempt budget (agent.request_max_attempts, default 3; env HERMES_REQUEST_MAX_ATTEMPTS; 0 disables) enforced in _StreamingCall._call stream retries AND the summary path AND nonstream; typical non-retryable ProviderStreamError classes (401/402/403/404/415/422) kept out of the transient path. Red-first pristine probe: FAIL A pristine stacking — wire attempts=12 (RC=1). Patched: PASS A attempts=3 (limit 3), A2 exhausted-budget outer leg 0, B 401 attempts=1, C 429 attempts=1, C2 503 attempts=1. Composition with rf02+rf03 verified both orders; engine regressions 13/13. Tests: tests/test_system_one_policy.py::test_429_retries_only_inside_the_shared_remaining_deadline (covers the mechanism at the code level; a green test is not acceptance).",
+      "next_action": "Real GLM sample + RF-01 agent runs still missing (not_run); the 3-attempt pilot value is uncalibrated."
+    },
+    "RF-05": {
+      "implementation_state": "implemented",
+      "evidence_state": "mock_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "host-overlay/patch_rf05_fallback_fitness.py — before activation: rough request-token estimate vs candidate context_length, image/tool heuristics from cached models_dev capabilities (None = unknown = no refusal); no fit records agent._rf05_no_compatible_fallback = structured pause (provider_unavailable: no compatible fallback) instead of silently sending the oversized request. Red-first pristine: FAIL activated the 90k request against a 4k window (RC=1); patched RC=0 with the pause detail.",
+      "next_action": "Vision/reasoning heuristics coarse; real-provider calibration pending."
+    },
+    "RF-06": {
+      "implementation_state": "implemented",
+      "evidence_state": "mock_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "host-overlay/patch_rf06_compression_preserve.py — deterministic preserve list BEFORE the drop (goal text, last 3 user corrections, OPEN tool_call rows with id+args, last image ref) + hard per-attempt wall budget (HERMES_COMPRESSION_DEADLINE_SECS, default 120s, monotonic) + reintegrate lost records verbatim ([RF-06 preserved] rows / verbatim assistant tool_calls) with telemetry rf06_preserved. Verified with an everything-dropping summarizer: goal/correction/open-call reenter; composition both orders; engine regressions 13/13.",
+      "next_action": "Real wire-size reduction measurement pending (RF-12 report)."
+    },
+    "RF-07": {
+      "implementation_state": "implemented",
+      "evidence_state": "mock_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "host-overlay/patch_rf07_interim_report.py — at the 80-iteration limit _rf07_provider_failing() classifies from in-scope state (RF-04 fail streak, last API failure, exit reason); failing provider = ZERO model calls, deterministic local markdown interim report (goal, last 12 tool events, files touched, open items) persisted via the existing TurnFinalizer _persist_session pipeline; summary if attempted: max 1 retry under a monotonic budget (HERMES_RF07_SUMMARY_BUDGET, pilot 20s), local report written on any failure path. Red-first pristine RC=1 (summary attempts fired against failing provider), patched 7xPASS RC=0 (0 model calls, 0.006s, goal text + files + marker present). Tests: tests/test_system_one_policy.py::test_529_uses_the_same_bounded_backoff_budget (covers the mechanism at the code level; a green test is not acceptance).",
+      "next_action": "Probe stubs the provider; real hung-provider HTTP + TurnFinalizer DB persistence via a real 80-iteration run belongs to RF-01. 20s budget = pilot hypothesis."
+    },
+    "RF-10": {
+      "implementation_state": "implemented",
+      "evidence_state": "mock_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "host-overlay/patch_rf10_stop_responsiveness.py — _rf10_interruptible_sleep() slices engine-local blocked waits into 200ms monotonic slices checking agent._interrupt_requested; patched the 2s compression-retry pauses (turn_overflow.py) and the 3-8s primary-recovery wait (agent_runtime_helpers.py). Red-first pristine RC=1 (elapsed=2.001s, stop visible only after the full sleep); patched PASS A/B elapsed 0.200/0.201s (<2s) RC=0, monotonic clock. Tests: tests/test_rf10_stop_responsiveness.py::test_overlay_anchors_still_match_the_engine (covers the mechanism at the code level; a green test is not acceptance).",
+      "next_action": "Stream-monitor interrupt path + real in-flight /stop vs a live provider not yet exercised (needs RF-01/RF-11 runs)."
+    },
+    "VD-19": {
+      "implementation_state": "partial",
+      "evidence_state": "integration_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Brief outcomes are now fenced end-to-end: coordinator (subagent_briefs.py report_result/on_timeout w/ owner+epoch), store (run_supervisor.record_brief_result) rejects fabricated owner/epoch AND outcome-lies (claimed 'delivered' beyond brief.status truth-rank — SEC-12/SEC-12b, audited as subagent_brief_result_rejected with claimed/true outcome). Precision/recall targets of ch.06 still open: the completion gate (VD-19's classic form) carries existing runner-evidence enforcement (see completion.py record_dod_outcomes); the outcome-lie gate covers the worker-coordination layer. Verified now: tests/test_completion.py + tests/test_completion_precheck.py + tests/test_completion_loop_e2e.py green - open mandatory criteria block a completion claim, the precheck source is a blocker, the deterministic gate keeps authority (src/godsv/completion.py, src/godsv/run_supervisor.py).",
+      "next_action": "Trace: a stale-but-truthful outcome must still persist (currently truth-equal outcomes pass); run a live supervised long-horizon run to bind VD-19's completion criteria evidence (needs authorized long-run window). Still open: a live supervised long-horizon run that binds these completion criteria (needs the long-run approval)."
+    },
+    "S06": {
+      "implementation_state": "partial",
+      "evidence_state": "integration_tested",
+      "acceptance_state": "blocked",
+      "verified_mapping": "Underlay live-proven: tools/docker_runtime_live_probe.py 9/9 and tools/docker_lifecycle_probe.py 9/9 (real daemon, digest pinning, lifecycle, refusals). The chain beyond that - publishing a capability into the LIVE runtime ~/.hermes/godsv (registry/publish_outbox) and a real model call in the same session - is NOT run: that write is finding AF-07 and needs the owner's approval. Implementation: src/godsv/toolbuilder.py, src/godsv/buildflow.py, src/godsv/docker_runtime.py.",
+      "next_action": "External/owner precondition: approval for one publish into the live runtime plus an authorized model call; then run the full chain in one session without a manual registry edit or restart."
+    },
+    "VD-13": {
+      "implementation_state": "partial",
+      "evidence_state": "live_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Docker builder chain exercised live: pull-by-digest (alpine, pandoc/minimal, searxng — digests pinned and verified), isolated docker build through the buildflow state machine, publish via transaktionaler Outbox, holdout on new inputs (pinned tests), failure taxonomy live-probed (image_missing, arch_mismatch). Manifest v2 validation fail-closed. Verified now, first-hand against the real daemon: tools/docker_runtime_live_probe.py 9/9 (Server 29.6.1, real pull of docker.io/library/alpine, digest sha256:28bd5fe8... resolved and verified) plus the four refusals (wrong digest -> DigestMismatch, privileged, docker.sock mount, unpinned tag -> no docker run argv) and tests/test_docker_runtime.py. The implementation lives in src/godsv/docker_runtime.py and is driven by the builder in src/godsv/toolbuilder.py / src/godsv/buildflow.py.",
+      "next_action": "Unchanged plus: the full builder publish into the live runtime is NOT run (needs the owner's approval, finding AF-07); health monitoring of running container state transitions and registry consistency across a restart stay open."
+    },
+    "PX-06": {
+      "implementation_state": "partial",
+      "evidence_state": "live_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "linux-x64 docker adapter path live-proven: digest-pinned pulls (alpine 3.20, pandoc/minimal 3.1.13, searxng), run with --network none default, mounts constrained to scratch dir, real artifacts (hello-build exec, md→html conversion, 34-result SearXNG probe HTTP 200). Failure taxonomy live-verified for image_missing + arch_mismatch. Implementation: src/godsv/docker_runtime.py. Tests: tests/test_docker_runtime.py::test_v2_field_names_are_pinned (covers the mechanism at the code level; a green test is not acceptance).",
+      "next_action": "macOS/Windows Docker-Endpoint variants remain blocked (no hosts); quota_limit failure mode mock_tested only."
+    },
+    "S02": {
+      "implementation_state": "partial",
+      "evidence_state": "live_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "UX review wave (outputs/review16/ux/UX_REVIEW.md @ 949fd7b): no dead buttons anywhere; all four design-mandated composer contextual actions (Plan öffnen/Werkzeug suchen/Docker-Image/Auftrag analysieren) ABSENT (P1 — microActions strip structurally empty, zero providers); deployed app plugin lags the repo candidate (P2, cockpit+activity still in shipped NAV). @goal/@tool mentions + approval pill + strip/criteria editors all carry REAL backend routes. Implementation: integrations/hermes/godsv_plugin/desktop/plugin.js (composer surface, live block, drawers).",
+      "next_action": "P1: contribute real composer.microActions from the godsv plugin; P2: redeploy the plugin (runtime lags candidate)."
+    },
+    "V2-05": {
+      "implementation_state": "implemented",
+      "evidence_state": "live_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Criteria edit honesty fully fenced: update_criterion/add_criteria expose only text/blocking + expected_revision + request_id (CriterionConflict), terminal freeze on VERIFIED_COMPLETE, status never accepted from client (completion.py:782-813, plugin_api.py:1557-1596), origin+token guarded POST /completion/criteria, smoke pins revision fence + no-status, drafts preserved on error. 14 trust-boundary tests passed. Tests: tests/test_completion.py::test_terminal_states_are_terminal (covers the mechanism at the code level; a green test is not acceptance).",
+      "next_action": "Runtime double-send race at the middleware is P3-residual: capture sid at draft-edit time rather than submit time."
+    },
+    "V2-08": {
+      "implementation_state": "partial",
+      "evidence_state": "mock_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Session identity fix class intact (durable focusedStoredSessionId preferred over runtime id at plugin.js:808-830; every chat surface routes through it; live block binds historic cards via attrs.sid). Stale leak only on pre-attribute transcripts; P3 mid-switch send window; NO scroll restore found in chat core (P2).",
+      "next_action": "Static+smoke level only — real CDP live-restoration needs a device session (headless wave)."
+    },
+    "V2-12": {
+      "implementation_state": "implemented",
+      "evidence_state": "live_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Models tab shows only real origin config; all POST routes _guard_origin fail-closed (403, not skip — plugin_api.py:1698-1777); approval pill degrades honestly (available:false); dry-run CU labelled as deterministic; the stale same-origin shortcut removed (origin_allowed tightened). 14 regression tests green.",
+      "next_action": "--"
+    },
+    "VD-22": {
+      "implementation_state": "implemented",
+      "evidence_state": "mock_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Feed rows map to cause text with tone (GV_FEED_TEXTS), blockers carry next action, Inspect drawer shows evidence; unknown state invents no verb (smoke). Verified now: node tools/check_desktop_plugin.mjs renders the panel contributions and passes its contract (cause text with tone, blockers carry the next action, inspection drawer, no invented verb for an unknown state) against the real plugin code in integrations/hermes/godsv_plugin/desktop/plugin.js and the payload builder in integrations/hermes/godsv_plugin/dashboard/plugin_api.py. The smoke feeds MOCK payloads - hence mock_tested, not live_tested. Tests: tests/test_toolbuilder.py::test_structured_integration_prefers_mcp (covers the mechanism at the code level; a green test is not acceptance).",
+      "next_action": "Live-stream observation deferred (headless). Still open: a live desktop stream observation (this host is headless for that measurement)."
+    },
+    "S11": {
+      "implementation_state": "implemented",
+      "evidence_state": "live_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Measured against the real runtime with single commands: 'godsvoice 1.5.0' rc=0, start without arguments prints the logo rc=0, `scan` on a clean file rc=0 ([]), `scan` on a file with a secret rc=1 and the finding MASKED (preview only), JSON on stdout is parseable, `prompts list` rc=0, `metrics` rc=1 with the reason 'no events db'. Exit codes are distinguishable and the output is pipe/JSON friendly. Implementation: src/godsv/cli.py. Tests: tests/test_gv_benchmark.py::test_cli_without_arguments_prints_help (covers the mechanism at the code level; a green test is not acceptance).",
+      "next_action": "Open: the Ctrl+C path was NOT measured credibly (the chosen command finished before the signal, rc=0 instead of 130) - repeat on a genuinely long path; resume and streaming need a desktop session."
+    },
+    "S10": {
+      "implementation_state": "partial",
+      "evidence_state": "integration_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Real app driven in the isolated GUI: tools/cu_gui_e2e_probe.py 18/18 (xterm in the container's Xvfb, input via the runner's GUI kinds, effect proven in the app's own file, screen diff, process check). Honest errors instead of dry-run green: the missing image reported 'Image fehlt: localhost/godsv-cu-x11:latest' before it was built, a dead window anchor gives xdotool rc=1, blind replay is refused and an unknown app version is not applicable. Implementation: src/godsv/computer_use.py, src/godsv/system_one_subtools.py, docker/cu-x11.Containerfile.",
+      "next_action": "Open policy question the criterion has to settle: it asks for a HOST app, while the product's own CUPolicy.require_isolation forbids driving the live desktop, so the real app runs in the isolated container. Either the criterion is reworded to 'real app, host desktop forbidden by policy' (then satisfied) or a host desktop session is authorized and the policy relaxed - that is the owner's decision, not an audit finding."
+    },
+    "S14": {
+      "implementation_state": "partial",
+      "evidence_state": "live_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Catalogue measured first-hand with the new tools/reference_catalog_probe.py: 4 families have a REAL reference path - Recherche (real SearXNG container, real query, 91 external result URLs), Dokumente (real pandoc container conversion, the produced file read back), Code (bwrap sandbox runs an allowed program and refuses a write outside), Medien (ffmpeg encode verified by ffprobe: 1.0 s, 88 kB). 5 families are BLOCKED with the measured reason: Mail (no mail client binary, no authorized mailbox), 3D (no blender binary), Bilder (no authorized image provider), ASR (no local whisper - so ASR and TTS are not separated by a real run), Browser (no playwright installed). The catalogue's rule is honoured: a blocker is reported as a blocker, never as a fulfilled function. Implementation surfaces: tools/reference_catalog_probe.py, docker/, src/godsv/gates.py.",
+      "next_action": "Per blocked family one concrete step: Mail - authorized test mailbox plus the CLI; 3D - pull a Blender container image and run `blender -b -P script.py` (also the open half of VD-15); Bilder - an authorized image provider credential; ASR - install faster-whisper via uv and run one real transcription; Browser - `uv pip install playwright` plus `playwright install chromium`, then one real navigation. Separately open: the catalogue also demands SHOWING hardware cost/download size/external API dependency - no product surface does that today (no hit in src/godsv or the panel API), which is a named gap."
+    },
+    "RF-09": {
+      "implementation_state": "implemented",
+      "evidence_state": "integration_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "host-overlay/patch_rf09_crash_windows.py (4 files: turn_finalizer helpers/claim/reconciliation, tool_executor fence+marker, conversation_loop rf09_resume stamp, turn_iteration_prep claim-before-resume) + tools/host_rf09_crash_probe.py (real SIGKILL of a helper child mid-step) + tests/test_rf09_crash_windows.py (8 pins). Own verification: pristine tree RC=1 with the honest message (\"no _rf09_mark_pending_external / _rf09_claim_resume on the engine\"); overlay applied to the composed tree /tmp/gv_secfix_int (rf04-08+10) -> all probes PASS (rf04/05/07/08/09/10), engine regression probe 13 passed/0 failed; 8/8 pins green. Inventory: docs/audit/RF09-CRASH-WINDOW-INVENTORY.md (W1 external-effect-without-result UNSAFE->fenced, W2 cursor-written-before-resume UNSAFE->epoch claim, W3 RF-04/05 swap safe, W4 RF-06 compression safe).",
+      "next_action": "Live crash E2E against a real provider stays not_run (needs RF-01 budget release); concurrent-batch dispatcher (execute_tool_calls_concurrent) shares window W1 and is not fenced yet."
+    },
+    "JEV-01": {
+      "implementation_state": "implemented",
+      "evidence_state": "contract_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "src/godsv/system_one.py: one evaluator Protocol; DisabledSystemOneEvaluator, LLMSystemOneAdapter and TypeSafeJevEvaluator satisfy the SAME parametrized suite (tests/test_system_one_contract.py, 21 passed) — no implementation is special-cased. Own re-check (tools/jev_contract_probe.py): access_mode='disabled', live_jev=False, STATUS_OK — an empty valid evaluation is returned instead of raising, which is what keeps the legacy path intact.",
+      "next_action": "Real Jev access (TypeSafe) has no credential here; the ceiling stays JEV_READY (§117.1)."
+    },
+    "JEV-02": {
+      "implementation_state": "implemented",
+      "evidence_state": "contract_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Noul carries no confidence field and a provider payload that ships one is rejected (parse_answer + TypeSafe adapter); Choice/Score carry probabilities that must sum to 1 within 1e-3. Own re-check: extra confidence on Noul -> SystemOneContractError; skewed Choice distribution refused. Re-derived independently by tools/jev_contract_probe.py. Tests: tests/test_system_one_contract.py::test_noul_payload_carrying_confidence_is_rejected_not_invented (covers the mechanism at the code level; a green test is not acceptance).",
+      "next_action": "Threshold calibration on real dev data is JEV-11, untouched."
+    },
+    "JEV-03": {
+      "implementation_state": "implemented",
+      "evidence_state": "contract_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "src/godsv/system_one_questions.py: five default packs (36 questions), every question with id+owner, the pack carries a version, unregistered pack -> SystemOneNotRegistered, duplicate registration refused, versioned manifest rendered (docs/audit/SYSTEM_ONE_QUESTIONS.json). Own re-check (tools/jev_contract_probe.py, 16/16 green) reproduced refusal and the id/version/owner shape from the outside. Tests: tests/test_system_one_questions.py::test_every_registered_question_has_id_version_and_owner (covers the mechanism at the code level; a green test is not acceptance).",
+      "next_action": "Own signature-level re-check still pending (my first probe used the wrong constructor); the pack fixture asserts id/version/owner."
+    },
+    "JEV-04": {
+      "implementation_state": "implemented",
+      "evidence_state": "contract_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Atomic questions only (the §39 omnibus form is refused at construction); the voice pack covers Loop/Completion/Drift/Research/Recovery and compose_voice_triage(trigger) selects the group in code instead of free-text prompting. Implementation: src/godsv/system_one_questions.py (compose_voice_triage plus the atomic question registry). Tests: tests/test_system_one_questions.py::test_every_registered_question_has_id_version_and_owner (covers the mechanism at the code level; a green test is not acceptance).",
+      "next_action": "Plugin triage path wiring is JEV-12, untouched."
+    },
+    "JEV-05": {
+      "implementation_state": "implemented",
+      "evidence_state": "contract_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "src/godsv/system_one_sanitizer.py: allow-list minimisation, depth/item/string caps, explicit REDACTED, foreign-project keys dropped; the author's suite asserts it on the adapter's captured prompt, so a secret reaching the provider would fail. Own re-check (tools/jev_contract_probe.py) fed api_key/nested token/authorization and confirmed none of the three values survive, while allowed content does. Tests: tests/test_system_one_sanitizer.py::test_secret_in_snapshot_never_reaches_the_adapter (covers the mechanism at the code level; a green test is not acceptance).",
+      "next_action": "Own signature-level re-check still pending; redaction reuses secretscan rather than a second implementation."
+    },
+    "JEV-06": {
+      "implementation_state": "implemented",
+      "evidence_state": "mock_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "src/godsv/system_one_adapters.py LLM adapter drives the real LLMClient interface with a double; provider='llm_system_one_adapter' and live_jev=False travel on the record AND on evidence(). Own re-check confirmed live_jev=False. Re-derived independently by tools/jev_contract_probe.py. Tests: tests/test_jev_provider_compat.py::test_a_test_double_transport_receives_the_documented_request (covers the mechanism at the code level; a green test is not acceptance).",
+      "next_action": "No live model call; the one live_jev=True path is TypeSafe (blocked)."
+    },
+    "JEV-07": {
+      "implementation_state": "partial",
+      "evidence_state": "contract_tested",
+      "acceptance_state": "blocked",
+      "verified_mapping": "The blocked path itself is tested: without a credential the evaluator returns SystemOneBlockedExternal with state=acceptance_state='blocked_external_access', live_jev=False and no answers key — never a fabricated answer. Own re-check reproduced exactly that. Implementation is `partial` because only the blocked branch can be exercised here, not the live one. Re-derived independently by tools/jev_contract_probe.py. Tests: tests/test_system_one_adapters.py::test_adapter_result_is_never_labelled_live_jev (covers the mechanism at the code level; a green test is not acceptance).",
+      "next_action": "Needs TypeSafe access (§117.1); today the ceiling is JEV_READY, not JEV_LIVE_TESTED."
+    },
+    "JEV-09": {
+      "implementation_state": "implemented",
+      "evidence_state": "contract_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "401 no-retry, 422 as contract error, 429/529 bounded backoff inside the SHARED deadline (RF-02/RF-04 budget, not a second retry loop); provider errors leave flags and policy intact (tests/test_system_one_policy.py, 30 passed). Implementation: src/godsv/system_one_adapters.py (401/422/429/529 handling inside the shared deadline).",
+      "next_action": "Confirmation against a real provider status is part of the RF-01 long run."
+    },
+    "JEV-14": {
+      "implementation_state": "implemented",
+      "evidence_state": "contract_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Version stamping on goal_revision + policy_revision + cursor; a late answer is refused as inert (is_stale/AppliedDecision(inert=True)), the decision callback is never called. Own behavioural re-check: same revision -> not stale; newer goal/policy/cursor -> stale with a precise reason. Re-derived independently by tools/jev_contract_probe.py. Tests: tests/test_system_one_policy.py::test_provider_error_never_disables_runtime_policy (covers the mechanism at the code level; a green test is not acceptance).",
+      "next_action": "Version binding on the GUI state path is JEV-15, untouched."
+    },
+    "JEV-16": {
+      "implementation_state": "partial",
+      "evidence_state": "integration_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "computer_use.system_one_action_gate is advisory only: it returns None whenever the flags are off or CU is off, and otherwise a record with mutates=False and the UNCHANGED allowed_kinds tuple. Own re-check: allowed set identical, mutates False, live_jev False. Re-derived independently by tools/jev_contract_probe.py. Delta (integrator): the productive registry now serves the COMPLETE §10.3 pack computer_use_v2 (18 questions, one Choice with exactly the six documented options, legacy id computer_use.recovery_needed contained) instead of the 5-question v1 - verified first-hand: default_question_registry().pack('computer_use').ref == computer_use_v2 with 18 questions. The integrator also closed the cross-worker integration defect: the v2 pack failed Worker A's §5 metadata rule until purpose/applicable_states/risk_class/fallback_policy/calibration_dataset_version were declared (mirroring v1's semantics), and the three pins that asserted 'productive == v1' were moved with the §10.3 justification in the test. Tests: tests/test_jev_subtools.py::test_pack_questions_stay_atomic (covers the mechanism at the code level; a green test is not acceptance).",
+      "next_action": "Reactive precondition/postcondition questions per action kind are not implemented; the state-based authority of §50 is unchanged."
+    },
+    "JEV-20": {
+      "implementation_state": "implemented",
+      "evidence_state": "contract_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Six feature flags with safe defaults (all off), config-file driven (stray HERMES_*/GODSV_* env vars change nothing), unknown provider or missing LLM -> Disabled, and every deactivation returns PATH_LEGACY with the unchanged deterministic hint. Own behavioural re-check: off -> legacy path with reason; provider disabled -> legacy; CU gate -> None. Re-derived independently by tools/jev_contract_probe.py. Tests: tests/test_system_one_flags.py::test_the_required_flags_exist_with_safe_defaults (covers the mechanism at the code level; a green test is not acceptance).",
+      "next_action": "None; the deactivation path is the release-relevant part."
+    },
+    "JEV-10": {
+      "implementation_state": "implemented",
+      "evidence_state": "integration_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "ShadowHarness in src/godsv/system_one_policy.py extended (propose_route §32/§48, assert_shadow_advisory, state probe before/after, staleness marking, observe_outcome, summary) + voice.triage_with_shadow (voice.py:587) runs the evaluator on a shadow-labelled context copy beside the real Voice path and returns the unchanged hint. Re-derived by tools/jev_contract_probe.py: the guard rejects a mutation, a selected route and an executable field, and accepts a clean record. Worker evidence: tests/test_system_one_shadow.py 23 pins (red-first ImportError), a mutating evaluator raises SystemOneContractError with the state probe showing mutation_detected and no record kept; provider failure degrades to PATH_LEGACY with shadow_error:<Type>; flags-off outcome and Voice budget side effects identical to today.",
+      "next_action": "No production caller: the running supervisor lives in the live engine tree, which this work must not patch — so no real user run has been shadowed yet. Outcome values in tests are set/fixture values, latency/usage come from a fixed clock, and the §45 disagreement is measured against Voice's own deterministic hint. Wiring shadow into the published engine is an integrator task after RF-01 approval."
+    },
+    "JEV-12": {
+      "implementation_state": "implemented",
+      "evidence_state": "integration_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "src/godsv/system_one_shadow.py evaluates the existing voice triage pack against 16 productive production shapes (7 counter-examples) over all six §90 dimensions; each case drives the real compose_voice_triage -> StateSanitizer -> real Voice.consider baseline -> real triage_with_shadow, only the provider is a fixture whose payloads cross the real parse_answer contract. Own run of the corpus CLI reproduced the author's numbers: cases=16, counter_examples=7, disagreements=15, records=16, executed_routes=0, mutations=0, mismatches=0, outcome_mismatches=0, fully_covered=False. Provenance check: all 12 real pause TRIGGER_RULES are covered by PRODUCTION_TRIGGER_KINDS. Tests: tests/test_system_one_triage_pack.py::test_corpus_covers_the_six_dimensions_of_the_contract (covers the mechanism at the code level; a green test is not acceptance).",
+      "next_action": "4 real trigger kinds (hallucinated_api, pattern_dependency_churn, dependency_change, outage_misdiagnosis) compose ['loop','completion','recovery'] but need the research dimension — reported by the worker, fix site is TRIGGER_GROUPS in src/godsv/system_one_questions.py, which was outside the worker's write scope and is still open. The corpus is hand-built, not sampled from real trajectories; answers are fixture values, so the pack's rules and coverage are proven, not the quality of real Jev answers."
+    },
+    "JEV-13": {
+      "implementation_state": "implemented",
+      "evidence_state": "integration_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "src/godsv/completion.py: frozen CompletionPrecheck (certifies=False by construction, certifies_completion() always False), completion_precheck reading request/evidence/revision/workspace/session with stale binding, GateRunner.gate_precheck and verify(..., precheck=None), Finding.code, VerificationResult.refusal_codes, CompletionStore.record_precheck. Sole authority proven: verify with only the precheck as source -> INCOMPLETE with refusal_codes ['completion-precheck-only-source']; a forged certifies=True -> 'completion-precheck-certifies'; genuine runner evidence still completes. Own re-checks: a precheck never certifies (even forged), and §91 now has exactly ONE public completion_precheck — see the name fix below. Delta (integrator-verified): CompletionLedger carries exactly the 16 §9.2 fields, nine hard checks, eight shortcut codes and the preflight; E2E-J2 runs the real GateRunner + CompletionStore against a real temporary git repo and proves the deterministic gate keeps sole authority (completion-precheck-only-source blocker, mock-provider-as-real-provider flagged, old revision refused, no provider call when structure already refuses). tests/test_jev_*.py + system_one/completion scope: 560 passed, 4 skipped. Tests: tests/test_jev_completion_ledger.py::test_the_per_criterion_ledger_carries_the_documented_fields (covers the mechanism at the code level; a green test is not acceptance).",
+      "next_action": "The live_jev=True branch is unexercised (no authorized Jev access, JEV-07). The precheck is not yet called from a runtime site — a caller must pass precheck=… explicitly. Defect found and fixed by the integrator during this review: system_one_policy.completion_precheck and completion.completion_precheck were two public functions with the same name and different None semantics; the policy variant is now evaluation_precheck_signals (behaviour unchanged, pins updated), so the binding-aware precheck owns the name."
+    },
+    "JEV-15": {
+      "implementation_state": "implemented",
+      "evidence_state": "integration_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "src/godsv/system_one_guistate.py: guistate/v1 schema, per-field PerceivedField (a perceived value must name its channel; an unperceived field must not carry a value), parse_perception_text reading only what the channel said, GUIState with content fingerprint and revision chain along which allowed_kinds may only shrink, certifies_effect always False, GROUND_TRUTH_APP_EFFECT='app_effect', effect_check reading the post-action perception. Own re-checks: fields the channel did not report stay unperceived and value-less (6/8 in a two-field text), a perceived value without a channel raises, a candidate outside the pre-approved set is refused outright, a GUIState never certifies the effect. Worker evidence: 18 pins; an integration test drives the real DryRunRunner.observe() -> build_gui_state -> system_one_guistate_gate with the real CUPolicy and asserts allowed_kinds unchanged, mutates False, certifies_effect False. Tests: tests/test_system_one_guistate.py::test_gui_state_is_structured_versioned_and_content_addressed (covers the mechanism at the code level; a green test is not acceptance).",
+      "next_action": "No live desktop: `godsvoice cu check` reports the container GUI image localhost/godsv-cu-x11 missing (and even docker.io/library/alpine), so no GUIState from a real host application and no real app effect — not_run with the exact needed command recorded in docs/audit/SYSTEM_ONE_GUISTATE.md. Perception texts in tests are fabricated input; live_display defaults to False and the binding is not yet called from CUExecutor.run."
+    },
+    "VD-07": {
+      "implementation_state": "implemented",
+      "evidence_state": "mock_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Isolation runtime with a real production caller (src/godsv/untrusted.py, called from src/godsv/monitor.py:326): 8 families, neutralisation keeps facts and drops instructions, the authority boundary holds (no authority-granting member on the assessment; trusted sources are never flagged). AF-05 found the detection phrasing-narrow (8/12) and is FIXED: four pattern defects closed (api key with a space, plural nouns, policy-invalidity claims, run:<cmd> with reach) -> tools/injection_acceptance_probe.py 12/12 green, 29 module tests green, ruff clean, false-positive battery 1/13 with the single hit traced to a PRE-EXISTING pattern (keychain in its noun list). Evidence: audit/evidence records for VD-07, docs/audit/AUDIT-FINDINGS.md AF-05.",
+      "next_action": "Remaining: (a) disentangle the two leftover cases in the pre-existing pattern (keychain/vault only with a real disclosure verb, consistent plurals) and re-run both batteries; (b) the GUI counter-case (manipulated dialog instruction) needs a real desktop session - not_run here."
+    },
+    "S07": {
+      "implementation_state": "partial",
+      "evidence_state": "mock_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Discovery contract implemented (src/godsv/discovery.py: normalize/tokens/stem, rank_entries, discover, registry_revision, cache_key/DiscoveryCache) and scored against the FROZEN acceptance set (tests/fixtures/discovery_cases.json, 36 cases, frozen before implementation) by tools/gv_discovery_eval.py: harness mode recall@3 23/23, false fit 0/5, scope leaks 0/5, critical 5/6 (q03 blocked - dispatch-time revocation guard is not a discovery metric), 5/36 blocked with reasons. LIVE mode against the real runtime ~/.hermes/godsv: 28/36 blocked 'target capability not registered in this runtime', recall@3 0/0, no false fits, no scope leaks. Evidence: audit/evidence records for S07, docs/audit/AUDIT-FINDINGS.md AF-07.",
+      "next_action": "The live runtime has an empty registry (tool_specs=0, publish_outbox=0, events=0), so 'finds AND uses the capability, also after restart' cannot be shown on the product. Register one real capability through the builder publish path into ~/.hermes/godsv (needs the user's go-ahead, same as AF-06) and re-run the live eval until recall@3 > 0 plus one observed real dispatch (events > 0)."
+    },
+    "JEV-08": {
+      "implementation_state": "implemented",
+      "evidence_state": "integration_tested",
+      "acceptance_state": "blocked",
+      "verified_mapping": "SystemOneTreasuryAdapter resolves a ConnectionRef against the REAL godsv.treasury.Vault: CONNECTION_FIELDS=(provider,target,scope,secret_handle,status,revision); handle must look like secret://service/name, scope pinned to evaluate, status vocabulary unconfigured|missing|expired|unauthorized|active with active requiring a revision; the store has no revision column so the revision is derived deterministically from the entry; credential_reference() returns only a reference, authorization_headers() fetches the material per attempt; assert_no_secret() + GuardedEmitter fail closed (refusal counted AND raised). Integrator-verified: tests/test_jev_provider_treasury.py 14 passed (rc=0), and tools/jev_acceptance_probe.py 20/20 incl. the handle-discipline and secret-in-payload refusals. Evidence: ev-a06732daafdb4823.",
+      "next_action": "External precondition: an authorized TypeSafe credential handle (secret://typesafe/systemone) and provider-side rotation/revocation to exercise. Then run: store a rotated handle in the Vault, re-run tests/test_jev_provider_treasury.py plus one real call through TypeSafeJevEvaluator and confirm the log/state carry no material. Until then the leak proof rests on a real Vault with a synthetic credential."
+    },
+    "JEV-11": {
+      "implementation_state": "implemented",
+      "evidence_state": "contract_tested",
+      "acceptance_state": "blocked",
+      "verified_mapping": "ThresholdProfile gained threshold_profile_id, question_pack_version, dataset_version, measured_precision/recall, false_positive_rate/negative_rate (all None until measured), per-action-class enforcement (a profile missing a risk class is refused), a calibrated uncertainty band that turns into escalate=True/REASON_UNCERTAIN_BAND instead of a guess, and frozen profiles that refuse threshold/band/measurement edits. system_one_calibration.py carries the three dataset shapes, the §20 metric set, compute_metrics() raising NoCalibrationDataError and returning not_run+reason (never 0) without a denominator, freeze_threshold_profile() refusing to freeze without measured rates, and the CLI exiting 2 on no data (integrator-verified without a pipe: rc=2, 'no raw data - raw dataset file not found'). No number is invented anywhere. Evidence: ev-58c267f864a94094 (18 passed); tests/test_jev_policy_delta.py 13 passed.",
+      "next_action": "External precondition: a real development dataset. Then run `python -m godsv.system_one_calibration --kind voice --dataset <dev.jsonl>`, freeze the profile before the holdout, and prove with assert_profile_unchanged() that the holdout was not re-tuned. J4/J5 stay unreachable as activation until then."
+    },
+    "JEV-17": {
+      "implementation_state": "implemented",
+      "evidence_state": "integration_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "system_one_subtools.py: VISUAL_SUBTOOL_FIELDS = 16, a frozen validating VisualSubtool (unknown reobserve trigger / System-2 trigger / precheck name are contract errors), SubtoolRegistry (duplicate and unknown version refused, revoke() makes a version unusable), check_applicability() refusing unknown or unsupported app version and locale instead of assuming, check_blind_replay()/assert_no_blind_replay() refusing a stored macro when start conditions or anchors are not currently observed, and evaluate_subtool_step() = the six Jev checks -> proceed/reobserve/escalate/complete, never an action outside the declared allowed set. Integrator-verified: tests/test_jev_subtools.py + tests/test_computer_use_jev_e2e.py 24 passed (rc=0), and E2E-J3 runs the real CUExecutor/DryRunRunner/CUPolicy/GUIState/EventStore with a lost anchor -> reobserve/escalate and runner actions == []. Evidence: ev-942602e7ebfe4ecb.",
+      "next_action": "External precondition: a real application under the container GUI. First build the missing image (localhost/godsv-cu-x11:latest, `godsvoice cu check` names it) so anchors come from actual perception, then run the §56 mandatory visual-subtool cases in the Xvfb container and record the real GUIState revisions. Until then the anchors are declared data."
+    },
+    "JEV-18": {
+      "implementation_state": "implemented",
+      "evidence_state": "integration_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "computer_use.py (appended to the existing gate module, no second policy engine) carries exactly the 13 documented escalation triggers, ESCALATION_TRIGGER_REASONS with the goal's wording, EscalationSignals where None means not measured, contradicting_answers() over declared Noul pairs, and system_two_escalation_decision() -> EscalationDecision(advisory_only=True, authorizes_action=False). An unmeasured check escalates and is listed in `unmeasured`; there is no global threshold and no invented confidence. Integrator-verified: tests/test_computer_use_jev.py 8 passed (rc=0) with a raising case per trigger. Evidence: ev-54634b7988b14d7f.",
+      "next_action": "Wire the decision into the live runtime loop and drive the real Voice/Planner leg (today only tests call it), then run a live CU session and show the loop does not ping-pong after an escalation - needs the container GUI image (see JEV-17) plus the desktop host."
+    },
+    "JEV-19": {
+      "implementation_state": "implemented",
+      "evidence_state": "contract_tested",
+      "acceptance_state": "blocked",
+      "verified_mapping": "tools/jev_benchmark_arms.py defines the arms (Voice A-D, Completion A-C, Computer-Use A-B) and reuses tools/eval_benchmark.py metric maths instead of a second metric definition; vendor claims (vendor_claim/vendor_number/is_vendor_claim or a vendorish source) are excluded from every metric and listed; an unknown arm is exit 4, a missing arm is named (arms_missing) and never scored; only-vendor material is exit 5; no raw data is exit 2 with 'no raw data' and never a zero - integrator-verified first-hand, without a pipe (rc=2). Evidence: ev-db8abdda21424075 (7 passed). Tests: tests/test_jev_provider_arms.py::test_without_raw_data_the_tool_fails_loudly (covers the mechanism at the code level; a green test is not acceptance).",
+      "next_action": "External precondition: raw runs on an authorized provider budget. Then run the arms over `--runs <raw files>`, compare task success / false intervention / cost / latency per arm, and keep the vendor numbers excluded. No comparison exists today because no run file exists."
+    },
+    "RF-11": {
+      "implementation_state": "partial",
+      "evidence_state": "live_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Earlier: 8/12 recovery criteria implemented (RF-02..RF-10), integration_tested. Verified now, first-hand and without pipelines: the core path runs in PLAIN Hermes with no Skaldir plugin (empty HERMES_HOME: `hermes --version` rc=0 v0.21.3/upstream fb56a7e0, `hermes skills list` rc=0) and integrated in Skaldir (`godsvoice doctor` rc=0 'Deployment OK.', `desktop status` rc=0, `registry status` rc=0, `completion status` rc=0). The secret clause holds on the export path: `godsvoice scan` detects a canary secret and prints only a MASKED preview (`preview: sk-l...89`), never the value; `doctor`/`metrics` with the canary in the environment carry none of it. A read-only audit of the real runtime artifacts (3518 files) found 11 pattern hits, all attributed: regex false positives, documentation placeholders (.env.example commented out, Hermes skill docs), one help-text example and three byte-noise hits inside libvulkan.so.1 - no real secret. Evidence ids: audit/evidence records for RF-11 (positive + negative). Implementation: src/godsv/cli.py (scan) and src/godsv/untrusted.py (pattern layer).",
+      "next_action": "(a) Desktop operability at this HEAD: start the GV instance with a debug port and run `node tools/gv_ui_e2e.mjs <port>` (the criterion's 'Desktop zeigt korrekten Status und bleibt bedienbar' half is NOT measured here). (b) Name the diagnostic export the criterion means: no dedicated diagnostics export exists in the CLI or the panel (grep over cli.py and plugin_api.py); if the intended surface is `doctor` + `scan`, write that into the mapping and the criterion text, otherwise the export has to be built before the clause can be satisfied."
+    },
+    "S20": {
+      "implementation_state": "partial",
+      "evidence_state": "live_tested",
+      "acceptance_state": "failed",
+      "verified_mapping": "Measured with the new repeatable tool tools/register_linkage_report.py (rc=1 = incomplete): 97 criteria / 56 reviewed; files_symbols 40/97, test_ids 15/97, evidence_refs 38/97, run_ids 38/97; criteria carrying code AND test AND evidence: 9/97. Before this round the four fields were empty for ALL 97 criteria (0/97) while the schema claimed them - the generator now derives them from real sources and validates every path against the filesystem (a path that does not exist is dropped, a bare file name is accepted only when it resolves to exactly one repo file, a `file.py::test_name` only when that function is really in the file). The criterion 'fully linked' is therefore still NOT met. Evidence: audit/evidence record for S20.",
+      "next_action": "Close the gap tool-driven: (a) record real bound evidence for the 36 reviewed criteria that have no evidence record (their evidence_state is at most 'documented' until then - finding AF-10); (b) name a code path in the implementation description of the 16 reviewed criteria that still have none; (c) re-run tools/register_linkage_report.py until it exits 0."
+    },
+    "S19": {
+      "implementation_state": "partial",
+      "evidence_state": "live_tested",
+      "acceptance_state": "blocked",
+      "verified_mapping": "Harness measured first-hand: tools/jev_benchmark_arms.py --list rc=0 (the frozen arms Voice A-D, Completion A-C, CU A-B; vendor claims are excluded from every metric by construction) and tools/eval_benchmark.py rc=2 'no runs - nothing is measured, nothing is printed as a zero'. The scripts and the arm definitions exist; there are no raw runs on this host. Implementation: tools/jev_benchmark_arms.py, tools/eval_benchmark.py. Tests: tests/test_gv_benchmark.py::test_schema_follows_the_seven_configurations_and_full_metric_set (covers the mechanism at the code level; a green test is not acceptance).",
+      "next_action": "External precondition: raw runs on an authorized provider budget. Then run the arms over real run files and produce the task-success/false-intervention/cost/latency comparison. Nothing is a measurement until then."
+    },
+    "S16": {
+      "implementation_state": "implemented",
+      "evidence_state": "live_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Measured first-hand: 'godsvoice 1.5.0' rc=0, 'godsvoice desktop status' rc=0 (Hermes CLI found), and the handover artifacts exist in the repo - docs/APP-BUILD.md, audit/CODE_MAP.md, audit/REQUIREMENTS.json, audit/evidence/manifest.json, docs/ABNAHME-STATUS.md, CHANGELOG.md, pyproject.toml. A built app tree is installed under ~/.hermes/godsv/app/linux-unpacked. Start commands: docs/APP-BUILD.md.",
+      "next_action": "Open: verify a clean-host install and the parallel start of two instances at this HEAD (the earlier round proved it, this measurement did not re-run it)."
+    },
+    "S15": {
+      "implementation_state": "partial",
+      "evidence_state": "live_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Reproducible baseline measured: CLI start three times 0.172/0.156/0.143 s (median 0.156 s) with the same command on the same host; docs/audit/PERFORMANCE.md exists (13.7 KB). Implementation surfaces: src/godsv/cli.py, docs/audit/PERFORMANCE.md.",
+      "next_action": "Open: 'fixed bottlenecks' and 'no unjustified regressions' need a SECOND measurement point after a change and the same numbers re-taken; one baseline alone cannot support either claim."
+    },
+    "S09": {
+      "implementation_state": "implemented",
+      "evidence_state": "integration_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Live lifecycle against the real daemon (tools/docker_lifecycle_probe.py 9/9, plus tools/docker_runtime_live_probe.py 9/9): start through the product layer, out-of-band kill (the crash) observed through the container STATE - a killed container still exists, so checking existence would have been a false negative in the probe itself - consistent and idempotent cleanup, a duplicate start request yields exactly ONE container (second start refused), and blind cleanup without labels is refused instead of guessed. No leftovers afterwards. Implementation: src/godsv/docker_runtime.py, src/godsv/buildflow.py.",
+      "next_action": "Open: event loss, revocation and abort across a RUNNING Hermes session; the duplicate request is covered at the docker layer, not at the buildflow intake."
+    },
+    "S12": {
+      "implementation_state": "partial",
+      "evidence_state": "contract_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Memory retrieval/learning suites green (tests/test_memory_retrieval.py, tests/test_memory_learning.py); the brief lifecycle is covered under VD-16 and shared budgets under VD-21. Implementation: src/godsv/memory.py, src/godsv/subagent_briefs.py, src/godsv/budget.py.",
+      "next_action": "Open: retrieval AFTER a real compression or process restart in the running instance, and a real child timeout with a partial result on the live delegation path - both need the running desktop session."
+    },
+    "VD-01": {
+      "implementation_state": "implemented",
+      "evidence_state": "integration_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Criterion contract with stable ids and a revision fence: src/godsv/pact.py (AcceptanceCriterion, Pact.goal/non_goals/scope_paths/version) and src/godsv/completion.py (begin_goal, record_trajectory, _criterion_edit with terminal freeze + revision fence + request_id dedup, update_criterion limited to text/blocking, hard check goal_revision_matches). Verified run: `godsvoice completion begin --goal ... --criterion ... --criterion ...` rc=0 (2 criteria, revision=1, both blocking) and `completion status` rc=0 reading it back. Counter-cases 4/4 and 6/6: stale expected_revision -> CriterionConflict, a terminal contract freezes criteria, a repeated request_id is idempotent, a client-supplied status field is ignored, and evidence from an old revision or a foreign workspace does not certify the new revision. Tests: tests/test_completion.py::test_begin_goal_starts_working (covers the mechanism at the code level; a green test is not acceptance).",
+      "next_action": "Open: the criterion-editing ROUTE (POST /completion/criteria) never ran over HTTP against a live instance; non-goals/scope live in Pact and the trajectory, not in the contract state. Next: activate the plugin in a running instance and drive the route once with a stale expected_revision (CriterionConflict) and once valid."
+    },
+    "VD-02": {
+      "implementation_state": "partial",
+      "evidence_state": "mock_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Runtime event capture: src/godsv/events.py (KINDS, SecretLeakError, EventStore.append/stream), src/godsv/guard.py build_evidence_index, src/godsv/completion.py RunEvidence (run_id/session/revision/workspace/platform/tool_call_id) and run_evidence_from_events (tool_call_id pairing, 'unknown' instead of an implied green). Production caller: the plugin hooks post_tool_call/post_llm_call/on_interim_message -> GodsvSession.observe -> EventStore.append. Verified run: tests/test_hermes_plugin.py -k shadow_mode_mirrors_events_and_logs_hint rc=0 (1 passed, real hooks mirror 3x tool_call/3x tool_result with session/step/kind) and `godsvoice memory-audit` rc=0 ('events: 0 - sessions: 0'). Counter-case (verified by me too): the live instance does NOT load the plugin - ~/.hermes/config.yaml has plugins.disabled: [godsv, session-dashboard, skill-retrieval] with enabled: [], the app home has no plugins/ directory, and /api/plugins/godsv/health answers 404.",
+      "next_action": "Open: no version/app id on any event (only a derived RunEvidence.run_id), no product signal for a capture failure (observe errors are only logged), and the live runtime ~/.hermes/godsv/events.db holds 0 rows. Next: install and enable the plugin in the GV app home, restart, run one real turn, then check events.db for session/step/toolcall records."
+    },
+    "VD-03": {
+      "implementation_state": "implemented",
+      "evidence_state": "integration_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Facts vs hypotheses vs plans vs results, and explicit contradiction handling: src/godsv/guard.py (CLAIM_PATTERNS, NEGATIVE, extract_claims, extract_assumptions, build_evidence_index, criterion_categories, evaluate_completion, find_contradiction) wired through the plugin hooks record_claims/guard_pre_verify/guard_final. Verified runs: tests/test_guard.py rc=0 (15 passed) and `godsvoice eval` rc=0 (15/15 episodes incl. 'contradiction - 1 Hints' and 'false_completion - 0 Hints'). Counter-cases 3/3: a negation ('unverified', 'not yet', 'failed') is not a success claim, and without a prior claim there is no contradiction finding; a claim plus a recurring error IS the contradiction case.",
+      "next_action": "Open: the classification has never run against a real model text stream (the hooks run with FakeCtx and the live instance loads no plugin). Next: in an activated instance run one turn claiming 'all tests green' alongside a failing pytest and inspect guard_final/contradiction events of the real session."
+    },
+    "VD-04": {
+      "implementation_state": "implemented",
+      "evidence_state": "integration_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Semantic loop detection (same cause/strategy without new information): src/godsv/monitor.py (error_fingerprint, is_coarse_error_text, tool_signature, _on_tool_call, _on_tool_result with strategy_repeat/error_burst/known_incident_repeat/error_recurrence_after_progress/error_cluster/hallucinated_api) plus src/godsv/patterns.py SequenceAnalyzer (pattern_no_new_evidence, pattern_retry_without_strategy_change, pattern_oscillation, pattern_dependency_churn) and the pause rule that forces a novel strategy after a repeated intervention. Verified runs: tests/test_false_loop_regression.py rc=0 (8 passed) and `godsvoice eval` rc=0 (15/15 incl. 'busy_loop - 1 Hints', 'error_burst - 3 Hints'). Counter-cases 3/3: an assertion->syntax change is not a loop, a cluster of different signatures is explicitly no loop proof, and recurrence after real progress stays a signal without a pause trigger.",
+      "next_action": "Open: the loop semantics are shallow (tool signature + error fingerprint + normalization) and there is no run on a real long trajectory - no live event store exists on this host. Next: run tools/gv_eval_longhorizon.py against the running GV app and read loop/strategy_repeat signals against real error sequences."
+    },
+    "VD-05": {
+      "implementation_state": "partial",
+      "evidence_state": "contract_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Distinguishing goal / preference / scope deviation: src/godsv/monitor.py scope_drift against Pact.scope_paths, src/godsv/pact.py scope_paths, and in the plugin _drift_signals (context_drift after 3 criterion-foreign edits, progress_stall from 40 events) plus the System-One drift readings. Verified runs: tests/test_goal_drift_gate.py rc=0 (3 passed) and `godsvoice eval` rc=0 (15/15 incl. scope_drift and dependency_drift). Counter-cases 2/2: a single out-of-scope edit and in-scope edits (supporting work) stay silent - no unnecessary stop. VERIFIED BY ME: the production path builds Monitor(known_error_fingerprints=...) WITHOUT pact (integrations/hermes/godsv_plugin/__init__.py:274), so the pact-scope check has no production caller; the plugin only carries the criterion-term heuristic.",
+      "next_action": "Open and owner-facing: either wire Pact.scope_paths into the plugin (Monitor needs the pact) or narrow VD-05 to the criterion-term heuristic - then verify live in the chat. Next: owner decision, then the live check."
+    },
+    "VD-06": {
+      "implementation_state": "partial",
+      "evidence_state": "integration_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Quality checks along concrete criteria: src/godsv/monitor.py SLOP_RULES/scan_slop (NotImplementedError stub, bare except, except-pass, assert True, TODO) plus the completion hard checks (9) and shortcut codes (8) in src/godsv/completion.py, with persistence covered by declared runner checks (tests/test_verification_closure.py). Verified runs: tests/test_jev_completion_ledger.py -k 'hard_check or shortcut or nine or eight' rc=0 (17 passed), verification closure rc=0 (2/2, a restart that does not survive fails), `godsvoice eval` rc=0 (15/15 incl. 'slop_edits - 3 Hints'). Counter-cases 2/2 + 1/1: a clean file has no hits, an in-scope edit stays quiet, a bare except/TODO IS found. VERIFIED BY ME: 'dead buttons' has no product check at all (grep over src/ returns nothing).",
+      "next_action": "Open: 'dead buttons' has no check (finding, not patched - audit scope) and 'missing persistence' exists only as a declared runner check. Next: owner decision whether dead buttons need their own check, otherwise narrow the criterion to the four covered categories."
+    },
+    "VD-08": {
+      "implementation_state": "implemented",
+      "evidence_state": "integration_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Graduated intervention with dedup, counter-evidence and 'no intervention': src/godsv/voice.py (DEFAULT_BUDGET/DEFAULT_MIN_GAP, assess_intervention with an explicit cost model, SOFTENABLE_TRIGGERS, TrajectoryHealth, read_trajectory_health, HealthyDebuggingRunner) and src/godsv/pause.py (TRIGGER_RULES, mark_delivered exactly-once, expire_stale only for kind=voice, VoicePause.consider with cooldown/hourly caps and cost gate, deliverable, release) wired through the plugin observe/pre_tool_call path. Verified runs: tests/test_pause_hard.py rc=0 (12/12 incl. test_cost_gate_blocks_a_low_severity_pause), tests/test_no_intervention.py rc=0 (2/2), tests/test_pause.py rc=0 (10/10 incl. test_exactly_once_delivery, test_expiry_only_touches_voice), `godsvoice eval` rc=0 (15/15 incl. 'pause_flow - 3 Hints', 'healthy_work - 0 Hints'). Counter-cases: a healthy run is not interrupted; expiry touches only voice leases (a user/safety lease stays requested).",
+      "next_action": "Open: no live delivery was observed (the live instance loads no plugin, the runtime has 0 events) and the cost model is explicitly ESTIMATED. Next: run one real turn on an activated instance with GODSV_MODE=whisper and inspect the exactly-once block plus hint_delivered/pause_delivered."
+    },
+    "VD-09": {
+      "implementation_state": "partial",
+      "evidence_state": "contract_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Targeted research with sources, version reference and visible uncertainty: src/godsv/research.py ResearchRunner (archive written and redacted, snippets with file:line, an LLM failure keeps the deterministic template, stale findings are flagged and never reused blindly). Verified runs: tests/test_research.py rc=0 (6 passed) and the reuse/stale selection rc=0 (2/2). Counter-cases: a provider failure yields the deterministic template with an uncertainty line instead of an invented answer; an old finding is marked stale and turned into a re-verification question.",
+      "next_action": "Open: there is no EXTERNAL source fetch in the research path (repo snippets and memory references only, no HTTP/browser), so the required 'check an invented API against official docs' cannot be run; sources are repo-local (path:line) and nothing ran live. Next: either add an external doc fetch (MCP/browser) to the ResearchRunner or narrow the requirement to local evidence, then run a real pause-with-research on an activated instance."
+    },
+    "VD-10": {
+      "implementation_state": "implemented",
+      "evidence_state": "mock_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Feeding knowledge early and sparingly at a safe point, even without an error pause: src/godsv/skills.py (relevant_skills - promoted only, subchain match, limit=1 - and consumption_hint), the plugin's _maybe_skill_hint in the pre_tool_call path (once per session, skill_consumed event, hint queued) and contract_context in pre_llm_call, plus src/godsv/context.py ContextBuilder quotas and src/godsv/memory.py evaluate_retrieval. Verified runs: tests/test_plugin_release.py -k TestSkillConsumption rc=0 (2 passed: a promoted skill is surfaced once, a demoted one never) and the pre_llm_call inject/silent pair rc=0. Counter-cases: without a contract nothing is injected; a demoted skill is never offered.",
+      "next_action": "Open: no live proof of the early feed (the plugin is not active on this host), thrift is only structural (limit=1, once per session, fixed quotas), and the contract context goes into the user message host-specifically. Next: on an activated instance run a real turn with topical relevance and verify skill_consumed/hint_delivered against the injected message."
+    },
+    "VD-11": {
+      "implementation_state": "partial",
+      "evidence_state": "contract_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Project/global memory by scope, provenance, freshness, conflicts and deletion: src/godsv/memory.py (evaluate_retrieval, gate_evidence, classify_candidate for expired/archived/contradicted/scope-conflict, provenance_of/merge_provenance) and src/godsv/retrieval.py gate_evidence, driven by src/godsv/cli.py:237 memory-retrieval-check. Verified run: `godsvoice memory-retrieval-check --db <db> --signature loop:pytest-import-error --component monitor ...` rc=0 with 'strong intervention allowed: True' and a strong_match on component,failure_class,goal_scope. Counter-cases: expired -> rejected, archived -> rejected, component mismatch -> rejected, and 'godsvoice memory-forget' -> argparse rc=2 (there is NO delete command). VERIFIED BY ME: the plugin calls find_evidence(self.incidents, self.notes, signature=..., query=..., limit=3) WITHOUT context= (integrations/hermes/godsv_plugin/__init__.py:1766), so memory.gate_evidence never runs in the product path; and a foreign-project entry with the default scope is rated strong = a cross-project leak. Tests: tests/test_memory_learning.py::test_false_incident_match_never_triggers_a_strong_intervention (covers the mechanism at the code level; a green test is not acceptance).",
+      "next_action": "Open (three real gaps): no forget/delete path (STATUS_ARCHIVED is never set), no project-identity filter in retrieval, and the plugin bypasses the gate. Next: pass a RetrievalContext at that call site and prove it with a live expired/archived incident in the runtime memory.db."
+    },
+    "VD-12": {
+      "implementation_state": "implemented",
+      "evidence_state": "contract_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Capability discovery with registration, availability, authorization and suitability as separate axes: src/godsv/discovery.py (scope_gate, authorization_gate, compatibility_filter, state_of, rank_entries, discover, registry_revision, DiscoveryCache) and src/godsv/capability_health.py; production caller is the plugin's pre_llm_call path (discovery.discover with project_id/permissions/cache and the GODSV_DISCOVERY kill switch). Verified run: tools/gv_discovery_eval.py against the frozen 36-case set - recall@3 23/23, false fit 0/5, scope leaks 0/5, 5/36 honestly blocked, one case blocked by the dispatch-time revocation guard. Counter-cases 4/4 with a planted registry: a missing secret handle makes a capability INVISIBLE (name absent from the JSON, only blocked.authorization counted), a foreign project is invisible, with a handle the same task finds and marks treasury_post executable, and an unvalidated capability only appears as a build candidate. Tests: tests/test_discovery.py::test_metadata_is_extracted_from_the_real_manifest_with_sources (covers the mechanism at the code level; a green test is not acceptance).",
+      "next_action": "Open: 'finds AND executes' has no live proof because the runtime registry is empty (`godsvoice registry status`: tools.db 0 specs, generated_tools 0) and the harness cases are planted rather than built by the gated builder. Next: run a real chat path with one registry entry and log that the found candidate is actually executed."
+    },
+    "VD-14": {
+      "implementation_state": "implemented",
+      "evidence_state": "contract_tested",
+      "acceptance_state": "blocked",
+      "verified_mapping": "Treasury connections via secret handles: src/godsv/treasury.py (Vault with Fernet + 0o600, Broker, run_with_secret with grant:required/scopes/rate limit/bwrap requirement/scrubbing, selftest, TreasuryState, SpendLedger), src/godsv/secretscan.py and the events SecretLeakError. Verified runs: a 7/7 probe (handle metadata value-free, selftest injects into the bwrap sandbox, the secret is absent from the event store, missing scope -> 'missing scopes', grant:required without a grant -> denied, a tool-scoped grant covers exactly its tool, a revoked grant is denied immediately), `godsvoice vault revoke` then describe/broker -> rc=1 unknown handle, and without GODSV_VAULT_KEY -> rc=1 with no silent fallback. CORRECTION of a worker claim, proven by me: expired handles ARE enforced - Vault._decrypt raises 'handle expired' (src/godsv/treasury.py:200-204) and tests/test_treasury.py -k expired (test_expired_handle_refused, test_expired_intent_blocks_complete) is green (2 passed). The claim that expires_at is checked nowhere is wrong; the check sits at the decryption/broker edge, not in the metadata listing.",
+      "next_action": "Blocked externally: there is no real Treasury/API credential and no Treasury access on this host, and the deployment half is empty (tools-hub finds no deploy/api tools, registry 0 specs). Next: after the owner adds a real handle (`godsvoice vault add --service treasury-api --name prod` with GODSV_VAULT_KEY set), run Broker.selftest against the real target and provide a deployment tool in the runtime registry."
+    },
+    "VD-15": {
+      "implementation_state": "partial",
+      "evidence_state": "live_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Computer Use judged by current observation and effect, GUI steps reused only with valid preconditions: src/godsv/computer_use.py (CUPolicy requiring verification and isolation, ContainerRunner on podman/Xvfb :90 with DEFAULT_IMAGE localhost/godsv-cu-x11:latest, CUExecutor.run, _verify_attempt, runner_availability, system_one_guistate_gate, guistate_action_candidates), src/godsv/system_one_guistate.py (build_gui_state, effect_check with certifies=False), src/godsv/system_one_cache.py gui_state epoch refusals and system_one_subtools.assert_no_blind_replay. LIVE RUN (mine, re-run independently by the worker): tools/cu_gui_e2e_probe.py rc=0 18/18 - real container + Xvfb + real app (xterm), observe() reads the window title from the display, GUIState with channel=window_metadata and certifies_effect False, screen capture changed, effect proven in the app's own file ('godsv-e2e-ok'), ctrl+d -> empty observation and pgrep rc=1, no leftovers; `godsvoice cu check` rc=0 and `cu demo` rc=0 (verified on the dom channel after a failed API attempt). Counter-cases 9/9: an attempt without verification and a non-isolated runner are refused by policy, a screenshot-only success aborts, live_display on a metadata channel is a contract error, a stale gui_state_epoch is refused by the cache, a candidate outside the pre-approved set raises, a stale window anchor fails and a blind replay is refused. Tests: tests/test_computer_use.py::test_live_runner_is_rejected plus the probe tools/cu_gui_e2e_probe.py.",
+      "next_action": "Open: the criterion template names Blender (open -> prove the window -> render -> check the artifact) while the live run used xterm; and NO user-reachable path triggers a real CU action (the CLI parser offers only check|demo, the panel offers status and a dry-run demo), so system_one_guistate_gate and assert_no_blind_replay still have no production caller. Next: build a real Blender run through the plugin path (CU order from the chat -> ContainerRunner(gui=True) -> verify the rendered artifact on disk)."
+    },
+    "VD-17": {
+      "implementation_state": "implemented",
+      "evidence_state": "contract_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Pause reasons, safe points and running side effects handled explicitly: src/godsv/pause.py (PauseStore leases with kind/trigger_kind/base_step/TTL, set_status, expire_stale only for kind=voice, abandon_dead_research; VoicePause with consider/deliverable stale window/release/watchdog) and on the side-effect side src/godsv/run_supervisor.py side_effect_disposition with PARKED_UNKNOWN_SIDE_EFFECT. Verified run: a 7/7 probe - the lease carries its reason (trigger_kind=loop, fingerprint, base_step=10), nothing is delivered before status ready, the redirect happens exactly once (second call None, exactly one pause_delivered), a result outside the stale window becomes stale with released_reason 'result outdated', TTL expiry touches only voice leases while user and safety stay requested, release() records 'normal path' and leaves them untouched, and the deliverable payload asserts no rollback. Plus `godsvoice eval` rc=0 15/15. Counter-cases: a voice pause against an open user/safety lease with the same expired TTL changes neither; a late research result yields no redirect; a started deploy with unknown side effect is parked as UNKNOWN_SIDE_EFFECT_STATE with wake_source operator:side_effect_verified and is NOT reported as rolled back. Tests: tests/test_run_supervisor.py::test_run_record_has_exactly_the_required_fields (covers the mechanism at the code level; a green test is not acceptance).",
+      "next_action": "Open: no live session was observed (the proof runs the production modules with a real PauseStore and a deterministic harness) and the side-effect half leans on run_supervisor, which has no production caller. Next: drive a live session with a loop signal and bind the requested -> ready -> delivered chain plus released_reason in pauses.db, then repeat against a user hold."
+    },
+    "VD-18": {
+      "implementation_state": "implemented",
+      "evidence_state": "contract_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Crash recovery with ownership leases, fencing, checkpoints and reconciliation of unclear actions: src/godsv/run_supervisor.py RunStore (create_run, grant_lease, heartbeat with owner check, release_lease, hold, enqueue_continuation ON CONFLICT DO NOTHING, claim_continuation CAS, commit_continuation, requeue_continuation, register_action, verify_result, run_lock), lease_valid, check_run, side_effect_disposition, repair_run, recover_pending, sweep, RunWatchdog; documented in docs/RUN-LIFECYCLE.md. Verified run: 7/7 checks - store closed and reopened yields exactly ONE continuation (generation 1, status claimed, recovery_count 1, repair REQUEUED) and a second claimer gets None, so a crash between external effect and receipt does not produce a blind duplicate. VERIFIED BY ME: there is NO production caller (grep over src/, integrations/ and tools/ finds only a docstring reference in src/godsv/subagent_briefs.py), which docs/RUN-LIFECYCLE.md 9 admits as its own open point. Tests: tests/test_run_supervisor.py::test_a_second_claim_of_the_same_continuation_is_refused (covers the mechanism at the code level; a green test is not acceptance).",
+      "next_action": "Open: the protection exists but the user cannot trigger it today, and no real kill -9 run happened (tools/gv_crash_recovery.py --check reports rc=2 and ok=false with no running instance). Next: wire sweep() into the plugin turn start, then run tools/gv_crash_recovery.py without --check against a live GV instance."
+    },
+    "VD-20": {
+      "implementation_state": "implemented",
+      "evidence_state": "integration_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Learning from experience and subworkflows with verification, versioning and withdrawal on regression: the skills/learning path (src/godsv/skills.py, src/godsv/capability_mining.py) in the plugin's practice. Verified run: a workflow skill consumed 3x in 2 sessions with applied: True, `godsvoice skills validate workflow-web_search-terminal ...` rc=0, and the digest/manifest versioning path for tools and capabilities. A RETIRED-state finding was recorded (retire() must make the fold terminal), and demote_on_drift exists without a production caller. Tests: tests/test_capability_learning.py::test_search_covers_tools_skills_mcp_testing_and_hub (covers the mechanism at the code level; a green test is not acceptance).",
+      "next_action": "Open: skills carry no version number, demote_on_drift is not wired into an automatic path, and the RETIRED finding is unfixed. Next: fix the RETIRED finding first, then hook demote_on_drift into the night run or the metrics path so a regression withdraws automatically."
+    },
+    "VD-23": {
+      "implementation_state": "partial",
+      "evidence_state": "contract_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Versioned prompts, models, schemas and host contracts with controlled updates and a rollback-capable release: src/godsv/prompts.py, the app-overlay/host-overlay discipline and tools/gv_update_gate.py. Verified run: 'gate green' - preflight ok (no update marker), stock_update ok, anchor dryrun ok ('35 patches in 13 files'), plugin_contract ok ('desktop panel: contract OK'), appbuild pytest green. The rollback-capable part exists only as the canary ladder (system_one_canary stages J0-J5). Tests: tests/test_gv_update_gate.py::test_marker_absent_is_none (covers the mechanism at the code level; a green test is not acceptance).",
+      "next_action": "Open: gv_update_gate.py has no rollback step and appbuild/desktop know no backup or previous version, so a rollback-capable release is NOT proven. Next: save the previous app directory as a receipt before the build, prove a faulty update is rolled back, and pin the engine in the same run."
+    },
+    "VD-24": {
+      "implementation_state": "implemented",
+      "evidence_state": "integration_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Independently repeatable evaluation and exportable code/evidence mapping: `godsvoice eval` (15/15 episodes) run twice is BYTE-IDENTICAL (cmp -s clean), tools/build_audit_register.py --check rc=0 'audit register current - 97 criteria', tools/acceptance_evidence.py status/rebuild and tools/build_artifact_manifest.py. Counter-cases: the artifact manifest was stale (--check rc=1, rebuilt by me - now green), a non-startable probe command is recorded WITH its real rc instead of being dropped, and tools/build_audit_register.py crashed once with NameError because of my own in-flight edit (finding AF-13).",
+      "next_action": "Open: reproducibility is proven only for the deterministic harness (no live model or desktop run), and no independent second verifier has repeated a run - the worker noted that about their own runs, and I repeated their VD-15 probe myself. Next: after the tree is quiet, rebuild the manifest (done) and have a second instance repeat an eval run on the same commit and compare with cmp."
+    },
+    "S08": {
+      "implementation_state": "partial",
+      "evidence_state": "integration_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Composition measured end to end with tools/composition_probe.py (9/9, rc=0): service 1 is a real SearXNG container answering a real query with 75 external result URLs, the results become a markdown artifact, service 2 is a real pandoc container converting it to HTML (684 bytes carrying a real result URL), and the GUI step drives the isolated X11 container (xterm via ContainerRunner: windowfocus/type_text/Return) so the real app receives the artifact name in its own file - read back and matching. Counter-cases in the same run: a missing pandoc input exits rc=1 and creates NO artifact, and a nonsense query yields a real smaller result set (63 vs 75) instead of invented hits. Implementation surfaces: tools/composition_probe.py, src/godsv/docker_runtime.py, src/godsv/computer_use.py, docker/cu-x11.Containerfile.",
+      "next_action": "Open: the workflow is a repo probe, not a product entry point - the criterion asks for an own CLI-/MCP workflow. Next: expose it as a CLI/MCP entry (the same gap as S06/V2-13, where the publish into the live runtime is blocked on AF-07), then re-run this probe through that entry."
+    },
+    "S17": {
+      "implementation_state": "partial",
+      "evidence_state": "documented",
+      "acceptance_state": "open",
+      "verified_mapping": "Checked first-hand: the agent-reach skill IS installed (~/.hermes/skills/agent-reach/SKILL.md plus references/) but ships NO executable script, so the source/reading probe was driven by its method with a real HTTP fetch (status 200, 34690 bytes) and a real extraction of title/content from the answer. The project's own skill gods-voice (~/.hermes/skills/gods-voice/SKILL.md) is installed and its recipes were demonstrably executed in this audit (tools/check_desktop_plugin.mjs, the pipefail/PIPESTATUS rule, the hardlink warning). The project-side skill store is EMPTY: `godsvoice skills list` answers 'no skill candidates' and there is no ~/.hermes/godsv/skills. NOT proven: computer-use against the REAL BUILT app - my CU runs drove the isolated container app - and no product entry point executes a skill itself. Files: ~/.hermes/skills/agent-reach/, ~/.hermes/skills/gods-voice/, src/godsv/skills.py.",
+      "next_action": "Two concrete steps: (1) run one computer-use order against the built Skaldir desktop app (same precondition as S10/VD-15: the desktop session must be available and CUPolicy.require_isolation lifted for that run); (2) decide whether the project wants its own skill store populated - today `godsvoice skills list` finds no candidates, so no product path exercises a skill."
+    },
+    "S03": {
+      "implementation_state": "partial",
+      "evidence_state": "integration_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Measured first-hand through the real production path (plugin_api.events_since_payload plus godsv.events.EventStore, not a test double) with tools/goal_stream_probe.py (13/13): the chat feed carries the chat kinds and hides panel-only kinds, a reconnect with the last seen sequence delivers nothing twice, everything produced while disconnected arrives, no sequence is delivered twice, the feed stays inside the requested session, a secret payload is refused (SecretLeakError) and the redacting path stores no secret. OPEN DEFECT AF-14 (P2, reproduced): the feed is newest-first with LIMIT (default 40) while its own contract says the chat polls with the last seen latest_seq - a backlog of 60 during one disconnect is delivered as the newest 40, the follow-up poll returns 0, so 20 of the oldest unseen chat events are NEVER delivered and the payload has no truncation flag. Final events such as pause_released or completion_blocked can be lost that way. Files: integrations/hermes/godsv_plugin/dashboard/plugin_api.py (events_since_payload, _chat_event_rows), src/godsv/events.py, tools/goal_stream_probe.py, docs/audit/AUDIT-FINDINGS.md (AF-14). Tests: tests/test_panel_api.py::test_no_secret_material_in_payload plus the probe tools/goal_stream_probe.py.",
+      "next_action": "Fix AF-14 on the feed side under the no-new-features rule (options named in the finding: cursor at the oldest delivered sequence, a truncated/more flag with the oldest sequence, or ascending order with client sorting) plus a test; then prove the visual side of S03 in the running desktop app, which is not provable today."
+    },
+    "S04": {
+      "implementation_state": "partial",
+      "evidence_state": "integration_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Measured first-hand with tools/goal_stream_probe.py (second half, real CompletionStore): criteria edited while the goal runs bump the revision (1 -> 2 -> 3), a stale expected_revision raises CriterionConflict and leaves the criteria list unchanged, a repeated request_id replays idempotently (replayed=True) instead of appending twice, evidence from before the revision bump is not fresh (RunEvidence.fresh(bump)=False) while evidence after it is, and the goal record carries revision plus criteria for later evidence binding. The gates that reject old or wrong evidence exist in the code path (completion.GateRunner.gate_evidence/gate_dod/gate_precheck, CompletionPreflight, guard.evaluate_completion) and are covered by tests/test_completion.py, tests/test_completion_precheck.py, tests/test_completion_loop_e2e.py and tests/test_jev_completion_ledger.py - unit tests are NOT counted as acceptance here. Files: src/godsv/completion.py, src/godsv/pact.py, src/godsv/guard.py, tools/goal_stream_probe.py.",
+      "next_action": "Open: a revision change during a REAL running chat order (no live desktop/plugin system, so the live completion gate never ran) and the rejection of old evidence inside the live preflight. Needs the activated instance (AF-02/VD-02) or an explicit owner decision."
+    },
+    "S05": {
+      "implementation_state": "partial",
+      "evidence_state": "contract_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Measured through the product path: `godsvoice eval` exits rc=0 with 15/15 episodes passing, including the voice-intervention case and its counter-case, and the accompanying counter-case run `pytest tests/test_no_intervention.py tests/test_pause_hard.py` is green (14 passed): no unnecessary intervention, and voice pauses stay distinguishable from user/safety leases including expiry behaviour (only the voice pause expires). Implementation surfaces: src/godsv/voice.py (assess_intervention), src/godsv/pause.py, src/godsv/metrics.py. NOT proven: a real voice delivery with a visible intervention and safe continuation in the running system - the plugin is not loaded in the live instance (AF-02/VD-02) and events.db is empty, so the 'hint_delivered/pause_delivered' path has never been observed live. Tests: tests/test_no_intervention.py::test_no_intervention_closes_the_pause_without_redirect, tests/test_pause_hard.py::test_multiple_resume_events_resume_exactly_once.",
+      "next_action": "Run one real turn in an activated instance with GODSV_MODE=whisper over a scenario that warrants an intervention, then check hint_delivered/pause_delivered plus the safe continuation in events.db (same precondition as VD-08)."
+    },
+    "V2-03": {
+      "implementation_state": "partial",
+      "evidence_state": "contract_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Measured: the CLI/MCP side really exists and is the no-panel path today - `godsvoice tools-hub` (discover/search capabilities, build hub manifests), `godsvoice registry status`, `godsvoice tools` (propose-first, gated) and the MCP server share one runtime; the panel itself keeps a Tools view, so a separate panel is not REQUIRED for lookup, but the criterion also asks for set up / test / deactivate without it. Measured against the live runtime: `tools-hub --search` returns nothing and `registry status` reports generated_tools 0 because the product runtime is empty (AF-07), and the discovery harness plants its own inventory (VD-12). Files: src/godsv/cli.py, src/godsv/capability.py, src/godsv/toolbuilder.py, integrations/hermes/godsv_plugin/dashboard/plugin_api.py.",
+      "next_action": "Authorize the builder publish into the live runtime (AF-07), then run find -> set up -> test -> deactivate once through the chat/CLI path and record the four steps with their artifacts."
+    },
+    "V2-04": {
+      "implementation_state": "partial",
+      "evidence_state": "contract_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Measured: parallel work is real and grouped - this audit ran two isolated worker subagents whose output lives in separate per-task logs (~/.hermes/cache/delegation/live/deleg_*/task-*.log) and long builds run as tracked background processes with their own log files; the event ledger keys every event by session and step and the register carries per-criterion evidence binding. Faults are not silently dropped: a worker-reported crash of my own tool (NameError) surfaced as AF-13, and the workers' contradictory claim about handle expiry surfaced and was corrected with a real run. Gap: the CHAT-side grouping (live block plus detail drawers) is not verifiable without the running app. Implementation: integrations/hermes/godsv_plugin/desktop/plugin.js, src/godsv/events.py (session/step keyed ledger), src/godsv/run_supervisor.py.",
+      "next_action": "Verify the chat grouping in a running app with two parallel orders and one long build, then confirm that a failed sub-order keeps its details and error reachable."
+    },
+    "V2-06": {
+      "implementation_state": "implemented",
+      "evidence_state": "contract_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Mechanics measured through real runs: pause leases separate voice pauses from user/safety leases and expiry only touches voice leases (tests/test_pause_hard.py, 14 passed with the no-intervention file); crash recovery produces exactly ONE continuation and a second claimer gets None (run_supervisor probe 7/7); an unknown external side effect is parked as UNKNOWN_SIDE_EFFECT_STATE instead of being reported as rolled back; and the container lifecycle refuses a second identical start and cleans up idempotently with no leftovers (tools/docker_lifecycle_probe.py 9/9) - i.e. no uncontrolled duplicate side effects. Gap: this has never run AT the triggering chat action in the live app (approval pill, abort, retry), and run_supervisor has no production caller at all (VD-18). Tests: tests/test_pause_hard.py::test_full_runtime_restart_recovers_stale_pause, tests/test_pause_hard.py::test_voice_process_killed_watchdog_releases_main_agent.",
+      "next_action": "Wire the supervisor sweep into the plugin turn start (VD-18's next action) and then run one approval, one abort, one retry and one recovery from the chat, checking the side-effect ledger for duplicates."
+    },
+    "V2-07": {
+      "implementation_state": "partial",
+      "evidence_state": "documented",
+      "acceptance_state": "open",
+      "verified_mapping": "Statically measured, and explicitly NOT visually verified: reduced-motion handling exists in the plugin and in the app styles (prefers-reduced-motion found in integrations/hermes/godsv_plugin/desktop/plugin.js and in ~/.hermes/godsv/app-src/apps/desktop/src/styles.css and further app components), light/dark is a theme surface of the app (theme presets/use-skin-command), the plugin carries four keyboard handlers, and NO fixed 1280/900 widths are hard-coded in the plugin - so the two target widths have no dedicated code path to check. There is no rendering path in this repo (the panel HTML lives in the app tree) and playwright is not installed on this host, so overflow at 1280x800 and 900x650, long-history scrolling and focus behaviour remain unmeasured.",
+      "next_action": "Install playwright (app-level, no root: `uv pip install playwright` plus `playwright install chromium`) or use the running app window, then measure per control `scrollWidth > clientWidth` at 1280x800 and 900x650, plus dark/light, keyboard-only navigation, reduced motion and a long transcript - and screenshot each."
+    },
+    "V2-09": {
+      "implementation_state": "partial",
+      "evidence_state": "documented",
+      "acceptance_state": "open",
+      "verified_mapping": "Measured: docs/FEATURE-MAP.md (1291 lines, 201 table rows) maps features to code paths, entry points and known limits per feature, and the register binds files_symbols/test_ids/evidence_refs for 82 of 97 criteria, so a code mapping exists and is current. The panel NAV registers only four views with unique function (verification, tools, settings, treasury) and the removed ones stay reachable as the panel home route plus palette/strip/drawer actions (plugin.js:748-760, 3811-3820). Gaps: (a) the demanded inventory 'alt -> neu mit Codepfaden und Tests' per moved NAV entry exists only partially - FEATURE-MAP is a feature/code map, not a per-entry migration table; (b) 'Session Analyzer' and 'Messaging' (both named in the V2 design §7 removal list) have NO hit anywhere in this repository - they belong to the app shell, so their continued reachability is not verifiable here; (c) FEATURE-MAP.md:983 still claims six native sidebar targets while the code registers four (AF-15).",
+      "next_action": "Write the explicit per-entry migration table (old nav entry -> new chat interaction -> code path -> test) for every entry listed in the V2 design §7, verify the app shell's own entries inside the built app, and correct the stale FEATURE-MAP line."
+    },
+    "V2-10": {
+      "implementation_state": "partial",
+      "evidence_state": "documented",
+      "acceptance_state": "open",
+      "verified_mapping": "Measured: code mapping (docs/FEATURE-MAP.md plus the audit code-map artifacts), tests (full suite 2001 passed/7 skipped rc=0; the register binds test ids for 29 criteria) and the performance comparison (docs/audit/PERFORMANCE.md; my own current measurement: CLI startup median 0.156 s over three runs) all exist and are bound to the current HEAD by the register and by the artifact manifest (current: 106 files). Gap: the before/after SCREENSHOTS do not exist - there is no v1 build/screenshot set in the repository (the V2 design explicitly says its screenshot reference is not a target image), and the binding 'an den finalen Build' cannot be closed while the release build and the install/reinstall/uninstall cycles are still open (PX-08).",
+      "next_action": "Produce the before/after screenshot pair against a frozen build, and bind the whole mapping (code, tests, screenshots, performance) to the release build hash once PX-08's installer cycles exist."
+    },
+    "V2-13": {
+      "implementation_state": "partial",
+      "evidence_state": "contract_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Measured in three parts: (1) discovery WITHOUT a tool name works in the harness (recall@3 23/23, wrong fit 0/5, scope leaks 0/5, 5/36 correctly blocked) while the live runtime blocks 28/36 with 'target capability not registered' because the runtime is empty (AF-07/VD-12); (2) treasury safety holds in a real probe (7/7: handle metadata is value-free, sandboxed injection, the secret never reaches the event store, scopes and grants, a revoked grant is denied, a missing GODSV_VAULT_KEY is refused with rc=1) plus my own correction run that proved handle expiry is enforced (Vault._decrypt raises; tests/test_treasury.py -k expired: 2 passed); (3) leak checks hold (injection probe 12/12, `godsvoice scan` masks a real-looking key as `sk-l...89`, and a read-only sweep of 3518 runtime files found 11 pattern hits that were all explained). Gap: no real connection setup, no rotation with a real secret (JEV-07 blocks external access), and the result display in the chat is unverified. Implementation: src/godsv/capability.py, src/godsv/treasury.py, integrations/hermes/godsv_plugin/dashboard/plugin_api.py.",
+      "next_action": "After the owner provides a Treasury handle: run the setup + verify flow, rotate once, then show the result in a live chat turn and check the scope/leak axes again."
+    },
+    "PX-03": {
+      "implementation_state": "partial",
+      "evidence_state": "documented",
+      "acceptance_state": "open",
+      "verified_mapping": "Measured (Linux only): the native build keeps its own userData outside the engine checkout and the update isolation gate is green (test_gv_update_gate.py, 33 tests); `desktop status` shows the launcher and hicolor icons; process ownership is exercised by the container lifecycle probe (9/9: out-of-band kill detected, cleanup idempotent, no leftovers, double start refused) and data resume by RunStore/repair_run (7/7: exactly one continuation after reopen, REQUEUED repair, one claim). Gap: platform paths, process ownership and data migration for Windows/macOS cannot be run here - PLATFORM-MATRIX.md names the missing hosts exactly. Tests: tests/test_gv_update_gate.py::test_gate_never_writes_or_deletes_the_marker. Implementation: src/godsv/run_supervisor.py, src/godsv/docker_runtime.py, tools/gv_update_gate.py.",
+      "next_action": "Run the path/ownership/migration checks once on a Windows and a macOS host (needs the build hosts named in PLATFORM-MATRIX.md); on Linux, complete the install/reinstall/uninstall cycle including a migration of an existing userData directory."
+    },
+    "PX-04": {
+      "implementation_state": "partial",
+      "evidence_state": "documented",
+      "acceptance_state": "blocked",
+      "verified_mapping": "Blocked with a measured reason: real host computer-use per platform needs a host desktop session on each platform. On this host CUPolicy.require_isolation forbids driving the live desktop (the S10 policy conflict), and the container CU path - which is real and proven (tools/cu_gui_e2e_probe.py 18/18: real X11 container, real app, typed text verified in the app's own file, refusal counter-cases) - is an ISOLATED substitute, not host control. No Windows/macOS host exists (PLATFORM-MATRIX.md). Also unproven: refused permissions and user takeover.",
+      "next_action": "Owner decision: allow one host desktop session (and its permission-denial cases) for one platform, or narrow the criterion to the isolated runner; plus the build hosts for the other platforms."
+    },
+    "PX-05": {
+      "implementation_state": "partial",
+      "evidence_state": "contract_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Measured: the vault is the single secret authority and enforces expiry (Vault._decrypt raises 'handle expired'; tests/test_treasury.py -k expired: 2 passed - this corrects a worker claim that expiry was never checked), a missing store is refused (rc=1 without GODSV_VAULT_KEY), a revoked grant is denied, secrets never reach the event store (probe plus `godsvoice scan` masking), and a read-only sweep of 3518 runtime files found no real secret (11 pattern hits, all explained). Gap: rotation and restart with a REAL credential are unverified, and the shared credential path on Windows/macOS is not runnable here. Implementation: src/godsv/treasury.py (vault, grants, expiry), src/godsv/cli.py (vault command).",
+      "next_action": "With an authorized credential: rotate it once, restart the process, and re-check that the old handle is refused and no plaintext appears in any store; repeat the store-missing case on Windows/macOS."
+    },
+    "PX-07": {
+      "implementation_state": "partial",
+      "evidence_state": "documented",
+      "acceptance_state": "blocked",
+      "verified_mapping": "Blocked with exact prerequisites (PLATFORM-MATRIX.md): no Windows/macOS build hosts and no codesign identity or Apple Developer ID/notarization profile exist, so signing and notarization cannot be exercised. The update side is measured: the update isolation gate is green (33 tests) and gv_update_gate reported gate green with 35 anchor patches across 13 files. Still open: an isolated update/rollback with a receipt of the previous app directory. Implementation: tools/gv_update_gate.py plus the prerequisites recorded in docs/audit/PLATFORM-MATRIX.md. Tests: tests/test_gv_update_gate.py::test_marker_live_owner_is_reported (covers the mechanism at the code level; a green test is not acceptance).",
+      "next_action": "Provide the signing identity/notarization profile and the build hosts; then run an isolated update plus a rollback from a previous app-directory receipt and record both."
+    },
+    "PX-08": {
+      "implementation_state": "partial",
+      "evidence_state": "contract_tested",
+      "acceptance_state": "open",
+      "verified_mapping": "Measured: the full test suite runs natively on this host (2001 passed, 7 skipped, rc=0), the Linux build exists (~/.hermes/godsv/app/linux-unpacked, 203 MB ELF with bundled Chromium and its own userData), and the release-related artifacts are present and current (docs/audit/ARTIFACT-MANIFEST.json current with 106 files, RELEASE_NOTES.md, PLATFORM-MATRIX.md, BENCHMARK_MANIFEST.json). Gap: no native CI/test matrix for Windows or macOS, and the install/reinstall/uninstall cycles plus a signed installer are still open (per PLATFORM-MATRIX.md).",
+      "next_action": "Build the native matrix for the platforms that have hosts (or record it as external_dependency as PLATFORM-MATRIX.md already does) and complete the Linux install/reinstall/uninstall cycle on a clean user profile."
+    }
+  }
+}

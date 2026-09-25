@@ -1,0 +1,27 @@
+{
+  "tool": "container_logs",
+  "full_result_chars": 137200,
+  "full_result_bytes": 137200,
+  "hot_form_chars": 1135,
+  "tokens_before_estimate_chars4": 34300,
+  "tokens_after_estimate_chars4": 283,
+  "tokens_saved_estimate_chars4": 34017,
+  "saved_fraction": 0.9917,
+  "artifact_ref": "tool_archive:dd59b60a2a5e55e42d3f2b940f999c7c5e195de203c855d07ede6f0935d3f479",
+  "artifact_sha256": "dd59b60a2a5e55e42d3f2b940f999c7c5e195de203c855d07ede6f0935d3f479",
+  "artifact_path": "/home/willy/projects/gods-voice/docs/artifacts-94-token-economy/run/state/tool_archive/dd59b60a2a5e55e42d3f2b940f999c7c5e195de203c855d07ede6f0935d3f479.json",
+  "artifact_bytes_retrieved": 137200,
+  "retrieval_is_byte_identical": true,
+  "hot_form_carries_id_and_digest": true,
+  "dump_absent_from_prompt": true,
+  "run_status": "answered",
+  "executed_calls": 1,
+  "archive_stats": {
+    "puts": 1,
+    "deduped": 0,
+    "threshold_chars": 6000,
+    "summary_chars": 500,
+    "enabled": true,
+    "root": "/home/willy/projects/gods-voice/docs/artifacts-94-token-economy/run/state/tool_archive"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "goal": "Bring textkit to the promised state: slugify, the CLI and the published release manifest must all be real.",
+  "criteria": [
+    {
+      "criterion": "the slug feature is implemented and the project's own test suite passes",
+      "check": "pytest",
+      "blocking": true
+    },
+    {
+      "criterion": "the project CLI prints the documented slug (declared run check)",
+      "check": "run",
+      "blocking": true
+    },
+    {
+      "criterion": "the packaged artifact matches the upstream release manifest (declared api check)",
+      "check": "api",
+      "blocking": true
+    }
+  ]
+}

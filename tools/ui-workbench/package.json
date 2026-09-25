@@ -1,0 +1,24 @@
+{
+  "name": "skaldir-ui-workbench",
+  "private": true,
+  "version": "0.1.0",
+  "description": "React Cosmos workbench for Skaldir UI elements (orbs, chat rows, composer, shell chrome).",
+  "scripts": {
+    "start": "cosmos",
+    "export": "cosmos-export"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.0.0",
+    "react": "^19.0.0",
+    "react-cosmos": "^7.4.1",
+    "react-cosmos-plugin-vite": "^7.4.0",
+    "react-dom": "^19.0.0",
+    "thinking-orbs": "^0.3.1",
+    "vite": "^7.0.0"
+  },
+  "dependencies": {
+    "@tabler/icons-react": "^3.46.0",
+    "lucide-react": "^1.47.0",
+    "motion": "^13.4.0"
+  }
+}

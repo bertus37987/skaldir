@@ -1,0 +1,10 @@
+{
+  "run": {
+    "argv": ["python3", "tools/check_cli.py"],
+    "timeout": 120
+  },
+  "build": {
+    "argv": ["python3", "tools/check_build.py"],
+    "timeout": 120
+  }
+}

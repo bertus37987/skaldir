@@ -1,0 +1,30 @@
+name: godsv
+version: 0.1.0
+# `name` is the plugin ID the running Hermes app loads ("Failed to load plugin 'godsv'"
+# is that ID) and the key under `plugins.enabled` / `plugins.entries` in
+# `~/.hermes/config.yaml`; the product (Skaldir Agent) is the *label*, not this ID.
+# Do not rename it here alone — see docs/RENAME.md §"plugin id".
+# `homepage` still points at the pre-rename GitHub repo; only the owner can rename
+# the repository (docs/RENAME.md §"owner-only").
+description: "Skaldir Agent — mirrors the live Hermes trajectory into the Skaldir Agent event store, runs the deterministic Voice (monitor + budgeted hints) and logs hints to inbox.jsonl. Delivery modes via GODSV_MODE: shadow (default, log only) / whisper (append hints to the triggering tool result) / off."
+author: bertus37987
+license: Apache-2.0
+homepage: https://github.com/bertus37987/gods-voice
+tags: [agent-harness, memory, live-steering, observability, plugin]
+hermes_compatibility: ">=0.20.0"
+# Must list exactly what register() registers: the host admission check compares these
+# lists against a capability probe, and an undeclared registration fails
+# `plugin_validate` with "undeclared hooks/tools registered" (measured 17.09.).
+provides_hooks:
+  - on_session_start
+  - on_session_end
+  - on_interim_message
+  - pre_llm_call
+  - post_llm_call
+  - pre_tool_call
+  - post_tool_call
+  - pre_verify
+  - transform_tool_result
+  - transform_llm_output
+provides_tools:
+  - godsv_capabilities
