@@ -252,6 +252,91 @@ def _cmd_tui_approve(args: argparse.Namespace) -> int:
 # --------------------------------------------------------------------------- #
 
 
+# --------------------------------------------------------------------------- #
+# schedule (SCHED-01..04)
+# --------------------------------------------------------------------------- #
+
+
+def _sched_store(args) -> Any:
+    from .scheduler import ScheduleStore
+
+    return ScheduleStore(runtime_dir(args) / "schedules.json", owner="cli")
+
+
+def _cmd_schedule_define(args: argparse.Namespace) -> int:
+    """SCHED-04: defining is NOT activating — nothing fires after this."""
+    from .scheduler import CatchUp, Schedule
+
+    schedule = Schedule(
+        schedule_id=str(getattr(args, "id", "") or ""),
+        workflow_id=str(getattr(args, "workflow", "") or ""),
+        workflow_version=str(getattr(args, "version", "") or ""),
+        timezone=str(getattr(args, "timezone", "") or "Europe/Berlin"),
+        at_local=str(getattr(args, "at", "") or "00:00"),
+        parameters=json.loads(str(getattr(args, "params", "") or "{}")),
+        policy=json.loads(str(getattr(args, "policy", "") or "{}")),
+        catch_up=str(getattr(args, "catch_up", "") or CatchUp.ONCE),
+    )
+    saved = _sched_store(args).define(schedule)
+    payload = {"schedule": saved.to_dict(), "active": False,
+               "note": "SCHED-04: defined but NOT active — run `skaldir schedule activate` to enable it"}
+    report_envelope(payload, [{"ref": COMMAND_EVIDENCE.get("schedule.define", ""), "kind": "code", "note": ""}])
+    dump(payload)
+    return EXIT_OK
+
+
+def _cmd_schedule_lifecycle(args: argparse.Namespace) -> int:
+    """activate / pause / delete — deliberately separate verbs (SCHED-04)."""
+    store = _sched_store(args)
+    schedule_id = str(getattr(args, "id", "") or "")
+    action = str(getattr(args, "lifecycle", "") or "")
+    try:
+        if action == "activate":
+            result = store.activate(schedule_id).to_dict()
+        elif action == "pause":
+            result = store.pause(schedule_id).to_dict()
+        elif action == "delete":
+            result = {"deleted": store.delete(schedule_id), "schedule_id": schedule_id,
+                      "note": "the execution ledger is kept: what already ran stays recorded"}
+        else:
+            return usage(f"unknown schedule action {action!r}")
+    except KeyError as exc:
+        return blocked(str(exc), reason="not_found")
+    payload = {"action": action, "result": result}
+    report_envelope(payload, [{"ref": COMMAND_EVIDENCE.get("schedule.define", ""), "kind": "code", "note": ""}])
+    dump(payload)
+    return EXIT_OK
+
+
+def _cmd_schedule_list(args: argparse.Namespace) -> int:
+    store = _sched_store(args)
+    payload = {"schedules": [s.to_dict() for s in store.all()],
+               "executions": [c.to_dict() for c in store.executions()]}
+    report_envelope(payload, [{"ref": COMMAND_EVIDENCE.get("schedule.define", ""), "kind": "code", "note": ""}])
+    dump(payload)
+    return EXIT_OK
+
+
+def _cmd_schedule_due(args: argparse.Namespace) -> int:
+    """What should fire now — SCHED-01/02, honouring activation, overlap and catch-up."""
+    import datetime as _dt
+
+    store = _sched_store(args)
+    now = _dt.datetime.now(_dt.timezone.utc)
+    due = store.due(now=now)
+    payload = {
+        "now": now.isoformat(),
+        "due": [{"schedule_id": s.schedule_id, "workflow_id": s.workflow_id,
+                 "workflow_version": s.workflow_version, "occurrence": o.key,
+                 "local": o.local.isoformat()} for s, o in due],
+        "blocked_by_overlap": [s.schedule_id for s in store.all()
+                               if s.active and s.serialize and store.is_running(s.schedule_id)],
+    }
+    report_envelope(payload, [{"ref": COMMAND_EVIDENCE.get("schedule.define", ""), "kind": "code", "note": ""}])
+    dump(payload)
+    return EXIT_OK
+
+
 def _cmd_stop_report(args: argparse.Namespace) -> int:
     out = Path(str(getattr(args, "out", "") or "")) if getattr(args, "out", "") else (
         runtime_dir(args) / "stop-feasibility.json"
@@ -750,6 +835,28 @@ def register_cli(subparsers: Any) -> Any:
     rep = stop_sub.add_parser("report", help="measure the double-Escape feasibility here")
     rep.add_argument("--out", default="")
     rep.set_defaults(func=_cmd_stop_report)
+
+    # SCHED-04: definition, activation, pause and deletion are separate commands
+    sch = sub.add_parser("schedule", help="persistent schedules (SCHED-01..04)")
+    sch_sub = sch.add_subparsers(dest="schedule_cmd")
+    sd = sch_sub.add_parser("define", help="define a schedule (NOT active afterwards)")
+    sd.add_argument("--id", default="")
+    sd.add_argument("--workflow", required=True)
+    sd.add_argument("--version", default="", help="the ACTIVATED workflow version")
+    sd.add_argument("--timezone", default="Europe/Berlin")
+    sd.add_argument("--at", default="00:00", help="local time of day, HH:MM")
+    sd.add_argument("--params", default="{}", help="parameters as JSON")
+    sd.add_argument("--policy", default="{}", help="policy as JSON")
+    sd.add_argument("--catch-up", dest="catch_up", default="once", choices=["skip", "once", "all"])
+    sd.set_defaults(func=_cmd_schedule_define)
+    for name in ("activate", "pause", "delete"):
+        sl = sch_sub.add_parser(name, help=f"{name} a schedule (a separate action, SCHED-04)")
+        sl.add_argument("--id", required=True)
+        sl.set_defaults(func=_cmd_schedule_lifecycle, lifecycle=name)
+    sls = sch_sub.add_parser("list", help="all schedules and the execution ledger")
+    sls.set_defaults(func=_cmd_schedule_list)
+    sdu = sch_sub.add_parser("due", help="what should fire now")
+    sdu.set_defaults(func=_cmd_schedule_due)
 
     det = stop_sub.add_parser("detect", help="run a press sequence through the detector")
     det.add_argument("--gap-ms", dest="gap_ms", type=float, action="append", default=[])
