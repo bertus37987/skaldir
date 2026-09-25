@@ -74,6 +74,14 @@ COMMAND_EVIDENCE: dict[str, str] = {
     "stop.detect": "src/skaldir/stop_signal.py:DoubleEscapeDetector",
     "desk.status": "src/skaldir/desktop_lease.py:DesktopLeaseStore",
     "browser.probe": "src/skaldir/browser_layer.py:agent_browser_probe",
+    "schedule.define": "src/skaldir/scheduler.py:ScheduleStore.define",
+    "schedule.activate": "src/skaldir/scheduler.py:ScheduleStore.activate",
+    "schedule.pause": "src/skaldir/scheduler.py:ScheduleStore.pause",
+    "schedule.delete": "src/skaldir/scheduler.py:ScheduleStore.delete",
+    "schedule.list": "src/skaldir/scheduler.py:ScheduleStore.all",
+    "schedule.due": "src/skaldir/scheduler.py:ScheduleStore.due",
+    "sources.add": "src/skaldir/data_sources.py:SourceRegistry.attach",
+    "sources.report": "src/skaldir/data_sources.py:SourceRegistry.report",
     "browser.discover": "src/skaldir/browser_layer.py:SessionManager.discover",
     "browser.ensure": "src/skaldir/browser_layer.py:SessionManager.ensure",
     "browser.tabs": "src/skaldir/browser_layer.py:BrowserLayer.tabs",
@@ -787,7 +795,92 @@ def contract_entries() -> dict[str, Any]:
                     data_schema=schema, notes=notes)
 
     object_schema = {"type": "object", "properties": {}}
+
+    # SCHED-01..04 and DOCKER-05 (added with the scheduler and the data-source
+    # registry). `schedule.activate|pause|delete` deliberately share one schema with
+    # `define`: they are the *same* shape of answer, and the contract says so.
+    schedule_schema = {
+        "type": "object",
+        "properties": {
+            "schedule_id": {"type": "string"},
+            "workflow_id": {"type": "string"},
+            "workflow_version": {"type": "string"},
+            "timezone": {"type": "string"},
+            "at_local": {"type": "string"},
+            "catch_up": {"type": "string"},
+            "active": {"type": "boolean"},
+        },
+        "required": ["schedule_id", "workflow_id", "active"],
+    }
+    due_schema = {
+        "type": "object",
+        "properties": {
+            "now": {"type": "string"},
+            "due": {"type": "array", "items": {"type": "object"}},
+            "blocked_by_overlap": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["now", "due"],
+    }
+    source_schema = {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "kind": {"type": "string"},
+            "terms_url": {"type": "string"},
+            "licence": {"type": "string"},
+            "costs_money": {"type": "boolean"},
+            "availability": {"type": "string"},
+        },
+        "required": ["name", "kind", "costs_money"],
+    }
+    source_report_schema = {
+        "type": "object",
+        "properties": {
+            "tool": {"type": "string"},
+            "declared": {"type": "boolean"},
+            "unknown_availability": {"type": "array", "items": {"type": "string"}},
+            "disclaimer": {"type": "string"},
+        },
+        "required": ["tool"],
+    }
     return {
+        "schedule.define": entry(
+            "schedule.define", "kernel",
+            "define a schedule; it is NOT active afterwards (SCHED-04)",
+            schedule_schema,
+            "definition, activation, pause and deletion are separate actions; a defined "
+            "schedule fires nothing until it is activated"),
+        "schedule.activate": entry(
+            "schedule.activate", "kernel", "activate a defined schedule (SCHED-04)",
+            schedule_schema, "the deliberate act that lets a schedule fire"),
+        "schedule.pause": entry(
+            "schedule.pause", "kernel", "pause an active schedule (SCHED-04)",
+            schedule_schema, "paused schedules never fire; runs already recorded stay"),
+        "schedule.delete": entry(
+            "schedule.delete", "kernel",
+            "delete a schedule; the execution ledger is kept",
+            object_schema,
+            "deleting a definition must not erase what it already ran"),
+        "schedule.list": entry(
+            "schedule.list", "kernel", "all schedules and the execution ledger",
+            object_schema, "the persisted execution ids are what prevent double starts"),
+        "schedule.due": entry(
+            "schedule.due", "kernel",
+            "what should fire now, honouring activation, overlap and catch-up (SCHED-01/02)",
+            due_schema,
+            "catch-up runs once by default; 'all' must be asked for by name"),
+        "sources.add": entry(
+            "sources.add", "kernel",
+            "declare a data source; paid ones must be explicit (DOCKER-05)",
+            source_schema,
+            "a money-costing source cannot be attached silently and needs a named "
+            "approver (APR-02)"),
+        "sources.report": entry(
+            "sources.report", "kernel",
+            "what is honestly known about a tool's data sources (DOCKER-05)",
+            source_report_schema,
+            "availability is a measurement; an unmeasured source reports 'unknown', and "
+            "the report carries the disclaimer that online availability is not universal"),
         "tui.preview": entry(
             "tui.preview", "kernel", "the confirmed full-screen layout rendered as text",
             {"type": "object",

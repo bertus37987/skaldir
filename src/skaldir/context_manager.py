@@ -532,14 +532,26 @@ def preserved_items(
     goal: str = "",
     criteria: Iterable[str] = (),
     system_prompt: str = "",
+    user_corrections: Iterable[str] = (),
+    unknown_effects: Iterable[str] = (),
+    approval_state: str = "",
+    cancel_state: str = "",
 ) -> list[Preserved]:
     """The five things a compaction may never drop, recorded before it runs.
+
+    GOAL §7 / CTX-04 name them exactly: the primary goal, open criteria, **user
+    corrections**, **unresolved side effects** and **important evidence** — plus the
+    abort/approval state, which must not disappear either.
+
+    Earlier this list held only goal, criteria, system prompt, the newest user turn and the
+    newest tool result. That covered the goal and the criteria but *not* the three that
+    CTX-04 singles out, so a run could come back from a compaction with its corrections,
+    its unknown effects and its approval state quietly gone.
 
     ``system_prompt``, ``goal`` and ``criteria`` are **out of band** when they are not
     in the transcript (a run passes them separately); they are still recorded, because
     a report that claims "nothing important was dropped" has to say where the goal
-    lived. The two in-band items — the current user turn and the last tool result —
-    carry their index and digest.
+    lived. The two in-band items carry their index and digest.
     """
     items: list[Preserved] = []
     criteria_list = [str(item) for item in criteria]
@@ -557,6 +569,46 @@ def preserved_items(
                 len(text),
                 "an acceptance criterion of the run",
             )
+        )
+
+    # CTX-04: "unknown Side Effects, Nutzerkorrekturen ... duerfen nicht verloren gehen."
+    # These are not messages, so without being recorded here a compaction has no way to
+    # notice that they vanished.
+    for position, text in enumerate(str(item) for item in user_corrections):
+        if text.strip():
+            items.append(
+                Preserved(
+                    f"user_correction:{position}",
+                    "out_of_band",
+                    -1,
+                    _sha256(text),
+                    len(text),
+                    "a correction the user made — never dropped",
+                )
+            )
+    for position, text in enumerate(str(item) for item in unknown_effects):
+        if text.strip():
+            items.append(
+                Preserved(
+                    f"unknown_effect:{position}",
+                    "out_of_band",
+                    -1,
+                    _sha256(text),
+                    len(text),
+                    "an unresolved side effect — the run must not forget it happened",
+                )
+            )
+    if str(cancel_state).strip():
+        items.append(
+            Preserved("cancel_state", "out_of_band", -1,
+                      _sha256(str(cancel_state)), len(str(cancel_state)),
+                      "the abort state (CTX-04)")
+        )
+    if str(approval_state).strip():
+        items.append(
+            Preserved("approval_state", "out_of_band", -1,
+                      _sha256(str(approval_state)), len(str(approval_state)),
+                      "the approval state (CTX-04)")
         )
 
     system_text = ""
