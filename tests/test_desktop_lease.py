@@ -384,6 +384,70 @@ def test_the_fence_is_bound_on_the_resolved_runner(store):
         seen[0]()
 
 
+def test_the_production_path_really_binds_the_fence(store):
+    """The wiring must reach `run_action_list`, not only the helper.
+
+    Regression for a defect found while reviewing: `_bind_desktop_fence` existed and was
+    tested, but `run_action_list` never passed `on_runner` down — so the fence was never
+    bound in the real path and DESK-02 held on paper only, again. This test drives the
+    production entry point and asserts the fence is actually attached.
+    """
+    from skaldir.act_service import run_action_list
+
+    bound: list = []
+
+    class Spy:
+        # the minimum the Runner protocol needs, so the run reaches the bind point
+        isolation = "dry-run"
+        is_isolated = True
+        target_scope = ""
+
+        def bind_input_fence(self, fence):
+            bound.append(fence)
+
+        def act(self, action):
+            from skaldir.cu_host_session import ActionResult
+
+            return ActionResult(ok=True, stdout="OK", detail="dry run")
+
+        def observe(self):
+            from skaldir.cu_host_session import Observation
+
+            return Observation(text="OK", detail="dry run")
+
+        def cleanup_record(self):
+            return {"container": "", "prefix": "", "closed": True, "still_present": False}
+
+        def close(self):
+            return None
+
+    spy = Spy()
+    record = run_action_list(
+        # a *declared* action shape (kind/channel/verify) — the run must get past
+        # validation before there is a runner to bind the fence to
+        [{"kind": "cli", "channel": "vision", "argv": ["sh", "-c", "echo OK"],
+          "verify": {"expect_stdout_contains": "OK"}}],
+        runner_kind="dry_run",
+        runner=spy,                 # the caller supplies the runner, so we can see the bind
+        session_id="run-1",
+        desktop_lease=store,
+        write_record=False,
+    )
+    assert bound, ("run_action_list did not bind the input fence to the runner — "
+                   "DESK-02 would not hold on the real input path")
+    assert callable(bound[0])
+    # and the bound fence really consults the lease
+    lease = store.current()
+    assert lease is not None
+    bound[0]()                      # no raise while the lease is ours
+    store.request_stop(reason="double-escape", now=2.0)
+    import pytest as _pytest
+
+    with _pytest.raises(Exception):
+        bound[0]()
+    assert record["desktop"]["released"] is True
+
+
 def test_a_runner_without_a_fence_is_reported_not_silently_treated_as_fenced(store):
     from skaldir.act_service import _bind_desktop_fence
 

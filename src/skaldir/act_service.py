@@ -1487,6 +1487,14 @@ def run_action_list(
             allow_live_desktop=allow_live_desktop,
             live_target=live_target,
             holder=holder,
+            # DESK-02: bind the fence to the resolved runner *before the first action*.
+            # Without this line the fence existed and was tested but never reached the
+            # input path — exactly the gap the requirement audit named.
+            on_runner=(
+                (lambda resolved: _bind_desktop_fence(
+                    resolved, desktop_lease, session_id, lease_generation))
+                if lease is not None else None
+            ),
         )
     except BaseException:
         _teardown_resolved_runner(holder, owns=runner is None)
