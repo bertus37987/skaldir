@@ -69,7 +69,7 @@ import time
 import weakref
 from dataclasses import dataclass
 from pathlib import Path
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from .computer_use import (
@@ -953,6 +953,8 @@ class HostSessionRunner(BaseRunner):
         self._registry = ""
         self._reaped: dict = {}
         self._adapter: Any | None = None
+        #: the six-state probe findings behind the keyboard gate (per instance, never shared)
+        self._input_probes: list = []
         # An unclean *interpreter* exit (an unhandled exception, a SIGTERM we receive) must
         # not orphan the display (F5). SIGKILL/`os._exit` cannot be caught at all — that case
         # is covered by the registry reaper.
@@ -1037,7 +1039,11 @@ class HostSessionRunner(BaseRunner):
         # WM never *maps* a window, so Calc opens (process alive, file locked) and shows
         # nothing — which is what "this path can only drive a browser" felt like from the
         # outside. A real GUI needs the WM; a dry/probe run does not, so it stays optional.
-        wm = self._start_window_manager()
+        #
+        # ONLY on a display this run started. On the live session there is already a
+        # window manager (mutter), and starting another one would take over the owner's
+        # desktop — which the owner explicitly forbade.
+        wm = None if self.attach_to_session else self._start_window_manager()
         detail = f"started a private Xvfb {display} (pid {proc.pid})"
         if wm:
             return True, f"{detail} · window manager {wm[0]} (pid {wm[1]})"
@@ -1166,11 +1172,17 @@ class HostSessionRunner(BaseRunner):
             )
         return list(argv or [])
 
-    def _live_window_argv(self, action: Action, wid: str) -> list[str] | None:
-        """The one command shape a live key/text action gets: focus, then the payload.
+    def _input_argv_for(
+        self, action: Action, backend: str, *, wid: str = "", background: bool = False
+    ) -> list[str]:
+        """The key/text argv for a **proven** backend — one builder for every path.
 
-        Built here from the validated payload, never from ``action.argv`` — a plan cannot
-        hand the runner a command (F1), and the target binding is part of the shape.
+        It exists in one place because the gate must be the same everywhere a keystroke
+        leaves this runner: a plan hands over a kind and a payload, never a command (F1),
+        and the backend is the one the bounded probe measured as delivering. ``wid`` binds
+        the command to a window when there is one to bind to (a scoped live run); the full
+        desktop may drive any window, so there the payload's own `window`/`background`
+        decides.
         """
         if action.kind == "key":
             name = str(action.payload.get("key", ""))
@@ -1178,13 +1190,93 @@ class HostSessionRunner(BaseRunner):
                 raise TargetScopeRefused(
                     f"the key {name!r} is not a keystroke name — refusing the live key action"
                 )
-            return ["xdotool", "windowfocus", "--sync", wid, "key", name]
+            if backend == "ydotool":
+                # ydotool knows no key *names*, only <keycode>:<pressed>. A name-based
+                # action is translated through the X keymap, and a key with no keycode
+                # cannot be sent at all.
+                keycode = self._keycode_for(name)
+                if not keycode:
+                    raise TargetScopeRefused(
+                        f"the key {name!r} has no keycode on this session's keymap — "
+                        f"cannot send it through the uinput backend"
+                    )
+                return ["ydotool", "key", f"{keycode}:1", f"{keycode}:0"]
+            if background and wid:
+                # The one shape a WM-less clipboard-style "type without stealing focus"
+                # needs. Measured caveat: `xdotool key --window` does *not* deliver to an
+                # XWayland client — the caller asked for background on purpose, so it
+                # stays, but the gate above still applies to the backend itself.
+                return ["xdotool", "key", "--window", wid, "--clearmodifiers", name]
+            if wid:
+                return ["xdotool", "windowfocus", "--sync", wid, "key", name]
+            return ["xdotool", "key", "--clearmodifiers", name]
         text = str(action.payload.get("text", ""))
         if not _safe_text(text):
-            raise TargetScopeRefused(
-                "a live text action needs a non-empty bounded 'text' payload"
-            )
-        return ["xdotool", "windowfocus", "--sync", wid, "type", "--", text]
+            raise TargetScopeRefused("a text action needs a non-empty bounded 'text' payload")
+        if backend == "ydotool":
+            # `ydotool type` takes STRINGS, not keycodes (checked: `ydotool type --help`
+            # → "Usage: type [OPTION]... [STRINGS]..."). Passing '38:1 38:0' here would
+            # type that literal text instead of the character. So the text goes as one
+            # argument; the per-character keycode list above is only for `ydotool key`.
+            return ["ydotool", "type", "--delay", "40", "--key-hold", "20", text]
+        if background and wid:
+            return ["xdotool", "type", "--window", wid, "--delay", "12", "--", text]
+        if wid:
+            return ["xdotool", "windowfocus", "--sync", wid, "type", "--delay", "40", "--", text]
+        return ["xdotool", "type", "--delay", "12", "--", text]
+
+    def _delivering_backend_or_refuse(self) -> str:
+        """The backend that ACTUALLY delivers — or a refusal that names the measurement.
+
+        Every keystroke path calls this before building its argv. A backend that merely
+        returned rc 0 (`INPUT_SENT`) is not a delivering backend, and a probe that could
+        not be set up (`PROBE_MISCONFIGURED`) is unknown rather than a defect.
+        """
+        backend = self._delivering_input_backend()
+        if not backend:
+            raise TargetScopeRefused(self._input_block_detail())
+        return backend
+
+    def _live_window_argv(self, action: Action, wid: str) -> list[str] | None:
+        """The one command shape a live key/text action gets: focus, then the payload.
+
+        Built here from the validated payload, never from ``action.argv`` — a plan cannot
+        hand the runner a command (F1), and the target binding is part of the shape.
+
+        **Keyboard note (measured, 2026-09-26):** on a GNOME/Wayland host this argv
+        returns rc 0 while the target window reports no key event — see
+        :meth:`_delivering_input_backend`, which only accepts a backend whose *bounded probe*
+        saw the marker come back at its own window. The argv stays the same, but the *caller*
+        checks delivery through the target, so an rc-0 dispatch is never read as a
+        keystroke that arrived.
+        """
+        backend = self._delivering_backend_or_refuse()
+        if action.kind not in ("key", "type_text"):
+            return None
+        return self._input_argv_for(action, backend, wid=wid)
+
+    def _keycode_for(self, name: str) -> int:
+        """The keycode of a key name or single character on this session's keymap.
+
+        Read from the X server, not guessed: `xmodmap -pke` is the same table the
+        compositor uses. Returns 0 when nothing matches, so the caller refuses instead
+        of sending a key that is not on this keyboard.
+        """
+        code, output = self._run(["xmodmap", "-pke"])
+        if code != 0:
+            return 0
+        wanted = name.strip()
+        for line in output.splitlines():
+            parts = line.split()
+            if len(parts) < 4 or not parts[0].startswith("keycode"):
+                continue
+            # keycode  38 = a A a A a A a A
+            if wanted in parts[3:]:
+                try:
+                    return int(parts[1])
+                except ValueError:
+                    continue
+        return 0
 
     def _default_argv(self, action: Action) -> list[str] | None:
         if action.argv:
@@ -1348,24 +1440,18 @@ class HostSessionRunner(BaseRunner):
                 "xdotool mouseup $3; echo DRAGGED",
                 "sh", str(x0), str(y0), str(button), str(x1), str(y1),
             ]
-        if action.kind == "key":
-            name = str(action.payload.get("key", "") or "")
-            if not _safe_key(name):
-                raise TargetScopeRefused(f"the key {name!r} is not a keystroke name")
+        if action.kind in ("key", "type_text"):
+            # Same gate as a scoped live run: "live-desktop darf alles steuern" is the
+            # owner's rule about *which window* may be driven, not permission to claim a
+            # keystroke that never arrived. On this host the live-desktop opt-in is ON, so
+            # this is the productive keyboard path — and it is exactly where an rc-0
+            # `xdotool key` was reported as a typed key (VAL-INPUT-001/002/005).
+            backend = self._delivering_backend_or_refuse()
             # background: type into a window id without stealing focus (no remote
             # desktop needed — xdotool drives the X session directly)
             wid = str(action.payload.get("window") or "")
-            if action.payload.get("background") and wid:
-                return ["xdotool", "key", "--window", wid, "--clearmodifiers", name]
-            return ["xdotool", "key", "--clearmodifiers", name]
-        if action.kind == "type_text":
-            text = str(action.payload.get("text", "") or "")
-            if not _safe_text(text):
-                raise TargetScopeRefused("a text action needs a non-empty bounded 'text'")
-            wid = str(action.payload.get("window") or "")
-            if action.payload.get("background") and wid:
-                return ["xdotool", "type", "--window", wid, "--delay", "12", "--", text]
-            return ["xdotool", "type", "--delay", "12", "--", text]
+            background = bool(action.payload.get("background")) and bool(wid)
+            return self._input_argv_for(action, backend, wid=wid, background=background)
         if action.kind == "window":
             # focus / list is allowed on the full desktop; the command is built here
             op = str((action.payload or {}).get("op", "focus"))
@@ -1476,6 +1562,12 @@ class HostSessionRunner(BaseRunner):
         # xdotool key/type action on Fedora Wayland)
         env.pop("XDG_CURRENT_DESKTOP", None)
         env["GSETTINGS_BACKEND"] = "memory"
+        # NOTE: the session bus and the accessibility bus are deliberately NOT cut here.
+        # An earlier change removed them to stop a "remote connection" consent dialog;
+        # that was wrong on two counts (owner, 2026-09-26): the dialog may be a *necessary*
+        # consent for the chosen Wayland path and must stay transparent, and taking the bus
+        # away from every child breaks the apps that need it. A consent is the user's to
+        # give, not the agent's to bypass — so a real dialog is surfaced, not suppressed.
         return env
 
     def _run(self, argv: list[str]) -> tuple[int, str]:
@@ -1490,6 +1582,165 @@ class HostSessionRunner(BaseRunner):
         except (OSError, subprocess.SubprocessError) as exc:
             return -1, f"{type(exc).__name__}: {exc}"
         return proc.returncode, ((proc.stdout or "") + (proc.stderr or "")).strip()
+
+    #: the input backend this runner measured as delivering keys on this session
+    #: (None until :meth:`_delivering_input_backend` has probed it)
+    _input_backend: str | None = None
+
+    def _delivering_input_backend(self) -> str:
+        """The keyboard backend that ACTUALLY delivers on this session — measured.
+
+        Why this exists (all measured on the owner's GNOME/Wayland host, `:0`):
+
+        * ``xdotool key`` / ``type`` / ``key --window <wid>`` return rc 0 while the
+          target window reports **no** key event at all;
+        * the same is true for XTEST driven through Xlib (``xtest.fake_input``);
+        * X focus, ``WM_STATE`` and activation are all correct at that moment
+          (``get_input_focus`` names the target window);
+        * ``xdotool key --window <nonexistent>`` *does* return ``BadWindow`` — so XTEST
+          itself works, the delivery to an XWayland client is what fails.
+
+        So ``rc=0`` cannot be the criterion. The criterion is a key event the target
+        itself reports. :mod:`skaldir.input_backend` runs that probe once per session and
+        names the backend; until one delivers, this returns ``""`` and the caller says
+        blocked instead of claiming a keypress it cannot prove.
+
+        The probe is a **bounded** one (architecture §2): it spawns its own window with its
+        own pid and window id, activates it, confirms the binding, sends a random marker and
+        counts a delivery only when that marker came back at *its own* window inside the
+        send-time window. The runner therefore only accepts ``INPUT_OBSERVED_AT_TARGET`` or
+        ``APP_EFFECT_VERIFIED``: an ``INPUT_SENT`` (rc 0, no target event) is **not** a
+        delivering backend, a ``PROBE_MISCONFIGURED`` is *unknown* and never a host defect,
+        and ``CONSENT_MISSING`` names the consent the user still has to give.
+        """
+        if self._input_backend is not None:
+            return self._input_backend
+        from .input_backend import BACKENDS, backend_available, probe
+
+        self._input_probes = []
+        for name in BACKENDS:
+            available, _why = backend_available(name)
+            if not available:
+                continue
+            # The probe window goes on THIS runner's display, and the DESK-02 fence runs
+            # before the probe's own send: a stale or absent fence stops the measurement
+            # instead of letting an unowned session type into whatever has focus.
+            found = probe(
+                name,
+                timeout=5.0,
+                display=self.display,
+                fence=self._input_fence if self.requires_input_fence else None,
+            )
+            self._input_probes.append(found)
+            if found.delivers:
+                self._input_backend = name
+                return name
+        self._input_backend = ""
+        return ""
+
+    def input_probe_report(self) -> dict:
+        """The honest six-state report of the probes behind :meth:`_delivering_input_backend`.
+
+        Exists so a caller can show *why* the keyboard path is what it is: which state each
+        backend reached, whether anything was merely sent, and whether the missing piece is a
+        consent the user still has to give. A green unit test is never the capability; this
+        report is what a live run shows instead.
+        """
+        from .input_backend import ProbeState
+
+        findings = [item.as_dict() for item in self._input_probes]
+        states = [item.state for item in self._input_probes]
+        # "sent_only" means: at least one backend was really driven (its marker left the
+        # runner) and still nothing arrived. A backend that is merely not installed never
+        # sends anything, so it must not make this read as "only sent".
+        really_sent = any(
+            state in (ProbeState.INPUT_SENT, ProbeState.INPUT_OBSERVED_AT_TARGET,
+                      ProbeState.APP_EFFECT_VERIFIED)
+            for state in states
+        )
+        sent_only = really_sent and not any(state.proves_delivery for state in states)
+        return {
+            "backend": self._input_backend or "",
+            "delivers": bool(self._input_backend),
+            "sent_only": sent_only,
+            "probes": findings,
+            "states": [state.value for state in states],
+            "counts_as_success": any(state.counts_as_success for state in states),
+        }
+
+    def _input_block_detail(self) -> str:
+        """Why no keyboard action is built — named per measured state, never just "blocked"."""
+        from .input_backend import ProbeState
+
+        states = [item.state for item in self._input_probes]
+        states_text = ", ".join(
+            f"{item.backend}={item.state.value}" for item in self._input_probes
+        )
+        if ProbeState.PROBE_MISCONFIGURED in states:
+            reason = next(
+                item.detail for item in self._input_probes
+                if item.state is ProbeState.PROBE_MISCONFIGURED
+            )
+            return (
+                "the keyboard probe could not be set up on this session, so the backend is "
+                f"UNKNOWN rather than defective ({reason}; states: {states_text}) — the input "
+                "path is unproven, not proven broken"
+            )
+        if ProbeState.CONSENT_MISSING in states:
+            reason = next(
+                item.detail for item in self._input_probes
+                if item.state is ProbeState.CONSENT_MISSING
+            )
+            return (
+                f"the delivering keyboard path needs an explicit user consent that is not "
+                f"recorded ({reason}; states: {states_text}) — the consent dialog is the "
+                "user's to answer, never auto-accepted"
+            )
+        if ProbeState.INPUT_SENT in states:
+            return (
+                "no keyboard backend on this session delivered a key event in the measured "
+                "probe: xdotool and ydotool both returned rc 0 while their own probe window "
+                "reported no key event at the target — sent is dispatch, not delivery "
+                f"(states: {states_text}); the input path is blocked, not the application"
+            )
+        return (
+            "no keyboard backend is usable on this session (nothing installed, no reachable "
+            f"daemon; states: {states_text}) — the input path is blocked, not the application"
+        )
+
+    def child_env(self) -> dict[str, str]:
+        """The environment a GUI child must get on this runner's display — PUBLIC.
+
+        It exists for one measured reason: ``_child_env()`` built the right XWayland
+        selectors, but only for the runner's own children. An agent that started the app
+        itself passed the shell's environment, where Fedora's session has
+        ``XDG_SESSION_TYPE=wayland`` and no ``GDK_BACKEND`` — the app then becomes a
+        Wayland client and no X tool can see or drive it.
+
+        **What is proven:** with this environment a GTK app maps its window on the live
+        desktop within a second (``zenity --info``, measured). **What is NOT proven:** that
+        it alone makes LibreOffice Calc show a window — Calc stayed windowless even with it
+        on the live session, so that part is still open and must not be claimed.
+        """
+        return self._child_env()
+
+    def launch(self, argv: Sequence[str]) -> subprocess.Popen:
+        """Start a GUI application on this runner's display, with the runner's own environment.
+
+        The environment is the point: started from the shell, a GUI app on a Fedora Wayland
+        session becomes a Wayland client and no X tool can drive it. With :meth:`child_env`
+        it is forced onto XWayland and becomes visible — proven here with ``zenity``, not
+        yet with Calc.
+
+        The process is returned so the caller can watch it or end it. Nothing here kills or
+        closes a window the owner already has open.
+        """
+        return subprocess.Popen(  # nosec B603 — the owner's own argv from the plan
+            [str(part) for part in argv],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL, start_new_session=True,
+            env=self._child_env(),
+        )
 
     def bind_input_fence(self, fence: Callable[[], None] | None) -> None:
         """Attach the DESK-02 fence for this runner's input path.
@@ -1583,7 +1834,10 @@ class HostSessionRunner(BaseRunner):
         # match "window" in "mutter guard window" and skip real actions (measured).
         titles = self._list_app_window_titles()
         text = "\n".join(titles) if titles else "(no application windows)"
-        scope = "full desktop" if (self.attach_to_session and self._full_desktop()) else "owned display"
+        scope = (
+            "full desktop" if (self.attach_to_session and self._full_desktop())
+            else "owned display"
+        )
         return Observation(text=text, detail=f"{len(titles)} windows · {scope}")
 
     # -- capture ----------------------------------------------------------------- #
