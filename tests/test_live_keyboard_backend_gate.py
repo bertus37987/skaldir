@@ -349,12 +349,13 @@ def test_das_tor_meldet_eine_unbekannte_probe_ehrlich(runner, monkeypatch):
 
 
 def test_ein_vorrat_wird_nicht_erfunden(runner, monkeypatch):
-    """Ein einmal gemessenes Urteil wird nicht einfach weitergegeben.
+    """Ein entschiedenes Urteil wird geehrt, nicht aus einem Protokoll neu abgeleitet.
 
-    Der Schreiber dieses Tores hat gemessen, was drei Suchen pro geschriebener Taste
-    kosten: jede Suche baut ein eigenes Fenster und lässt es verschwinden. Dass das Urteil
-    für die Lebensdauer einer Sitzung gilt, ist Teil von ``input-backend-cache`` — bis
-    dahin gilt: kein Vorrat aus einer fremden Messung.
+    Eine gesetzte Antwort (keine Messung dahinter, kein Fingerprint) steht: der nächste
+    Tastendruck baut darauf, statt erneut zu messen. Dass eine **gemessene** Antwort — vor
+    allem eine negative — NICHT für die Lebensdauer des Runners klebt, sondern auf
+    ``invalidate_input_backend()``, Fingerprintwechsel, ``force=True`` und Fristablauf
+    neu gemessen wird, hält ``tests/test_input_backend_reprobe.py`` fest.
     """
     monkeypatch.setattr(runner, "_input_backend", "xdotool")
     argv = runner._live_window_argv(Action(kind="key", payload={"key": "Return"}), "4711")

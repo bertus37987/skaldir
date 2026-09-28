@@ -1611,15 +1611,36 @@ class HostSessionRunner(BaseRunner):
             return -1, f"{type(exc).__name__}: {exc}"
         return proc.returncode, ((proc.stdout or "") + (proc.stderr or "")).strip()
 
-    #: the input backend this runner measured as delivering keys on this session
-    #: (None until :meth:`_delivering_input_backend` has probed it)
+    #: The delivering keyboard backend this runner has measured: ``None`` = not decided yet,
+    #: ``""`` = probed and nothing delivered, a name = that backend delivered at the probing
+    #: window. Kept as the single answer :meth:`input_probe_report` and the callers read; the
+    #: re-probe bookkeeping lives beside it in :attr:`_input_backend_cache`.
     _input_backend: str | None = None
+
+    #: The re-probe cache behind :attr:`_input_backend`: ``(probed_at, fingerprint)`` once a
+    #: probe has actually run, ``None`` otherwise. A **negative** answer therefore no longer
+    #: lives for the runner's whole lifetime: :meth:`_delivering_input_backend` re-measures it
+    #: on :meth:`invalidate_input_backend` (a new lease, a stop/generation bump), on a
+    #: fingerprint change (daemon socket / portal session / display), on a ``force=True`` call,
+    #: or once its remembering window has passed — every automatic re-probe rate-capped.
+    _input_backend_cache: tuple[float, tuple] | None = None
+
+    #: How long a measured answer (a delivering backend, or a negative) is *stale-worthy*: a
+    #: negative pick is considered for re-measurement after this long, so a daemon, consent or
+    #: display that changed in the meantime is not missed forever.
+    INPUT_BACKEND_NEGATIVE_TTL: float = 4.0
+
+    #: The rate floor on automatic re-probes: an aged-out negative is not re-measured more
+    #: often than this (each probe spawns its own receiver window — a keystroke storm must not
+    #: become a window-storm). A fingerprint change, :meth:`invalidate_input_backend` and
+    #: ``force=True`` are real signals and re-measure immediately, past this floor.
+    INPUT_BACKEND_MIN_PROBE_INTERVAL: float = 6.0
 
     #: this session's X keymap, read once on the first key name it is asked to translate
     #: (``None`` = not read yet, ``""`` = unreadable — see :meth:`_x_keymap`)
     _x_keymap_cache: str | None = None
 
-    def _delivering_input_backend(self) -> str:
+    def _delivering_input_backend(self, *, force: bool = False) -> str:
         """The keyboard backend that ACTUALLY delivers on this session — measured.
 
         Why this exists (all measured on the owner's GNOME/Wayland host, `:0`):
@@ -1633,9 +1654,14 @@ class HostSessionRunner(BaseRunner):
           itself works, the delivery to an XWayland client is what fails.
 
         So ``rc=0`` cannot be the criterion. The criterion is a key event the target
-        itself reports. :mod:`skaldir.input_backend` runs that probe once per session and
-        names the backend; until one delivers, this returns ``""`` and the caller says
-        blocked instead of claiming a keypress it cannot prove.
+        itself reports. :mod:`skaldir.input_backend` runs that probe and names the backend;
+        until one delivers, this returns ``""`` and the caller says blocked instead of
+        claiming a keypress it cannot prove. The answer is cached as ``(result, probed_at,
+        fingerprint)`` (:attr:`_input_backend` + :attr:`_input_backend_cache`), never as a
+        lifetime verdict: a **negative** answer is re-measured on an
+        :meth:`invalidate_input_backend` (a new lease, a stop/generation bump), on a
+        fingerprint change (daemon socket / portal session / display), on a ``force=True``
+        call, or once its remembering window has passed — every automatic re-probe rate-capped.
 
         The probe is a **bounded** one (architecture §2): it spawns its own window with its
         own pid and window id, activates it, confirms the binding, sends a random marker and
@@ -1645,18 +1671,55 @@ class HostSessionRunner(BaseRunner):
         delivering backend, a ``PROBE_MISCONFIGURED`` is *unknown* and never a host defect,
         and ``CONSENT_MISSING`` names the consent the user still has to give.
         """
-        if self._input_backend is not None:
+        now = self._input_backend_now()
+        # An answer written without a probe behind it (a test seam or a diagnostic override)
+        # carries no fingerprint to re-check, so it stands exactly as it was set.
+        if not force and self._input_backend is not None and self._input_backend_cache is None:
             return self._input_backend
+        # Never probed, dropped by invalidate_input_backend() (a new lease, a stop/generation
+        # bump, a moved fingerprint), or asked for with force=True → (re-)measure now. These
+        # are real "look again" signals, so none of them waits for the rate floor.
+        if force or self._input_backend is None:
+            return self._probe_input_backends()
+        probed_at, fingerprint = self._input_backend_cache  # not None past the checks above
+        if fingerprint != self._input_backend_fingerprint():
+            # The world the answer was measured in (daemon socket / portal session / display)
+            # has moved. A cached negative above all must not be honoured across that change.
+            self.invalidate_input_backend()
+            return self._probe_input_backends()
+        if not self._input_backend and self._input_backend_reprobe_now(probed_at, now):
+            return self._probe_input_backends()
+        return self._input_backend
+
+    def invalidate_input_backend(self) -> None:
+        """Drop the measured backend pick so the next call re-measures it.
+
+        Called when the world the pick was measured in has moved — a new desktop lease (a
+        different owner or a fresh generation), a stop/generation bump, or a fingerprint
+        change (daemon socket / portal session / display). A negative pick especially must
+        not survive: the daemon it could not reach, or the consent it did not have, may be
+        available now. It is the same method :meth:`_delivering_input_backend` calls on a
+        fingerprint change, so there is one invalidation path and not two that can drift.
+        """
+        self._input_backend = None
+        self._input_backend_cache = None
+
+    def _probe_input_backends(self) -> str:
+        """Run the bounded probe over the backends and remember ``(result, probed_at, fp)``.
+
+        The probe window goes on THIS runner's display, and the DESK-02 fence runs before the
+        probe's own send: a stale or absent fence stops the measurement instead of letting an
+        unowned session type into whatever has focus.
+        """
         from .input_backend import BACKENDS, backend_available, probe
 
         self._input_probes = []
+        probed_at = self._input_backend_now()
+        fingerprint = self._input_backend_fingerprint()
         for name in BACKENDS:
             available, _why = backend_available(name)
             if not available:
                 continue
-            # The probe window goes on THIS runner's display, and the DESK-02 fence runs
-            # before the probe's own send: a stale or absent fence stops the measurement
-            # instead of letting an unowned session type into whatever has focus.
             found = probe(
                 name,
                 timeout=5.0,
@@ -1666,9 +1729,46 @@ class HostSessionRunner(BaseRunner):
             self._input_probes.append(found)
             if found.delivers:
                 self._input_backend = name
+                self._input_backend_cache = (probed_at, fingerprint)
                 return name
         self._input_backend = ""
+        self._input_backend_cache = (probed_at, fingerprint)
         return ""
+
+    def _input_backend_now(self) -> float:
+        """A monotonic clock for the re-probe cache (a seam for the TTL / rate-cap tests)."""
+        return time.monotonic()
+
+    def _input_backend_fingerprint(self) -> tuple:
+        """The world the backend answer is measured in: daemon + portal + display state.
+
+        Cheap and honest: the ydotoold sockets' presence (a daemon that starts or dies moves
+        this immediately, so a startable daemon is picked up at once instead of after a
+        timeout), the portal path's state (available / needs-consent), and the display this
+        run drives. When any of them moves, a cached answer is re-measured instead of trusted.
+        """
+        from .input_backend import portal_path_state, ydotool_sockets
+
+        daemon = tuple((sock, Path(sock).exists()) for sock in ydotool_sockets())
+        try:
+            portal, _why = portal_path_state()
+        except Exception:  # noqa: BLE001 — an unreadable portal state is itself a signal
+            portal = "unknown"
+        return (daemon, portal, str(self.display or ""))
+
+    def _input_backend_reprobe_now(self, probed_at: float, now: float) -> bool:
+        """Has a negative answer aged out AND cleared the rate floor, so it may be re-measured?
+
+        Two bounds, not one: the negative is *stale-worthy* only after
+        :data:`INPUT_BACKEND_NEGATIVE_TTL`, and it is actually re-measured only once
+        :data:`INPUT_BACKEND_MIN_PROBE_INTERVAL` has also passed — so an aged-out answer is
+        re-checked at most once per floor, never once per keystroke.
+        """
+        if (now - probed_at) < self.INPUT_BACKEND_NEGATIVE_TTL:
+            return False  # still trusted — not stale yet
+        if (now - probed_at) < self.INPUT_BACKEND_MIN_PROBE_INTERVAL:
+            return False  # stale, but the rate floor has not passed yet
+        return True
 
     def input_probe_report(self) -> dict:
         """The honest six-state report of the probes behind :meth:`_delivering_input_backend`.

@@ -1563,15 +1563,34 @@ def _bind_desktop_fence(runner: Any, store: Any, run_id: str, generation: int) -
 
     Only runners that expose ``bind_input_fence`` get one (``HostSessionRunner`` does).
     A runner without it is reported rather than silently treated as fenced.
+
+    This is also the runner's connection to the lease, so it is where a **lease acquisition**
+    and a **stop / generation bump** invalidate the runner's measured input-backend pick
+    (``invalidate_input_backend()``): a new owner or a ``DesktopLeaseStore.request_stop``
+    that bumps the generation is a new input world, and a cached backend pick — a negative
+    one above all — must be re-measured against it rather than trusted across the change.
     """
     binder = getattr(runner, "bind_input_fence", None)
     if not callable(binder):
         return False
 
+    invalidate = getattr(runner, "invalidate_input_backend", None)
+
     def _fence() -> None:
-        store.fence(run_id, generation)
+        try:
+            store.fence(run_id, generation)
+        except Exception:
+            # A refused fence means the generation moved on (a stop / owner change). Drop the
+            # runner's backend pick so the next input re-measures it, then let the DESK-02
+            # refusal stand — this adapter never swallows a stale-fence drop.
+            if callable(invalidate):
+                invalidate()
+            raise
 
     binder(_fence)
+    # A freshly-acquired lease is a fresh input world: drop any pick the runner carried in.
+    if callable(invalidate):
+        invalidate()
     return True
 
 
