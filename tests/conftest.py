@@ -34,6 +34,28 @@ def _fingerprint(path: Path) -> tuple[int, int, str] | None:
     return (path.stat().st_mtime_ns, len(data), hashlib.sha256(data).hexdigest())
 
 
+#: Runtime artifacts that live in the repository root and are tracked in git. They are
+#: *runtime* state, not source: a run whose runtime resolved to the repository root left
+#: appended rows here (measured 2026-09-28; the rows carried timestamps from before this
+#: session). A test that writes one of them dirties the working tree, so the suite is
+#: guarded the same way the real Hermes home above is: the test that changed it fails,
+#: naming itself, instead of silently contaminating the repository.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+TRACKED_RUNTIME_ARTIFACTS: tuple[Path, ...] = (
+    REPO_ROOT / "cu_runs.jsonl",
+    REPO_ROOT / "events.db",
+)
+
+
+def _content_fingerprint(path: Path) -> tuple[int, str] | None:
+    """Content only (no mtime): a rewrite that changes nothing must not fail a test."""
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return None
+    return (len(data), hashlib.sha256(data).hexdigest())
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _throwaway_hermes_home():
     """Point HERMES_HOME at a temp dir so default paths never hit the real install.
@@ -66,4 +88,30 @@ def _real_config_untouched():
             f"{REAL_CONFIG} changed during this test "
             f"(before={before}, after={after}) — tests must never write the real Hermes home. "
             "Pass an explicit config_file/tmp_path instead of relying on $HERMES_HOME."
+        )
+
+
+@pytest.fixture(autouse=True)
+def _tracked_runtime_artifacts_untouched():
+    """Fail — naming the test — when it writes a runtime artifact the repository tracks.
+
+    Deliberately a *guard*, never a restore: writing the snapshot back would also undo a
+    row a concurrent run of the owner legitimately appended while the test was running.
+    The fix a failing test is pointed at is the same one the real-home guard above names:
+    give the run its own runtime (``runtime=tmp_path``, ``SKALDIR_HOME=tmp_path``), never the
+    repository root.
+    """
+    before = [_content_fingerprint(path) for path in TRACKED_RUNTIME_ARTIFACTS]
+    yield
+    changed = [
+        path
+        for path, old in zip(TRACKED_RUNTIME_ARTIFACTS, before, strict=True)
+        if _content_fingerprint(path) != old
+    ]
+    if changed:
+        names = ", ".join(str(path) for path in changed)
+        pytest.fail(
+            f"{names} changed during this test — tests must never write the tracked runtime "
+            "artifacts (a run whose runtime resolved to the repository root). Pass an "
+            "explicit runtime (runtime=tmp_path) or point SKALDIR_HOME at tmp_path."
         )

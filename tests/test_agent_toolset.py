@@ -184,6 +184,11 @@ def test_act_runner_falls_back_to_named_sandbox_env(tmp_path: Path, monkeypatch)
     record = tools["skill_act"].handler(
         actions=[{"kind": "cli", "argv": ["echo", "agent-toolset"],
                   "verify": {"expect_stdout_contains": "agent-toolset"}}],
+        # the run record belongs to this test's own workspace: the tool schema defaults the
+        # workspace to "." — which is the repository root when the suite runs from there, so
+        # the run would write cu_runs.jsonl and events.db into the tracked repository state
+        # (measured: the artifact guard in tests/conftest.py named this test).
+        workspace=str(tmp_path),
     )
     assert record["runner_kind"] == "sandbox"
     assert "cli" in record["allowed_kinds"]
@@ -199,6 +204,7 @@ def test_act_policy_kind_validation(tmp_path: Path):
         actions=[{"kind": "cli", "argv": ["true"],
                   "verify": {"expect_stdout_contains": ""}}],
         runner="no-such-runner",
+        workspace=str(tmp_path),  # same reason as above: never the repository root
     )
     assert record["status"] in ("blocked", "usage")
 

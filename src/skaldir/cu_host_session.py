@@ -67,9 +67,9 @@ import subprocess  # nosec B404 — fixed argv lists, no shell
 import tempfile
 import time
 import weakref
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from collections.abc import Callable, Sequence
 from typing import Any
 
 from .computer_use import (

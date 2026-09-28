@@ -35,6 +35,7 @@ from pathlib import Path
 import pytest
 
 from skaldir import act_service as A
+from skaldir import input_backend as IB
 from skaldir.computer_use import (
     Action,
     ActionResult,
@@ -51,8 +52,6 @@ from skaldir.cu_host_session import (
     ENV_ALLOW,
     ENV_TARGET,
     REGISTRY_ENV,
-    SETTINGS_KEY,
-    TARGET_KEY,
     HostSessionRunner,
     TargetScopeRefused,
     host_session_availability,
@@ -61,6 +60,7 @@ from skaldir.cu_host_session import (
     live_window_argv_is_bound,
     reap_orphaned_displays,
 )
+from skaldir.desktop_lease import DesktopLeaseStore
 
 HAVE_XVFB = bool(shutil.which("Xvfb") and shutil.which("xdotool"))
 needs_display = pytest.mark.skipif(not HAVE_XVFB, reason="Xvfb/xdotool are not installed")
@@ -397,6 +397,122 @@ def _stop_own_xvfb(proc: subprocess.Popen, display: str = "") -> None:
                     pass
 
 
+def _window_manager_owns(display: str) -> bool:
+    """Does a window manager really manage **this** display? Measured, not assumed.
+
+    Without one the server answers ``_NET_SUPPORTING_WM_CHECK`` with "no such atom on any
+    window" and ``xdotool windowactivate --sync`` with a non-zero rc — the probe window can
+    then not be activated or confirmed, which is a *misconfigured probe*, never a backend
+    defect. With one the same query prints the managing window id.
+    """
+    proc = subprocess.run(  # nosec B603 — fixed argv list, no shell  # noqa: S603
+        ["xprop", "-root", "_NET_SUPPORTING_WM_CHECK"],
+        capture_output=True,
+        text=True,
+        env=_env(display),
+        timeout=20,
+    )
+    return "window id" in (proc.stdout or "")
+
+
+def _start_own_window_manager(display: str) -> subprocess.Popen:
+    """Start ``openbox`` on the display **this test** owns — the owner's session is never touched.
+
+    A keyboard action on a live runner is only built for a backend the bounded probe measured
+    as *delivering*, and that probe needs a window manager to activate and confirm its own
+    window (measured on a bare Xvfb: ``PROBE_MISCONFIGURED``, nothing sent). Same reason as
+    the private-display fixture in ``tests/test_input_probe_owned_display.py``. The process is
+    started with an environment pinned to this display and stopped again by this test; a host
+    without the tools, or a window manager that does not take the display over, leaves this
+    measurement unproven (a skip naming it) rather than pretending it ran.
+    """
+    missing = [
+        name
+        for name in ("openbox", "xprop")
+        if shutil.which(name) is None
+    ]
+    if missing:
+        pytest.skip(f"the keyboard delivery measurement needs {' and '.join(missing)} on this host")
+    proc = subprocess.Popen(  # nosec B603 — fixed argv list, no shell  # noqa: S603
+        ["openbox"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        stdin=subprocess.DEVNULL,
+        env=_env(display),
+        start_new_session=True,
+    )
+    for _ in range(50):
+        if _window_manager_owns(display):
+            return proc
+        if proc.poll() is not None:
+            break
+        time.sleep(0.1)
+    _stop_own_window_manager(proc)
+    pytest.skip("the window manager did not take over this test's display — unproven, not failed")
+
+
+def _stop_own_window_manager(proc: subprocess.Popen | None) -> None:
+    """Stop **this test's** window manager — only a process this test started."""
+    if proc is None:
+        return
+    try:
+        if proc.poll() is None:
+            proc.terminate()
+        proc.wait(timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        try:
+            proc.kill()
+            proc.wait(timeout=5)
+        except (OSError, subprocess.SubprocessError):
+            pass
+
+
+def _scoped_live_runner(
+    monkeypatch,
+    tmp_path: Path,
+    *,
+    target: str,
+    display: str,
+    timeout: float = 20.0,
+) -> HostSessionRunner:
+    """A live-desktop runner the way the production path drives it — test-side only.
+
+    Two things this file used to leave out, both measured on this host; neither of them
+    weakens the rule under test:
+
+    * **the DESK-02 fence.** Since commit 20426dd an input action on a ``live-desktop``
+      runner is refused at the adapter while no fence is bound, and the production caller
+      *does* bind one: ``act_service.run_action_list`` takes the desktop lease and calls
+      ``_bind_desktop_fence``. The test reproduces exactly that, against a real
+      :class:`~skaldir.desktop_lease.DesktopLeaseStore` on its own state file — so the
+      fence is really consulted here (a stale generation still drops the action, pinned in
+      ``tests/test_desktop_lease.py``) and only the missing binding is fixed.
+    * **the run's own runtime dir.** ``_full_desktop()`` asks the machine's opt-in rather
+      than the instance flag, and on this host the live-desktop opt-in is ON — so a
+      *scoped* live run would silently become a full-desktop one and F1/F8 would measure a
+      different path than the one they name. Pointing ``SKALDIR_HOME`` at an empty runtime
+      dir keeps the scoped path under test.
+    """
+    monkeypatch.setenv("SKALDIR_HOME", str(tmp_path))
+    # the backend this fixture drives is the one that is installed on the host; a ydotoold
+    # that starts in the middle of the run must not change what the test measures
+    monkeypatch.setattr(
+        IB, "backend_available", lambda name: (name == "xdotool", "pinned by the test")
+    )
+    runner = HostSessionRunner(
+        attach_to_session=True,
+        allow_live_desktop=True,
+        target=target,
+        display=display,
+        timeout=timeout,
+    )
+    store = DesktopLeaseStore(tmp_path / "state" / "desktop-lease.json")
+    lease = store.acquire("test-live-desktop", task="live-desktop scope test")
+    bound = A._bind_desktop_fence(runner, store, lease.run_id, lease.generation)
+    assert bound is True, "the production fence binder did not bind a fence on this runner"
+    return runner
+
+
 _WINDOWS_APP = '''
 import sys
 import tkinter as tk
@@ -617,11 +733,11 @@ def test_a_refused_action_is_never_recorded_verified() -> None:
 
 
 @needs_display
-def test_a_live_action_may_not_carry_its_own_argv(monkeypatch) -> None:
+def test_a_live_action_may_not_carry_its_own_argv(monkeypatch, tmp_path) -> None:
     """F1: no caller argv runs in live mode — for any kind, including the safe defaults."""
     monkeypatch.setenv("DISPLAY", ":1")  # never the owner's session: this target is an id
-    runner = HostSessionRunner(
-        attach_to_session=True, allow_live_desktop=True, target="2097180", display=":1"
+    runner = _scoped_live_runner(
+        monkeypatch, tmp_path, target="2097180", display=":1", timeout=60.0
     )
     cases = [
         Action(kind="cli", argv=["/bin/echo", "unscoped"]),
@@ -755,8 +871,13 @@ def test_the_live_pointer_path_clicks_inside_the_target_and_refuses_outside(
     """F8 + F1: the pointer action runs (built from payload+geometry) and cannot leave it."""
     display = _free_display_number()
     server = _start_own_xvfb(display)
+    # the window manager the keyboard part needs is started *there* and not here: with one
+    # running, tk's toplevels are reparented into its frames and `getmouselocation` names the
+    # frame instead of the target window, so the pointer measurement above would find nothing
+    # to click (measured) and would have to skip the whole test.
     app: subprocess.Popen | None = None
     marker = tmp_path / "clicked.txt"
+    window_manager: subprocess.Popen | None = None
     monkeypatch.setenv("DISPLAY", display)
     try:
         app, marker = _start_windows(tmp_path, display)
@@ -765,12 +886,8 @@ def test_the_live_pointer_path_clicks_inside_the_target_and_refuses_outside(
         assert target and victim
         geometry = _window_geometry(display, target)
         assert geometry.get("WIDTH") == 300 and geometry.get("HEIGHT") == 200
-        runner = HostSessionRunner(
-            attach_to_session=True,
-            allow_live_desktop=True,
-            target="cu-target-probe",
-            display=display,
-            timeout=20.0,
+        runner = _scoped_live_runner(
+            monkeypatch, tmp_path, target="cu-target-probe", display=display, timeout=20.0
         )
         try:
             assert runner.target_window()[0] == target
@@ -797,13 +914,28 @@ def test_the_live_pointer_path_clicks_inside_the_target_and_refuses_outside(
             assert outside.ok is False
             assert "outside the target window" in outside.detail
 
-            # a key action still works, through windowfocus on the target
-            assert runner.act(Action(kind="key", payload={"key": "a"})).ok is True
+            # a key action still works, through windowfocus on the target. The backend behind
+            # it is the one the bounded probe measured as *delivering*, and that probe can
+            # only activate and confirm its own window with a window manager on this display
+            # (measured: PROBE_MISCONFIGURED on a bare Xvfb — an unknown, never a defect).
+            window_manager = _start_own_window_manager(display)
+            try:
+                key_result = runner.act(Action(kind="key", payload={"key": "a"}))
+                assert key_result.ok is True, key_result.detail
+                # and the command really went through a backend the bounded probe measured as
+                # delivering — an rc-0 send alone must never be what this test accepts
+                report = runner.input_probe_report()
+                assert report["delivers"] is True, report
+                assert report["backend"] == "xdotool", report
+            finally:
+                _stop_own_window_manager(window_manager)
+                window_manager = None
             # a key payload that is not a keystroke name is refused
             assert runner.act(Action(kind="key", payload={"key": "a; rm -rf /"})).ok is False
         finally:
             runner.close()
     finally:
+        _stop_own_window_manager(window_manager)
         if app is not None:
             _stop_app(app)
         _stop_own_xvfb(server, display)
