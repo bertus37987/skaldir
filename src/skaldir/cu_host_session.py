@@ -83,6 +83,7 @@ from .computer_use import (
     safe_label,
     xwd_to_png,
 )
+from .evdev_keys import UnknownKeyError, key_event_argv, keycode_for
 
 #: Bridges this module provides. ``host-session`` is isolated (a display this run owns);
 #: ``live-desktop`` is not, and is therefore gated twice.
@@ -1191,16 +1192,22 @@ class HostSessionRunner(BaseRunner):
                     f"the key {name!r} is not a keystroke name — refusing the live key action"
                 )
             if backend == "ydotool":
-                # ydotool knows no key *names*, only <keycode>:<pressed>. A name-based
-                # action is translated through the X keymap, and a key with no keycode
-                # cannot be sent at all.
-                keycode = self._keycode_for(name)
-                if not keycode:
+                # ydotool knows no key *names*, only <keycode>:<pressed> — and those are
+                # EVDEV codes: `ydotool key --help` says so ("we're using raw keycodes now
+                # … See /usr/include/linux/input-event-codes.h for available key codes").
+                # The name is therefore translated (upper case → shift-hold, ctrl+c → a
+                # press/release pair in press order), and a name that is in neither table
+                # is refused here. Sending the X keycode instead is exactly how
+                # `ydotool key 38:1 38:0` for 'a' pressed KEY_L instead of KEY_A.
+                try:
+                    pairs = self._evdev_key_pairs(name)
+                except UnknownKeyError as exc:
                     raise TargetScopeRefused(
-                        f"the key {name!r} has no keycode on this session's keymap — "
-                        f"cannot send it through the uinput backend"
-                    )
-                return ["ydotool", "key", f"{keycode}:1", f"{keycode}:0"]
+                        f"the key {name!r} has no evdev keycode (it is in neither the evdev "
+                        "key table nor this session's keymap) — refusing the live key action "
+                        f"instead of sending a guessed code ({exc})"
+                    ) from exc
+                return ["ydotool", "key", *pairs]
             if background and wid:
                 # The one shape a WM-less clipboard-style "type without stealing focus"
                 # needs. Measured caveat: `xdotool key --window` does *not* deliver to an
@@ -1214,11 +1221,15 @@ class HostSessionRunner(BaseRunner):
         if not _safe_text(text):
             raise TargetScopeRefused("a text action needs a non-empty bounded 'text' payload")
         if backend == "ydotool":
-            # `ydotool type` takes STRINGS, not keycodes (checked: `ydotool type --help`
-            # → "Usage: type [OPTION]... [STRINGS]..."). Passing '38:1 38:0' here would
-            # type that literal text instead of the character. So the text goes as one
-            # argument; the per-character keycode list above is only for `ydotool key`.
-            return ["ydotool", "type", "--delay", "40", "--key-hold", "20", text]
+            # `ydotool type` takes STRINGS, not keycodes (checked with the daemon up:
+            # `ydotool type --help` → "Usage: type [OPTION]... [STRINGS]..."). Passing
+            # '30:1 30:0' here would type that literal text instead of the character, so the
+            # text goes as ONE argument and no keycode pair ever enters a type argv.
+            # The flags are the real ones, measured against the running daemon:
+            # `--key-delay` (default 20 ms) and `--key-hold` (default 20 ms). ydotool does
+            # NOT know `--delay` — "type: unrecognized option '--delay'" — and it still
+            # returns rc 0 afterwards, so a wrong flag here would look like success.
+            return ["ydotool", "type", "--key-delay", "40", "--key-hold", "20", text]
         if background and wid:
             return ["xdotool", "type", "--window", wid, "--delay", "12", "--", text]
         if wid:
@@ -1255,28 +1266,45 @@ class HostSessionRunner(BaseRunner):
             return None
         return self._input_argv_for(action, backend, wid=wid)
 
-    def _keycode_for(self, name: str) -> int:
-        """The keycode of a key name or single character on this session's keymap.
+    def _x_keymap(self) -> str:
+        """This session's X keymap (``xmodmap -pke``), read once — never guessed, never required.
 
-        Read from the X server, not guessed: `xmodmap -pke` is the same table the
-        compositor uses. Returns 0 when nothing matches, so the caller refuses instead
-        of sending a key that is not on this keyboard.
+        It is the **second** source for a key name: the evdev table
+        (``/usr/include/linux/input-event-codes.h``) is the first, and this keymap adds what
+        this particular layout prints unshifted on a key. It is read through ``_run``, so a
+        test seams it at the process boundary; an unreadable keymap answers ``""`` and the
+        translator then relies on the table alone — a name it does not know is refused either
+        way.
         """
-        code, output = self._run(["xmodmap", "-pke"])
-        if code != 0:
+        if self._x_keymap_cache is None:
+            code, output = self._run(["xmodmap", "-pke"])
+            self._x_keymap_cache = output if code == 0 else ""
+        return self._x_keymap_cache
+
+    def _evdev_key_pairs(self, name: str) -> list[str]:
+        """The ``ydotool key`` arguments for a key name: evdev codes, press/release in press order.
+
+        ``a`` → ``30:1 30:0`` (``KEY_A``), ``A`` → shift-hold + 30, ``ctrl+c`` →
+        ``29:1 46:1 46:0 29:0`` (``KEY_LEFTCTRL``/``KEY_C``). No raw X keycode may reach
+        uinput: X 'a' = 38 is ``KEY_L`` in the kernel, which is what the old code pressed.
+        """
+        return key_event_argv(name, keymap=self._x_keymap())
+
+    def _keycode_for(self, name: str) -> int:
+        """The EVDEV keycode of one key name on this session's keymap — 0 when nothing knows it.
+
+        Two sources, in this order: the evdev table built from
+        ``/usr/include/linux/input-event-codes.h``, then this session's live keymap translated
+        through the measured X−8 offset (X 'a' = 38 → ``KEY_A`` = 30; the same 8 measured for
+        Return 36, Control_L 37, Shift_L 50 and space 65). The old code returned the **raw X
+        keycode** here, and that is exactly how ``ydotool key 38:1 38:0`` pressed ``KEY_L``
+        instead of ``KEY_A``. Returns 0 for a name neither source knows, so the caller refuses
+        the action instead of sending a key that is not on this keyboard.
+        """
+        try:
+            return keycode_for(name, keymap=self._x_keymap())
+        except UnknownKeyError:
             return 0
-        wanted = name.strip()
-        for line in output.splitlines():
-            parts = line.split()
-            if len(parts) < 4 or not parts[0].startswith("keycode"):
-                continue
-            # keycode  38 = a A a A a A a A
-            if wanted in parts[3:]:
-                try:
-                    return int(parts[1])
-                except ValueError:
-                    continue
-        return 0
 
     def _default_argv(self, action: Action) -> list[str] | None:
         if action.argv:
@@ -1586,6 +1614,10 @@ class HostSessionRunner(BaseRunner):
     #: the input backend this runner measured as delivering keys on this session
     #: (None until :meth:`_delivering_input_backend` has probed it)
     _input_backend: str | None = None
+
+    #: this session's X keymap, read once on the first key name it is asked to translate
+    #: (``None`` = not read yet, ``""`` = unreadable — see :meth:`_x_keymap`)
+    _x_keymap_cache: str | None = None
 
     def _delivering_input_backend(self) -> str:
         """The keyboard backend that ACTUALLY delivers on this session — measured.

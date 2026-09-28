@@ -9,8 +9,10 @@ also, nur die Zustellung an ein Xwayland-Fenster bleibt aus.
 
 Festgehalten wird:
 1. Ein Tastendruck wird nur gebaut, wenn ein Backend wirklich zugestellt hat.
-2. Der uinput-Pfad (`ydotool`) übersetzt Key-Namen über die echte Keymap, nicht geraten.
-3. Ein Key ohne Keycode wird abgelehnt, nicht still fallen gelassen.
+2. Der uinput-Pfad (`ydotool`) übersetzt Key-Namen in **evdev**-Codes (X-'a' = 38 würde im
+   Kernel `KEY_L` drücken; 'a' ist `KEY_A = 30`) — Großschreibung als Shift-Halt, Kombos als
+   Press/Release-Paare in Drückreihenfolge.
+3. Ein Key ohne Keycode wird abgelehnt, nicht geraten.
 4. Die Verweigerung nennt die Messung, nicht bloß „abgelehnt".
 5. Der Bericht des Tores trennt die sechs Zustände und täuscht keinen Vorrat vor.
 """
@@ -131,9 +133,12 @@ def test_text_wird_gebaut(runner, monkeypatch):
 
 
 # --------------------------------------------------------------------------- #
-# 2. Der uinput-Pfad übersetzt über die echte Keymap
+# 2. Der uinput-Pfad übersetzt in EVDEV-Codes, nicht in X-Codes
 # --------------------------------------------------------------------------- #
 
+#: Die X-Keymap dieser Sitzung, so wie `xmodmap -pke` sie druckt. Der X-Code 38 für 'a'
+#: steht hier ZU RECHT — die Keymap redet in X-Codes. Der P0-Fehler war, diesen Wert
+#: unübersetzt an uinput zu übergeben: 38 ist im Kernel `KEY_L`, 'a' ist `KEY_A = 30`.
 KEYMAP = (
     "keycode   9 = Escape NoSymbol Escape NoSymbol Escape\n"
     "keycode  36 = Return NoSymbol Return NoSymbol Return\n"
@@ -146,28 +151,77 @@ def _fake_run(self, argv):
     return 0, KEYMAP
 
 
-def test_ydotool_uebersetzt_key_namen_ueber_die_keymap(runner, monkeypatch):
+def test_ydotool_uebersetzt_key_namen_in_evdev_codes(runner, monkeypatch):
+    """'a' geht als `KEY_A = 30` raus und **niemals** als X-Code 38 (das wäre `KEY_L`).
+
+    `ydotool key --help` nennt die Quelle selbst: "we're using raw keycodes now … See
+    `/usr/include/linux/input-event-codes.h' for available key codes (KEY_*)".
+    """
     monkeypatch.setattr(runner, "_delivering_input_backend", lambda: "ydotool")
     monkeypatch.setattr(HostSessionRunner, "_run", _fake_run)
     argv = runner._live_window_argv(Action(kind="key", payload={"key": "a"}), "4711")
     assert argv[0] == "ydotool"
     assert argv[1] == "key"
-    assert "38:1" in argv and "38:0" in argv, argv
+    assert argv[2:] == ["30:1", "30:0"], argv
+    assert "38:1" not in argv and "38:0" not in argv, (
+        "38 is the X keycode of 'a' — in the kernel it is KEY_L, not KEY_A"
+    )
+
+
+def test_kein_roher_xmodmap_code_erreicht_uinput(runner, monkeypatch):
+    """Was die Keymap hergibt, wird übersetzt: X-Code − 8 = evdev-Code (hier gemessen)."""
+    monkeypatch.setattr(runner, "_delivering_input_backend", lambda: "ydotool")
+    monkeypatch.setattr(HostSessionRunner, "_run", _fake_run)
+    for name, evdev in (("a", 30), ("z", 44), ("Return", 28), ("Escape", 1)):
+        argv = runner._live_window_argv(Action(kind="key", payload={"key": name}), "4711")
+        assert argv[2:] == [f"{evdev}:1", f"{evdev}:0"], (name, argv)
+    # und die Tabelle kennt die Tasten auch dann, wenn gar keine Keymap gelesen werden kann
+    monkeypatch.setattr(HostSessionRunner, "_run", lambda self, argv: (1, ""))
+    assert runner._keycode_for("a") == 30, "the evdev table is the first source, not the keymap"
+    assert runner._keycode_for("GibtEsNicht") == 0, "an unknown name returns 0 — never a guess"
+
+
+def test_ydotool_key_hat_press_und_release(runner, monkeypatch):
+    """Ein key braucht beide Hälften; nur press hinterält die Taste gedrückt."""
+    monkeypatch.setattr(runner, "_delivering_input_backend", lambda: "ydotool")
+    monkeypatch.setattr(HostSessionRunner, "_run", _fake_run)
+    argv = runner._live_window_argv(Action(kind="key", payload={"key": "a"}), "4711")
+    assert argv[2:] == ["30:1", "30:0"], argv
+
+
+def test_grossbuchstabe_ist_shift_halt(runner, monkeypatch):
+    """Großschreiben ist Shift-Halt (KEY_LEFTSHIFT = 42) um den Code der eigenen Taste."""
+    monkeypatch.setattr(runner, "_delivering_input_backend", lambda: "ydotool")
+    monkeypatch.setattr(HostSessionRunner, "_run", _fake_run)
+    argv = runner._live_window_argv(Action(kind="key", payload={"key": "A"}), "4711")
+    assert argv[2:] == ["42:1", "30:1", "30:0", "42:0"], argv
+
+
+def test_kombos_zerfallen_in_press_release(runner, monkeypatch):
+    """ctrl+c → 29:1 46:1 46:0 29:0 (KEY_LEFTCTRL = 29, KEY_C = 46), in Drückreihenfolge."""
+    monkeypatch.setattr(runner, "_delivering_input_backend", lambda: "ydotool")
+    monkeypatch.setattr(HostSessionRunner, "_run", _fake_run)
+    argv = runner._live_window_argv(Action(kind="key", payload={"key": "ctrl+c"}), "4711")
+    assert argv[2:] == ["29:1", "46:1", "46:0", "29:0"], argv
 
 
 def test_ydotool_type_bekommt_text_nicht_keycodes(runner, monkeypatch):
     """`ydotool type` nimmt STRINGS — Keycodes würden als Text getippt.
 
-    Geprüft mit `ydotool type --help`: "Usage: type [OPTION]... [STRINGS]...".
-    Eine argv wie ["ydotool","type","38:1","38:0"] würde den Buchstabensalat
-    '38:1 38:0' eintippen, nicht das Zeichen.
+    Geprüft mit laufendem Daemon (`ydotool type --help`): "Usage: type [OPTION]... [STRINGS]...".
+    Eine argv wie ["ydotool","type","30:1","30:0"] würde den Buchstabensalat '30:1 30:0'
+    eintippen, nicht das Zeichen. Die echten Flags heißen `--key-delay` und `--key-hold`;
+    `--delay` erkennt ydotool nicht (gemessen: "type: unrecognized option '--delay'") und
+    meldet trotzdem rc 0.
     """
     monkeypatch.setattr(runner, "_delivering_input_backend", lambda: "ydotool")
     monkeypatch.setattr(HostSessionRunner, "_run", _fake_run)
     argv = runner._live_window_argv(Action(kind="type_text", payload={"text": "az"}), "4711")
     assert argv[0] == "ydotool"
     assert argv[1] == "type"
-    assert "az" in argv, argv
+    assert argv[-1] == "az", "the text is exactly ONE argument"
+    assert "--key-delay" in argv and "--key-hold" in argv, argv
+    assert "--delay" not in argv, "ydotool does not know --delay"
     assert not any(":1" in part or ":0" in part for part in argv), (
         "keycode pairs belong to `ydotool key`, not to `ydotool type`"
     )
@@ -181,14 +235,6 @@ def test_xdotool_type_hat_delay_und_trenner(runner, monkeypatch):
     assert "--delay" in argv
 
 
-def test_ydotool_key_hat_press_und_release(runner, monkeypatch):
-    """Ein key braucht beide Hälften; nur press hinterält die Taste gedrückt."""
-    monkeypatch.setattr(runner, "_delivering_input_backend", lambda: "ydotool")
-    monkeypatch.setattr(HostSessionRunner, "_run", _fake_run)
-    argv = runner._live_window_argv(Action(kind="key", payload={"key": "a"}), "4711")
-    assert "38:1" in argv and "38:0" in argv, argv
-
-
 # --------------------------------------------------------------------------- #
 # 3. Ein Zeichen ohne Keycode wird abgelehnt
 # --------------------------------------------------------------------------- #
@@ -198,7 +244,10 @@ def test_unbekannter_key_wird_abgelehnt(runner, monkeypatch):
     monkeypatch.setattr(HostSessionRunner, "_run", _fake_run)
     with pytest.raises(TargetScopeRefused) as exc:
         runner._live_window_argv(Action(kind="key", payload={"key": "GibtEsNicht"}), "4711")
-    assert "no keycode" in str(exc.value)
+    text = str(exc.value)
+    assert "no evdev keycode" in text
+    assert "GibtEsNicht" in text, "the refusal names the key it could not translate"
+    assert "guessed" in text
 
 
 def test_ydotool_type_akzeptiert_zeichen_ohne_keycode(runner, monkeypatch):
@@ -212,14 +261,22 @@ def test_ydotool_type_akzeptiert_zeichen_ohne_keycode(runner, monkeypatch):
     monkeypatch.setattr(HostSessionRunner, "_run", _fake_run)
     argv = runner._live_window_argv(Action(kind="type_text", payload={"text": "ä"}), "4711")
     assert argv[:2] == ["ydotool", "type"]
-    assert "ä" in argv, argv
+    assert argv[-1] == "ä", argv
 
 
-def test_keymap_ohne_xmodmap_liefert_null(runner, monkeypatch):
-    """If the keymap cannot be read, nothing is sent — never a guessed keycode."""
+def test_die_keymap_wird_nur_einmal_gelesen(runner, monkeypatch):
+    """Pro Sitzung wird die Keymap einmal gelesen — nicht pro Namen."""
+    calls: list[list[str]] = []
+
+    def _counting_run(self, argv):
+        calls.append(list(argv))
+        return 0, KEYMAP
+
     monkeypatch.setattr(runner, "_delivering_input_backend", lambda: "ydotool")
-    monkeypatch.setattr(HostSessionRunner, "_run", lambda self, argv: (1, ""))
-    assert runner._keycode_for("a") == 0
+    monkeypatch.setattr(HostSessionRunner, "_run", _counting_run)
+    runner._live_window_argv(Action(kind="key", payload={"key": "a"}), "4711")
+    runner._live_window_argv(Action(kind="key", payload={"key": "z"}), "4711")
+    assert calls == [["xmodmap", "-pke"]], calls
 
 
 # --------------------------------------------------------------------------- #

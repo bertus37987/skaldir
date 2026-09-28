@@ -388,9 +388,10 @@ class KernelEventObserver:
     """Ein **nur lesender** Beobachter der Kernel-Eingabe-Ereignisse, getrennt berichtet.
 
     Warum es ihn gibt und warum er nichts entscheidet: Auf diesem Host ist gemessen, dass ein
-    uinput-Event im Kernel entsteht (`type=1 code=38 value=1`), während am Zielfenster nichts
-    ankommt. Beides zu sehen ist nützlich, beides zu verwechseln ist der P0-Fehler. Der
-    Beobachter zählt deshalb nur, öffnet den Knoten rein lesend, und seine Zahl landet in
+    uinput-Event im Kernel entsteht (`type=1 code=38 value=1` — damals der **unübersetzte**
+    X-Code 38 für 'a', also `KEY_L` statt `KEY_A=30`), während am Zielfenster nichts ankommt.
+    Beides zu sehen ist nützlich, beides zu verwechseln ist der P0-Fehler. Der Beobachter zählt
+    deshalb nur, öffnet den Knoten rein lesend, und seine Zahl landet in
     :attr:`ProbeResult.kernel_events` — ein Feld, das keine einzige Entscheidung in
     :func:`probe` liest.
     """
@@ -461,9 +462,13 @@ def send_argv(backend: str, marker: str, wid: int = 0) -> list[str]:
     fokussiert (:func:`focus_argv`).
     """
     if backend == "ydotool":
-        # `ydotool type` nimmt STRINGS (geprüft: "Usage: type [OPTION]... [STRINGS]...") —
-        # Keycodes würden als Text getippt.
-        return ["ydotool", "type", "--delay", "40", marker]
+        # `ydotool type` nimmt STRINGS (geprüft mit laufendem Daemon:
+        # "Usage: type [OPTION]... [STRINGS]...") — Keycodes würden als Text getippt. Und die
+        # Flags sind die echten: `--key-delay` und `--key-hold` (beide Vorgabe 20 ms);
+        # `--delay` kennt ydotool **nicht** (gemessen: "type: unrecognized option '--delay'",
+        # und der Rückgabewert bleibt trotzdem 0 — ein falsches Flag darf nie wie Erfolg
+        # aussehen).
+        return ["ydotool", "type", "--key-delay", "40", marker]
     if wid > 0:
         # Derselbe Bau wie im Zustellpfad (`_live_window_argv`): erst Fokus auf das eigene
         # Fenster, dann der Text. Ein Marker darf nie in einem fremden Fenster landen.

@@ -449,6 +449,10 @@ def test_der_marker_geht_als_text_nicht_als_keycode(tmp_path, ready):
     # the first call focuses the probe's own window, the second is the ydotool text send
     assert send_back.calls[1][:2] == ["ydotool", "type"], send_back.calls
     assert send_back.calls[1][-1] == marker
+    # the flags are the ones ydotool really knows (measured against the running daemon):
+    # --delay is NOT one of them, and it answers rc 0 anyway
+    assert "--key-delay" in send_back.calls[1]
+    assert "--delay" not in " ".join(send_back.calls[1])
     assert not any(":1" in part for part in send_back.calls[1])
 
 
