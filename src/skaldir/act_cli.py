@@ -1095,9 +1095,14 @@ def _add_act_verbs(sub: Any) -> Any:
         help="learn a draft sub-tool from one recorded session's repeated GUI sequence",
     )
     p_learn.add_argument("--session", required=True, help="the recorded session id to replay")
-    p_learn.add_argument("--name", default="", help="name for the learned draft (default: learned_<session>)")
     p_learn.add_argument(
-        "--min-repeats", type=int, default=2, help="how many times a sequence must repeat (default 2)"
+        "--name", default="", help="name for the learned draft (default: learned_<session>)"
+    )
+    p_learn.add_argument(
+        "--min-repeats",
+        type=int,
+        default=2,
+        help="how many times a sequence must repeat (default 2)",
     )
     p_learn.add_argument("--force", action="store_true", help="replace an existing learned draft")
     p_learn.add_argument("--state", default="", help="runtime directory (default: SKALDIR_HOME)")

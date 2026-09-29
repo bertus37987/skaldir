@@ -486,7 +486,8 @@ def test_the_browser_title_env_names_the_open_browser_focus_target(monkeypatch):
 
     default = S.builtin_subtools()["open_browser"]
     default_action = [a for a in default["actions"] if a["kind"] == "window"][0]
-    assert "Firefox" in default_action["payload"]["title"] and "Zen" in default_action["payload"]["title"]
+    title = default_action["payload"]["title"]
+    assert "Firefox" in title and "Zen" in title
 
     monkeypatch.setenv("SKALDIR_CU_BROWSER_TITLE", "Chromium \u2014 docs")
     overridden = S.builtin_subtools()["open_browser"]

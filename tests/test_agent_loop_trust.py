@@ -23,7 +23,6 @@ import pytest
 
 from skaldir.agent_loop import AgentLoop, AgentTool, ToolSet, read_transcript
 from skaldir.toolcall import ToolIntent, judge_tool_call
-
 from tests.test_agent_loop import StubEndpoint, _llm, answer, tool_step
 
 #: the foreign instruction the page carries (data, not authority)

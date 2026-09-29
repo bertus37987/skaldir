@@ -22,8 +22,9 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 from .tui import CallRow, CallState, GoalPanel, TuiState
 
@@ -187,7 +188,10 @@ class TuiEventFeed:
     frame without duplicating anything.
     """
 
-    def __init__(self, transcript: str | Path | None = None, *, state: TuiState | None = None) -> None:
+    def __init__(
+        self, transcript: str | Path | None = None, *, state: TuiState | None = None
+    ) -> None:
+
         self.transcript = Path(transcript) if transcript else None
         self.state = state or TuiState()
         self._started_at = time.time()

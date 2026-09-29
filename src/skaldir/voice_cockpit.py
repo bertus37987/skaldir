@@ -49,7 +49,9 @@ def _next_best(triage_report: dict[str, Any], status: dict[str, Any]) -> dict[st
     if not triage_report.get("checked"):
         return {
             "action": "none",
-            "why": str(triage_report.get("blocked_reason") or "the trajectory could not be checked"),
+            "why": (
+                str(triage_report.get("blocked_reason") or "the trajectory could not be checked")
+            ),
         }
     decision = str(triage_report.get("decision") or "")
     counts = dict(triage_report.get("counts") or {})

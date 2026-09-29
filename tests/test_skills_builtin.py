@@ -1,7 +1,7 @@
 """Preinstalled (builtin) skills shipped with the product: usable out of the box."""
 
+from skaldir.skill_builtin import BUILTIN_SKILL_NAMES, load_builtin
 from skaldir.skills import SkillStore, is_valid_skill_body, parse_skill_header
-from skaldir.skill_builtin import BUILTIN_SKILL_NAMES, import_builtin, load_builtin
 
 
 def test_builtin_catalog_is_nonempty_and_unique():

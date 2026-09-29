@@ -11,13 +11,10 @@ the directory did not exist on disk at all.
 from __future__ import annotations
 
 import os
-import shutil
-import stat
 
 import pytest
 
 from skaldir.toolcall import (
-    _managed_tmp_roots,
     _root_is_really_ours,
     in_managed_tmp,
 )

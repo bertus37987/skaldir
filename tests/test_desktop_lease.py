@@ -252,7 +252,7 @@ def test_the_input_adapter_refuses_an_action_with_a_stale_fence(store):
     from skaldir.cu_host_session import Action, HostSessionRunner
 
     runner = HostSessionRunner(target="", attach_to_session=False, display=":0")
-    lease = store.acquire("run-1", task="Edit video", now=1.0)
+    store.acquire("run-1", task="Edit video", now=1.0)
     seen: list[str] = []
     runner.bind_input_fence(lambda: seen.append("checked"))
 
@@ -381,9 +381,7 @@ def test_the_fence_is_bound_on_the_resolved_runner(store):
     # and the bound fence really checks the store
     seen[0]()
     store.request_stop(now=2.0)
-    import pytest as _pytest
-
-    with _pytest.raises(Exception):
+    with pytest.raises(StaleFence):
         seen[0]()
 
 
@@ -444,9 +442,7 @@ def test_the_production_path_really_binds_the_fence(store):
     assert lease is not None
     bound[0]()                      # no raise while the lease is ours
     store.request_stop(reason="double-escape", now=2.0)
-    import pytest as _pytest
-
-    with _pytest.raises(Exception):
+    with pytest.raises(StaleFence):
         bound[0]()
     assert record["desktop"]["released"] is True
 
@@ -529,7 +525,6 @@ def test_an_unbound_live_desktop_runner_refuses_to_act():
 
 def test_a_live_desktop_runner_with_a_fence_actually_checks_it(store):
     """The bound fence must be consulted, not merely stored (DESK-02 at the adapter)."""
-    from skaldir.desktop_lease import StaleFence
     from skaldir.cu_host_session import Action, HostSessionRunner
 
     lease = store.acquire("run-1", now=1.0)

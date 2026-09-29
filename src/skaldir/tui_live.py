@@ -24,13 +24,12 @@ already wired to it.
 
 from __future__ import annotations
 
-import os
 import shutil
 import threading
 import time
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, Callable, Iterable, Mapping
+from typing import Any
 
 from .tui import Screen, TuiState
 from .tui_feed import TuiEventFeed

@@ -51,12 +51,13 @@ def test_a_due_term_is_executed_by_the_worker(store):
     ran: list = []
 
     def runner(schedule, occurrence):
-        ran.append((schedule.workflow_id, occurrence.key if hasattr(occurrence, "key") else str(occurrence)))
+        key = occurrence.key if hasattr(occurrence, "key") else str(occurrence)
+        ran.append((schedule.workflow_id, key))
         return {"ok": True, "note": "the workflow ran"}
 
     worker = SchedulerWorker(store, runner=runner, owner="worker-1")
-    now = dt.datetime(2026, 9, 28, 12, 0, tzinfo=dt.timezone.utc)
-    tick = worker.tick(now=now, since=dt.datetime(2026, 9, 25, 0, 0, tzinfo=dt.timezone.utc))
+    now = dt.datetime(2026, 9, 28, 12, 0, tzinfo=dt.UTC)
+    tick = worker.tick(now=now, since=dt.datetime(2026, 9, 25, 0, 0, tzinfo=dt.UTC))
 
     assert ran, "the worker never ran the workflow"
     assert tick.claimed == 1 and tick.ran == 1
@@ -71,10 +72,8 @@ def test_the_worker_runs_headless_with_the_tui_closed(store):
     worker = SchedulerWorker(store, runner=lambda s, o: ran.append(1) or {"ok": True},
                              owner="worker-1", interval_s=0.01)
     # nothing here opens a terminal, and the loop is bounded for the test
-    report = worker.run_forever(max_ticks=1,
-                                timeout_s=0.0) if False else None
-    now = dt.datetime(2026, 9, 28, 12, 0, tzinfo=dt.timezone.utc)
-    worker.tick(now=now, since=dt.datetime(2026, 9, 25, 0, 0, tzinfo=dt.timezone.utc))
+    now = dt.datetime(2026, 9, 28, 12, 0, tzinfo=dt.UTC)
+    worker.tick(now=now, since=dt.datetime(2026, 9, 25, 0, 0, tzinfo=dt.UTC))
     assert ran, "the headless worker did nothing"
 
 
@@ -95,9 +94,11 @@ def test_the_same_term_never_runs_twice(store):
     """
     _activate(store)
     ran: list = []
-    runner = lambda s, o: ran.append(_occurrence_of(o)) or {"ok": True}
-    now = dt.datetime(2026, 9, 28, 12, 0, tzinfo=dt.timezone.utc)
-    since = dt.datetime(2026, 9, 25, 0, 0, tzinfo=dt.timezone.utc)
+    def runner(s, o):
+        ran.append(_occurrence_of(o))
+        return {"ok": True}
+    now = dt.datetime(2026, 9, 28, 12, 0, tzinfo=dt.UTC)
+    since = dt.datetime(2026, 9, 25, 0, 0, tzinfo=dt.UTC)
 
     SchedulerWorker(store, runner=runner, owner="worker-1").tick(now=now, since=since)
     SchedulerWorker(store, runner=runner, owner="worker-2").tick(now=now, since=since)
@@ -111,9 +112,11 @@ def test_a_restart_does_not_rerun_a_term_that_already_ran(store):
     """Acceptance H: "nach Restart keine ungewollte Doppelwirkung"."""
     _activate(store)
     ran: list = []
-    runner = lambda s, o: ran.append(_occurrence_of(o)) or {"ok": True}
-    now = dt.datetime(2026, 9, 28, 12, 0, tzinfo=dt.timezone.utc)
-    since = dt.datetime(2026, 9, 25, 0, 0, tzinfo=dt.timezone.utc)
+    def runner(s, o):
+        ran.append(_occurrence_of(o))
+        return {"ok": True}
+    now = dt.datetime(2026, 9, 28, 12, 0, tzinfo=dt.UTC)
+    since = dt.datetime(2026, 9, 25, 0, 0, tzinfo=dt.UTC)
 
     SchedulerWorker(store, runner=runner, owner="before").tick(now=now, since=since)
     first = list(ran)
@@ -132,9 +135,11 @@ def test_catch_up_once_picks_up_one_missed_term_per_tick_not_all_at_once(store):
     """'nicht unkontrolliert alle nachholen' — at the service, not just the store."""
     _activate(store, catch_up=CatchUp.ONCE)
     ran: list = []
-    runner = lambda s, o: ran.append(_occurrence_of(o)) or {"ok": True}
-    now = dt.datetime(2026, 9, 28, 12, 0, tzinfo=dt.timezone.utc)
-    since = dt.datetime(2026, 9, 25, 0, 0, tzinfo=dt.timezone.utc)
+    def runner(s, o):
+        ran.append(_occurrence_of(o))
+        return {"ok": True}
+    now = dt.datetime(2026, 9, 28, 12, 0, tzinfo=dt.UTC)
+    since = dt.datetime(2026, 9, 25, 0, 0, tzinfo=dt.UTC)
 
     tick = SchedulerWorker(store, runner=runner).tick(now=now, since=since)
     assert tick.ran == 1, "one tick caught up more than one term"
@@ -153,8 +158,8 @@ def test_concurrent_workers_race_and_only_one_wins(store):
             ran.append(schedule.schedule_id)
         return {"ok": True}
 
-    now = dt.datetime(2026, 9, 28, 12, 0, tzinfo=dt.timezone.utc)
-    since = dt.datetime(2026, 9, 25, 0, 0, tzinfo=dt.timezone.utc)
+    now = dt.datetime(2026, 9, 28, 12, 0, tzinfo=dt.UTC)
+    since = dt.datetime(2026, 9, 25, 0, 0, tzinfo=dt.UTC)
 
     def go(idx: int) -> None:
         barrier.wait(timeout=30)
@@ -179,9 +184,9 @@ def test_a_paused_schedule_is_never_executed(store):
     store.activate(s.schedule_id)
     store.pause(s.schedule_id)
     ran: list = []
-    now = dt.datetime(2026, 9, 28, 12, 0, tzinfo=dt.timezone.utc)
+    now = dt.datetime(2026, 9, 28, 12, 0, tzinfo=dt.UTC)
     tick = SchedulerWorker(store, runner=lambda a, b: ran.append(1) or {"ok": True}).tick(
-        now=now, since=dt.datetime(2026, 9, 25, 0, 0, tzinfo=dt.timezone.utc)
+        now=now, since=dt.datetime(2026, 9, 25, 0, 0, tzinfo=dt.UTC)
     )
     assert not ran
     assert tick.seen == 0
@@ -191,19 +196,19 @@ def test_a_defined_but_inactive_schedule_is_never_executed(store):
     """Starting the worker must not turn a paused schedule on."""
     store.define(_schedule())
     ran: list = []
-    now = dt.datetime(2026, 9, 28, 12, 0, tzinfo=dt.timezone.utc)
+    now = dt.datetime(2026, 9, 28, 12, 0, tzinfo=dt.UTC)
     SchedulerWorker(store, runner=lambda a, b: ran.append(1) or {"ok": True}).tick(
-        now=now, since=dt.datetime(2026, 9, 25, 0, 0, tzinfo=dt.timezone.utc)
+        now=now, since=dt.datetime(2026, 9, 25, 0, 0, tzinfo=dt.UTC)
     )
     assert not ran, "the worker executed a schedule nobody activated"
 
 
 def test_a_failed_workflow_is_recorded_as_failed_not_as_success(store):
     _activate(store)
-    now = dt.datetime(2026, 9, 28, 12, 0, tzinfo=dt.timezone.utc)
+    now = dt.datetime(2026, 9, 28, 12, 0, tzinfo=dt.UTC)
     tick = SchedulerWorker(
         store, runner=lambda a, b: {"ok": False, "reason": "the workflow broke"}
-    ).tick(now=now, since=dt.datetime(2026, 9, 25, 0, 0, tzinfo=dt.timezone.utc))
+    ).tick(now=now, since=dt.datetime(2026, 9, 25, 0, 0, tzinfo=dt.UTC))
     assert tick.failed == 1 and tick.ran == 0
     assert store.executions()[0].state == "failed"
     assert "broke" in store.executions()[0].detail
@@ -211,14 +216,14 @@ def test_a_failed_workflow_is_recorded_as_failed_not_as_success(store):
 
 def test_crashed_claims_are_recovered_but_the_attempt_stays_visible(store):
     _activate(store)
-    now = dt.datetime(2026, 9, 28, 12, 0, tzinfo=dt.timezone.utc)
+    now = dt.datetime(2026, 9, 28, 12, 0, tzinfo=dt.UTC)
     # a claim that is never finished = a crashed worker
-    due = store.due(now=now, since=dt.datetime(2026, 9, 25, 0, 0, tzinfo=dt.timezone.utc))
+    due = store.due(now=now, since=dt.datetime(2026, 9, 25, 0, 0, tzinfo=dt.UTC))
     schedule, occurrence = due[0]
     store.claim(schedule.schedule_id, occurrence, now=1.0)
 
     tick = SchedulerWorker(store, runner=lambda a, b: {"ok": True}).tick(
-        now=now, since=dt.datetime(2026, 9, 25, 0, 0, tzinfo=dt.timezone.utc)
+        now=now, since=dt.datetime(2026, 9, 25, 0, 0, tzinfo=dt.UTC)
     )
     assert tick.recovered >= 1, "a dead claim was not released"
     # and the ledger still shows the attempt
@@ -227,11 +232,11 @@ def test_crashed_claims_are_recovered_but_the_attempt_stays_visible(store):
 
 def test_the_worker_records_evidence_it_can_write_out(store, tmp_path):
     _activate(store)
-    now = dt.datetime(2026, 9, 28, 12, 0, tzinfo=dt.timezone.utc)
+    now = dt.datetime(2026, 9, 28, 12, 0, tzinfo=dt.UTC)
     path = tmp_path / "evidence.json"
     worker = SchedulerWorker(store, runner=lambda a, b: {"ok": True},
                              evidence_path=path, owner="worker-1")
-    worker.tick(now=now, since=dt.datetime(2026, 9, 25, 0, 0, tzinfo=dt.timezone.utc))
+    worker.tick(now=now, since=dt.datetime(2026, 9, 25, 0, 0, tzinfo=dt.UTC))
     worker._write_evidence()
     assert path.exists(), "no evidence was written"
     import json

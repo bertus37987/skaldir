@@ -34,11 +34,12 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any
 
 __all__ = [
     "NodeStatus",
@@ -61,7 +62,7 @@ __all__ = [
 # --------------------------------------------------------------------------- #
 
 
-class NodeKind(str, Enum):
+class NodeKind(StrEnum):
     TOOL = "tool"              # tools_core / registry `tools call`
     SUBTOOL = "subtool"        # act_service BUILTIN_SUBTOOLS / saved / learned
     CU_ACTION = "cu_action"    # computer_use.Action (click / type / key / …)
@@ -70,7 +71,7 @@ class NodeKind(str, Enum):
     GENERATED = "generated"    # ToolBuilder / ContainerToolBuilder
 
 
-class NodeStatus(str, Enum):
+class NodeStatus(StrEnum):
     PENDING = "pending"
     RUNNING = "running"
     VERIFIED = "verified"
@@ -79,7 +80,7 @@ class NodeStatus(str, Enum):
     SKIPPED = "skipped"
 
 
-class Boundary(str, Enum):
+class Boundary(StrEnum):
     """The five owner cases where control returns to the model (spec §3)."""
     DECISION = "decision"            # a decision requires reasoning
     UNEXPECTED = "unexpected"        # an unexpected state occurs
@@ -197,7 +198,10 @@ class ActionGraph:
                 if dep not in self.nodes:
                     errors.append(f"node {node.id!r} depends on unknown node {dep!r}")
             if not node.verify:
-                errors.append(f"node {node.id!r} declares no verify — every node needs an expectation")
+                errors.append(
+                    f"node {node.id!r} declares no verify — every node needs an expectation"
+                )
+
             if not node.permissions:
                 errors.append(
                     f"node {node.id!r} declares no permissions — every node must declare "
@@ -420,9 +424,9 @@ def promote_to_subtool(graph: ActionGraph, *, goal: str = "") -> str:
     if any(n.status != NodeStatus.VERIFIED for n in graph.nodes.values()):
         return ""
     try:
-        from .act_service import save_subtool
-
         import re as _re
+
+        from .act_service import save_subtool
 
         name = _re.sub(r"[^a-z0-9]+", "_", (goal or "engine_flow").lower()).strip("_")[:40]
         if not name or name.startswith("_"):
@@ -534,8 +538,13 @@ class ActionEngine:
         if any_failed:
             graph.status = "failed"
             self._persist(graph)
-            return compact_result(graph, Boundary.FAILURE,
-                                  detail=f"{sum(1 for n in graph.nodes.values() if n.status == NodeStatus.FAILED)} node(s) failed")
+            return compact_result(
+                graph, Boundary.FAILURE,
+                detail=(
+                    f"{sum(1 for n in graph.nodes.values() if n.status == NodeStatus.FAILED)}"
+                    " node(s) failed"
+                ),
+            )
         if any_ambiguous:
             graph.status = "paused"
             self._persist(graph)
@@ -576,7 +585,7 @@ class ActionEngine:
         """Run one node; return a Boundary if control must go back to the model."""
         node.status = NodeStatus.RUNNING
         node.started_at = time.time()
-        self._persist(parent_graph := getattr(self, "_current_graph", None) or None)
+        self._persist(getattr(self, "_current_graph", None) or None)
         try:
             raw = self.executor(node)
         except Exception as exc:  # noqa: BLE001 — a node crash is a boundary

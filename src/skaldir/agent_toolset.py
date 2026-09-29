@@ -141,7 +141,10 @@ def _prefer_live_runner(goal: str, runner: str) -> str:
         allowed = False
     if wants_live:
         return "live-desktop"
-    if allowed and any(word in text for word in ("firefox", "chrome", "browser", "zen", "opera", "brave", "edge")):
+    if allowed and any(
+        word in text for word in ("firefox", "chrome", "browser", "zen", "opera", "brave", "edge")
+    ):
+
         return "live-desktop"
     return named or _act_runner_default()
 
@@ -511,7 +514,9 @@ def skill_act(
                 "reason": f"live desktop refused: {gate.get('reason', 'no opt-in')}",
                 "live_desktop_gate": gate,
                 "runner_kind": "live-desktop",
-                "schema_hint": "grant the approve bar (or `skaldir act live-setup --target … --write`)",
+                "schema_hint": (
+                    "grant the approve bar (or `skaldir act live-setup --target … --write`)"
+                ),
             }
     record = run_action_list(
         [dict(item) for item in (actions or [])],
@@ -797,7 +802,11 @@ def tool_search_tool(
         input_schema={
             "type": "object",
             "properties": {
-                "need": {"type": "string", "minLength": 1, "description": "what capability is needed"},
+                "need": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "what capability is needed",
+                },
                 "limit": {"type": "integer", "minimum": 1, "maximum": 20, "default": 5},
                 "project_id": {"type": "string"},
                 "runtime": {"type": "string"},
@@ -841,7 +850,12 @@ def knowledge_search_tool(
                 "kinds": {"type": "array", "items": {"type": "string"}},
                 "statuses": {"type": "array", "items": {"type": "string"}},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 20, "default": 5},
-                "max_output_tokens": {"type": "integer", "minimum": 100, "maximum": 4000, "default": 1200},
+                "max_output_tokens": {
+                    "type": "integer",
+                    "minimum": 100,
+                    "maximum": 4000,
+                    "default": 1200,
+                },
             },
             "required": ["query"],
             "additionalProperties": False,
@@ -880,7 +894,12 @@ def knowledge_read_tool(
                 "expected_revision": {"type": "string"},
                 "start_line": {"type": "integer", "minimum": 1, "default": 1},
                 "end_line": {"type": "integer", "minimum": 0, "default": 0},
-                "max_output_tokens": {"type": "integer", "minimum": 100, "maximum": 4000, "default": 1200},
+                "max_output_tokens": {
+                    "type": "integer",
+                    "minimum": 100,
+                    "maximum": 4000,
+                    "default": 1200,
+                },
             },
             "required": ["id"],
             "additionalProperties": False,
@@ -942,9 +961,11 @@ def skill_act_tool() -> AgentTool:
             "If end_state already holds (result.skipped) do NOTHING — the screen "
             "already matches. Prefer subtool: open_browser | open_youtube for those "
             "flows. "
-            'EACH action is {"kind":"cli"|"api_call"|"launch"|"key"|"type_text"|"mouse"|"scroll"|"drag"|"window", '
+            'EACH action is {"kind":"cli"|"api_call"|"launch"|"key"|"type_text"|"mouse"|'
+            '"scroll"|"drag"|"window", '
             '"channel":"api"|"dom"|"vision", "argv":["firefox"] or "payload":{…}, '
-            '"verify":{"expect_ok":true}|{"expect_stdout_contains":…}|{"expect_observe_contains":…}}. '
+            '"verify":{"expect_ok":true}|{"expect_stdout_contains":…}'
+            '|{"expect_observe_contains":…}}. '
             'CLI commands (cat, curl, ps, which): use "kind":"cli" with "argv":[…] and '
             'verify with expect_stdout_contains or expect_ok. For CLI end_state use '
             '"channel":"stdout" (checks command output) — NOT "window_title" (checks '

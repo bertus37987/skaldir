@@ -1315,7 +1315,7 @@ def spawn_subagents_tool(
         model: str = "",
     ) -> dict[str, Any]:
         try:
-            from .subagent_roles import ROLE_WORKER, ROLE_BUDGETS
+            from .subagent_roles import ROLE_BUDGETS, ROLE_WORKER
 
             resolved_turns = int(max_turns)
             if resolved_turns < 1:

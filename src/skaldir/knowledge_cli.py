@@ -26,7 +26,10 @@ def contract_entries() -> dict[str, Any]:
         lambda ref, kind="code", note="": {"ref": ref, "kind": kind, "note": note}
     )
     evidence = (
-        _ev("src/skaldir/knowledge.py", "code", "knowledge store with FTS5 search and versioned reads"),
+        _ev(
+            "src/skaldir/knowledge.py", "code",
+            "knowledge store with FTS5 search and versioned reads"
+        ),
     )
     return {
         "knowledge.list": spec(
@@ -151,7 +154,10 @@ def _cmd_knowledge(args: argparse.Namespace) -> int:
         else:
             for e in entries:
                 stale = " STALE" if e.get("valid_until", "") and e["valid_until"] < "2026" else ""
-                print(f"  {e['id']:30s} {e['kind']:12s} {e['status']:10s} {e['revision'][:12]}{stale}")
+                print(
+                    f"  {e['id']:30s} {e['kind']:12s} {e['status']:10s} {e['revision'][:12]}{stale}"
+                )
+
         return 0
 
     if cmd == "show":
@@ -217,6 +223,3 @@ def _cmd_knowledge(args: argparse.Namespace) -> int:
 
     return 1
 
-
-# late import for the type hint
-from typing import Any  # noqa: E402

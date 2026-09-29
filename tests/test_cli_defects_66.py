@@ -69,7 +69,7 @@ def _product_cli(*argv: str, timeout: int = 180) -> tuple[int, dict, str]:
 def test_tools_health_serves_a_python_tool_from_its_ledger(tmp_path, capsys):
     """A built python tool's health is its test status — not exit 5 (audit 62 #6)."""
     from skaldir import cli
-    from skaldir.toolbuilder import ToolBuildRequest, ToolBuilder
+    from skaldir.toolbuilder import ToolBuilder, ToolBuildRequest
 
     name = "gv_health_probe_66"
     result = ToolBuilder(tmp_path).build(

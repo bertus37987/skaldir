@@ -932,7 +932,6 @@ class CUExecutor:
             # an isolated runner into the live session (GAP-K3).
             # Owner rule: ANY opt-in = FULL desktop. ``live_desktop_target`` is a focus
             # hint only — it never restricts which window may be driven.
-            target = str(getattr(runner, "target_scope", "") or "")
             if not (
                 self.policy.allow_live_desktop
                 and isolation in ("host-session", "live-desktop")
@@ -995,7 +994,13 @@ class CUExecutor:
                     "cu_verified",
                     {"step": step, "channel": attempt.channel, "detail": detail[:200]},
                 )
-                return CURunResult(step, "verified", attempt.channel, actions, fallbacks, detail, stdout=stdout_val, exit_code=getattr(result, "exit_code", None), stderr=str(getattr(result, "stderr", "") or ""))
+                return CURunResult(
+                    step, "verified", attempt.channel, actions, fallbacks, detail,
+                    stdout=stdout_val,
+                    exit_code=getattr(result, "exit_code", None),
+                    stderr=str(getattr(result, "stderr", "") or ""),
+                )
+
             fallbacks += 1
             self._record(
                 "cu_failed", {"step": step, "channel": attempt.channel, "detail": detail[:200]}

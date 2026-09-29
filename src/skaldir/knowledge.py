@@ -318,7 +318,10 @@ class KnowledgeStore:
             # find the snippet's line range in the body
             start_line, end_line = 1, min(len(body_lines), 5)
             for i, line in enumerate(body_lines):
-                if snippet_text and snippet_text.replace("[", "").replace("]", "").replace("…", "")[:40] in line:
+                if snippet_text and (
+                    snippet_text.replace("[", "").replace("]", "").replace("…", "")[:40] in line
+                ):
+
                     start_line = i + 1
                     end_line = min(i + 3, len(body_lines))
                     break

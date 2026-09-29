@@ -131,3 +131,35 @@ PID beendet und seine Lock-/Socket-Dateien entfernt; `:0`/`:1` (Owner-Display) b
    nicht auf `sys.path` legt und `pytest` anders als `python -m pytest` das cwd nicht hinzufügt.
    Funktionierender Befehl: `uv run python -m pytest tests/ -q` (8254 Tests gesammelt).
    Vorbestehend, unabhängig von diesem Feature.
+
+## 6. Nachtrag 2026-09-29 — Punkt 1 aus §5 ist erledigt
+
+Das empfohlene Feature „Lint-Schulden" wurde als `lint-debt-sweep` umgesetzt. Belege und Methode:
+`docs/audit/LINT-DEBT-SWEEP.md`. Kurz:
+
+* `uv run ruff check src tests` → **Exit 0**, „All checks passed". Ausgangslage 372 findings
+  (Stand `892b4cc`), Endzustand 0. Keine Regel aus der Konfiguration ausgenommen, keine Datei
+  ausgeklammert, kein `noqa` für einen Befund ergänzt.
+* Die 202 automatisch behebbaren Befunde gingen über `ruff check --fix` je Regelklasse mit
+  Diff-Durchsicht; die restlichen 170 wurden einzeln gelesen und von Hand geändert. Die E501-
+  Zeilen wurden nur umbrochen; für jede berührte Datei belegt ein AST-Vergleich gegen `HEAD`,
+  dass sich **kein einziges String-Literal** geändert hat (die beiden erlaubten Ausnahmen sind
+  die eine entfernte `f`-Präfix bei `F541` und die eine gekürzte Dokuzeile in
+  `src/skaldir/scheduler.py`).
+* Drei der Befunde waren **echte Defekte**, keine Stilfragen: `Mapping` in `browser_layer.py`
+  (`F821`, nur bei aufgelösten Annotationen sichtbar — `mcpserver` löst sie zur Laufzeit auf),
+  `usage(...)` im Unbekannt-Aktion-Zweig von `surface_cli.py` (`F821`, NameError zur Laufzeit)
+  und `"Backend"` in `stop_signal.__all__` (`F822`, `from … import *` wäre mit `AttributeError`
+  gescheitert).
+* Die eine F401-Stelle mit einem echten externen Konsumenten — `load_schema_template`, das
+  `toolbuilder_cli` über `skaldir.toolbuilder` importiert — bleibt mit begründetem `noqa`
+  erhalten. Die drei weiteren Namen, die die vorläufige Fassung dorthin gestellt hatte, haben
+  nach frischer Messung **keinen** Konsumenten und wurden entfernt.
+* Die 13 `UP042`-Klassen wurden zu `enum.StrEnum`. `str()` eines `(str, Enum)`-Members liefert auf
+  diesem Interpreter `"Klasse.MEMBER"`, bei `StrEnum` den Wert; die Messung zeigt, dass im ganzen
+  Repository **keine** Stringifizierung dieser 13 Klassen vorkommt (alle serialisieren über
+  `.value`), die Umstellung ist also verhaltensneutral.
+* Die Gesamtsuite `uv run python -m pytest tests/ -q` lief nach der Umstellung; das Ergebnis steht
+  in der Abnahme des `lint-debt-sweep`-Features. Die vier dort noch rot markierten Tests sind
+  dieselben vorbestehenden wie hier in §4 (env-Leak-Guards, reihenfolgenabhängiger Subagenten-Import,
+  umgebungsabhängiger Browser-Lesepfad) und gehören zum Feature `suite-green-followup`.

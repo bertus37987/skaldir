@@ -35,7 +35,6 @@ or an existing template). Guessing argv from help prose would be the exact
 from __future__ import annotations
 
 import json
-import re
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -121,7 +120,9 @@ def text_template(
     def _named(payload: dict) -> Any:
         result = oracle(dict(payload))
         if isinstance(result, Mapping):
-            values = dict(result.get("values") or {k: v for k, v in result.items() if k != "tolerance"})
+            values = dict(
+                result.get("values") or {k: v for k, v in result.items() if k != "tolerance"}
+            )
             if "value" in values and output_name != "value":
                 values = {output_name: values["value"]}
             elif output_name not in values and len(values) == 1:
@@ -351,7 +352,9 @@ def _json_field(payload: dict) -> str:
     return str(doc[field])
 
 
-NOTE_TEXT_TWIN = "host twin: computed by Python stdlib from the input text (independent of the container)"
+NOTE_TEXT_TWIN = (
+    "host twin: computed by Python stdlib from the input text (independent of the container)"
+)
 
 TEXT_TEMPLATES: tuple[dict, ...] = (
     text_template(

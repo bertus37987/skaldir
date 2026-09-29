@@ -662,7 +662,9 @@ class Turn:
             except ValueError:  # pragma: no cover
                 self.ctx_tokens = None
 
-    def note_usage(self, *, prompt_tokens: int | None = None, total_tokens: int | None = None) -> None:
+    def note_usage(
+        self, *, prompt_tokens: int | None = None, total_tokens: int | None = None
+    ) -> None:
         """Fold a provider ``usage`` block into the band (ctx size when no % is known)."""
         if prompt_tokens:
             self.ctx_tokens = max(int(self.ctx_tokens or 0), int(prompt_tokens))
@@ -1700,7 +1702,10 @@ class ChatBar:
         turn = self.turn
         reading = self._reading
         clock = self._last_clock if turn is None else turn.clock()
-        if turn is None and reading is None and not getattr(self, "_saw_turn", False) and clock in ("", "00:00"):
+        if (
+            turn is None and reading is None and not getattr(self, "_saw_turn", False)
+            and clock in ("", "00:00")
+        ):
             return "", "", ""
         if turn is not None:
             context = turn.context().render()

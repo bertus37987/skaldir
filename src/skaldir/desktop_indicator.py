@@ -31,10 +31,9 @@ from __future__ import annotations
 import os
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
-from .desktop_lease import IndicatorState, LeaseState, indicator_lines
+from .desktop_lease import IndicatorState, indicator_lines
 
 __all__ = [
     "BOX_MARGIN_PX",
@@ -200,7 +199,8 @@ class HostIndicator:
             return self._refuse(
                 "no DISPLAY in this environment — a window cannot be created", backend="none")
         try:
-            from Xlib import X, display as _xdisplay
+            from Xlib import X
+            from Xlib import display as _xdisplay
         except Exception as exc:  # noqa: BLE001 — an optional extra, refused structurally
             return self._refuse(
                 f"python-xlib is not importable: {type(exc).__name__}: {exc}",

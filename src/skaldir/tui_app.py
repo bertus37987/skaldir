@@ -29,17 +29,16 @@ loop and only renders its events.
 
 from __future__ import annotations
 
-import os
 import shutil
 import signal
 import sys
 import threading
 import time
-from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass
+from typing import Any
 
-from .tui import Screen, TuiState
+from .tui import TuiState
 from .tui_live import LiveTui, LiveTuiConfig
 
 __all__ = ["TuiApp", "TuiAppConfig", "NO_TTY_HINT"]
@@ -133,12 +132,15 @@ class TuiApp:
     def draw(self) -> None:
         frame = self.tui.render()
         out: list[str] = []
-        for old, new in zip(self._last_frame, frame):
+        # strict=False keeps the previous truncating behaviour: a shorter new frame only
+        # redraws the rows it has (B905 names the missing policy; the behaviour is kept).
+        for old, new in zip(self._last_frame, frame, strict=False):
             if old != new:
                 out.append(f"\x1b[{frame.index(new) + 1};1H{new}")
         if not self._last_frame:
-            out = [self.CLEAR] + ["".join(("\x1b[%d;1H%s" % (i + 1, line)))
-                                  for i, line in enumerate(frame)]
+            out = [self.CLEAR] + [
+                "".join(f"\x1b[{i + 1};1H{line}" for i, line in enumerate(frame))
+            ]
         if out:
             self._write("".join(out))
         self._last_frame = frame

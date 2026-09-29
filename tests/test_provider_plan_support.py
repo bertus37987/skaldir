@@ -165,7 +165,7 @@ def test_key_prompt_asks_keep_skip_replace_before_the_hidden_input():
             {"available": True, "source": "the .env"},
             name="MIMO_API_KEY",
             say=lambda _t: None,
-            read=lambda _p: letter,
+            read=lambda _p, _letter=letter: _letter,
         )
         assert got == want, (letter, got)
 

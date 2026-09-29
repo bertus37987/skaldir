@@ -19,7 +19,6 @@ import time
 import pytest
 
 from skaldir.processes import (
-    ManagedProcess,
     ProcessManager,
     ProcessState,
     StreamBuffer,

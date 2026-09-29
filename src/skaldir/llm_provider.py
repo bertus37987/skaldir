@@ -104,9 +104,9 @@ import base64
 import hashlib
 import json
 import os
-import sys
 import re
 import struct
+import sys
 import threading
 import time
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence

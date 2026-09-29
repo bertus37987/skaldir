@@ -15,7 +15,7 @@ import tarfile
 from pathlib import Path
 from urllib import request
 
-from .skill_builtin import BUILTIN_SKILL_NAMES, load_builtin
+from .skill_builtin import load_builtin
 from .skills import STATUS_PROMOTED, SkillCandidate, SkillStore, is_valid_skill_body
 
 #: Total decompressed skill content we are willing to accept (safety cap).
@@ -131,7 +131,7 @@ def _rename_frontmatter(body: str, name: str) -> str:
     ]
     if not any(ln.strip().startswith("name:") for ln in parts[1].splitlines()):
         lines.insert(0, f"name: {name}")
-    return f"---" + "\n".join(lines) + "---" + parts[2]
+    return "---" + "\n".join(lines) + "---" + parts[2]
 
 
 def install_skill(

@@ -45,7 +45,8 @@ def test_a_slow_provider_announces_the_wait_instead_of_sitting_silent():
     provider.wait_observer = lambda kind, text: seen.append((kind, text))
 
     started = time.monotonic()
-    with pytest.raises(Exception):
+    # the measured type, not a bare Exception: a dead endpoint is a provider timeout
+    with pytest.raises(ProviderTimeoutError):
         provider.complete(prompt_id="p1", prompt="hello", tier="fast")
     elapsed = time.monotonic() - started
     assert elapsed >= 0.0
@@ -61,7 +62,6 @@ def test_a_slow_provider_announces_the_wait_instead_of_sitting_silent():
 
 def test_a_json_run_stays_one_envelope(tmp_path, monkeypatch):
     """Machine surfaces must not get status noise mixed into the envelope."""
-    import os
 
     monkeypatch.setenv("SKALDIR_FORMAT", "json")
     cfg = ProviderConfig(base_url="http://127.0.0.1:1/v1", model="m",

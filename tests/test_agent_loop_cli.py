@@ -345,7 +345,9 @@ def test_no_provider_configured_exits_4(workspace: Path, runtime: Path, capsys, 
     assert "SKALDIR_LLM_BASE_URL" in (document["error"]["hint"] + document["error"]["message"])
 
 
-def test_the_registry_tool_set_without_a_db_does_not_block_a_fresh_setup(workspace: Path, runtime: Path, capsys):
+def test_the_registry_tool_set_without_a_db_does_not_block_a_fresh_setup(
+    workspace: Path, runtime: Path, capsys
+):
     with StubEndpoint([answer("x")]) as stub:
         code, document, _err = _run(
             capsys,

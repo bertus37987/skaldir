@@ -20,8 +20,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from skaldir import act_service as S
 from skaldir.computer_use import ActionResult, DryRunRunner
 
@@ -139,7 +137,7 @@ def test_save_subtool_keeps_the_optional_app_state_reader(tmp_path: Path) -> Non
         "verification_contract": "probe",
         "app_state_probe": {"argv": ["sh", "-c", "echo titles: x"]},
     }
-    summary = S.save_subtool(spec, state=tmp_path)
+    S.save_subtool(spec, state=tmp_path)
     loaded, origin, path = S.load_subtool("with_probe", state=tmp_path)
     assert origin in ("saved", "builtin")
     assert loaded.get("app_state_probe", {}).get("argv")

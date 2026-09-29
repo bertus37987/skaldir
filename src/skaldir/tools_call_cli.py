@@ -66,7 +66,6 @@ try:  # the shared group plumbing (single implementation, never copied)
         ev,
         install_contract_entries,
         product_contract,
-        registry_from_args,
         share_common_flags,
         text_mode,
     )
@@ -143,11 +142,15 @@ def _run_container_wrapper(wrapper: Path, arguments: dict[str, Any]) -> Any:
         )
     except subprocess.TimeoutExpired:
         return {
-            "__wrapper_error__": f"the container wrapper timed out after {CONTAINER_WRAPPER_TIMEOUT_S:.0f}s"
+            "__wrapper_error__": (
+                f"the container wrapper timed out after {CONTAINER_WRAPPER_TIMEOUT_S:.0f}s"
+            ),
         }
     except OSError as exc:
         return {
-            "__wrapper_error__": f"the container wrapper could not be executed: {type(exc).__name__}: {exc}"
+            "__wrapper_error__": (
+                f"the container wrapper could not be executed: {type(exc).__name__}: {exc}"
+            ),
         }
     out = str(proc.stdout or "").strip()
     if proc.returncode != 0:
@@ -188,8 +191,8 @@ def call_tool(
     (``status``/``kind`` for a surface refusal, ``health_reason`` for a ledger
     exclusion, the visible-name list it should have been on).
     """
-    from .tools import ToolStore
     from .registry import resolve_registry
+    from .tools import ToolStore
 
     context = resolve_registry(
         runtime=runtime, project=project_id or None, db=db
@@ -331,7 +334,10 @@ def call_tool(
         ok=ok,
         result=result,
         failure_class="" if ok else "tool_error",
-        refusal="" if ok else str((result or {}).get("error", "")) if isinstance(result, dict) else "",
+        refusal=(
+            "" if ok
+            else str((result or {}).get("error", "")) if isinstance(result, dict) else ""
+        ),
     )
     return _finalize(payload)
 
@@ -363,7 +369,10 @@ def _finalize(payload: dict[str, Any]) -> dict[str, Any]:
     else:
         evidence.append(
             {
-                "ref": "skaldir.mcpserver._wrapper_for (via skaldir.agent_loop._call_registry_tool)",
+                "ref": (
+                    "skaldir.mcpserver._wrapper_for "
+                    "(via skaldir.agent_loop._call_registry_tool)"
+                ),
                 "kind": "run",
                 "note": (
                     "the call went through the loop's own wrapper path"
@@ -399,7 +408,10 @@ def _parse_json_args(raw: str) -> dict[str, Any] | None:
         parsed = json.loads(text)
     except json.JSONDecodeError as exc:
         return {"__error__": f"malformed --json-args: {exc}"}
-    return parsed if isinstance(parsed, dict) else {"__error__": "--json-args must be a JSON object"}
+    if not isinstance(parsed, dict):
+        return {"__error__": "--json-args must be a JSON object"}
+    return parsed
+
 
 
 def _exit_for(payload: dict[str, Any]) -> int:
@@ -460,7 +472,7 @@ def _envelope_driving() -> bool:
 def cmd_call(args: argparse.Namespace) -> int:
     """One call: resolve, refuse honestly, or run through the loop's path."""
     name = str(getattr(args, "name", "") or "").strip()
-    arguments, problem = _parse_json_args(getattr(args, "json_args", "") or ""), None
+    arguments = _parse_json_args(getattr(args, "json_args", "") or "")
     if isinstance(arguments, dict) and arguments.get("__error__"):
         message = str(arguments["__error__"])
         payload = {"ok": False, "failure_class": "usage", "refusal": message, "name": name}

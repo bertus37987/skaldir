@@ -8,8 +8,6 @@ The first sentence is the point of the gate. The second is the line it may never
 
 from __future__ import annotations
 
-import pytest
-
 from skaldir.approval import Decision
 from skaldir.approval_gate import ApprovalGate, ReadonlyTools, SpendingTools
 from skaldir.approval_modes import ALWAYS_NEEDS_APPROVAL, ApprovalMode

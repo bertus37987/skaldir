@@ -176,7 +176,9 @@ def test_cu_check_flips_when_the_switch_and_a_target_are_really_set(session_runt
     """`live_desktop` is measured: the switch alone IS a full-desktop opt-in (owner rule)."""
     monkeypatch.setenv("SKALDIR_CU_ALLOW_LIVE_DESKTOP", "1")
     _code, without_target = _cli(["cu", "check", "--json"], capsys)
-    assert without_target["data"]["live_desktop"] is True, "switch alone = full desktop (owner rule)"
+    assert (
+        without_target["data"]["live_desktop"] is True
+    ), "switch alone = full desktop (owner rule)"
     assert without_target["data"]["live_desktop_optin"]["opted_in"] is True
     assert without_target["data"]["live_desktop_optin"]["allowed"] is True
 

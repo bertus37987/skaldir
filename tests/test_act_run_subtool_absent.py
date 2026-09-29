@@ -27,9 +27,9 @@ from __future__ import annotations
 import re
 
 import pytest
+
 from skaldir import act_service as S
 from skaldir.computer_use import ActionResult, DryRunRunner
-
 
 # --------------------------------------------------------------------------- #
 # helpers (the patterns of tests/test_act_service.py)

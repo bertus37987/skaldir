@@ -10,11 +10,9 @@ shape is asserted field by field — not just a boolean.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
-from skaldir.code_exec_tool import CODE_TOOL_NAME, CODE_INPUT_SCHEMA, run_code_tool
+from skaldir.code_exec_tool import CODE_INPUT_SCHEMA, CODE_TOOL_NAME, run_code_tool
 
 
 @pytest.fixture()
@@ -116,7 +114,8 @@ def test_a_non_zero_exit_never_reads_as_success(tool):
 
 def test_the_tool_is_bound_to_its_own_workspace(tmp_path):
     a_ws, b_ws = tmp_path / "a", tmp_path / "b"
-    a_ws.mkdir(); b_ws.mkdir()
+    a_ws.mkdir()
+    b_ws.mkdir()
     (a_ws / "data.txt").write_text("IN-A", encoding="utf-8")
     (b_ws / "data.txt").write_text("IN-B", encoding="utf-8")
 

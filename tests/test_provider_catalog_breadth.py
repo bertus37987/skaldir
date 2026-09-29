@@ -333,19 +333,9 @@ def test_every_entry_records_some_licence_note():
         assert spec.licence, f"{spec.id} records no licence/ToS note"
 
 
-def test_a_registry_entry_becomes_a_candidate_with_the_registry_url():
-    candidate = pc.candidate_from_registry("deepseek")
-    assert candidate.base_url == pc.CATALOG["deepseek"].base_url
-    # the registry's default is the catalog's own id — read from the catalog, not retyped
-    assert candidate.model == pc.CATALOG["deepseek"].default_model
-    assert candidate.api_key_env == ("DEEPSEEK_API_KEY",)
-    # moonshot's default is the catalog's own id (was pinned `""` before the refresh)
-    moonshot = pc.candidate_from_registry("moonshot")
-    assert moonshot.model == pc.CATALOG["moonshot"].default_model
-    steps = pc.build_chain([moonshot], env={"MOONSHOT_API_KEY": "x"})
-    # with a documented default the step is no longer "no model"
-    assert steps[0].reason != pc.SKIP_NO_MODEL or not pc.CATALOG["moonshot"].default_model
-
+# The registry/catalog agreement section below carries the same assertion again, this
+# time covering BOTH branches of the moonshot default (the earlier copy at this spot was
+# a second definition of the same test name, so it never ran — F811).
 
 # --------------------------------------------------------------------------- #
 # quirks are present where they matter                                         #

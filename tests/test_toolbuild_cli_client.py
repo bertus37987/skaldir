@@ -15,7 +15,7 @@ import argparse
 import pytest
 
 from skaldir import cli
-from skaldir.capability import CapabilityRequest, CapabilityStore, STATUS_OPEN
+from skaldir.capability import STATUS_OPEN, CapabilityRequest, CapabilityStore
 from skaldir.llm import ScriptedLLM
 from skaldir.toolbuilder import ToolBuilder
 

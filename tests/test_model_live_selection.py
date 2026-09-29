@@ -6,7 +6,9 @@ from skaldir import model_picker as mp
 
 def test_live_rows_replace_stale_defaults_and_keep_only_bound_current(monkeypatch, tmp_path):
     monkeypatch.setattr(mp, "role_state", lambda **kw: {"llm": {
-        "base_url": "https://api.openai.com/v1", "model": "private-finetune", "api_key_env": "MY_KEY",
+        "base_url": "https://api.openai.com/v1",
+        "model": "private-finetune",
+        "api_key_env": "MY_KEY",
     }})
     calls = []
 

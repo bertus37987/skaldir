@@ -26,8 +26,9 @@ from __future__ import annotations
 
 import enum
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Iterable, Mapping
+from typing import Any
 
 __all__ = [
     "Availability",
@@ -39,7 +40,7 @@ __all__ = [
 ]
 
 
-class Availability(str, enum.Enum):
+class Availability(enum.StrEnum):
     """Whether a source actually answers. ``UNKNOWN`` is the honest default."""
 
     UNKNOWN = "unknown"          # not measured — the only safe default
@@ -48,7 +49,7 @@ class Availability(str, enum.Enum):
     RESTRICTED = "restricted"    # answered only under conditions (region, login, quota)
 
 
-class SourceKind(str, enum.Enum):
+class SourceKind(enum.StrEnum):
     FREE = "free"                 # no money, no account
     FREE_ACCOUNT = "free_account" # no money, but a login and its terms
     PAID = "paid"                 # costs money — APR-02 territory

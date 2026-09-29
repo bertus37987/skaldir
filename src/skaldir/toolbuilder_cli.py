@@ -584,7 +584,10 @@ def _python_health(args: argparse.Namespace, context, name: str, report: dict) -
         "(scan/import/test/determinism) ARE its health",
     )
     if getattr(args, "probe", False):
-        cli_contract.warn("--probe is a container-adapter call; the ledger state above is a python tool's health")
+        cli_contract.warn(
+            "--probe is a container-adapter call; the ledger state above is a python tool's health"
+        )
+
     print(
         f"{name}: python tool: health is its test status — "
         f"state={state.get('state')} selectable={selectable}"

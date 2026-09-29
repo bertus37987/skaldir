@@ -821,7 +821,9 @@ def tool_set_for(
         ))
     if selection in ("registry", "both"):
         # Deliberate: the *loop* surface refuses to invent a store. `store=None` here is a
-        # caller bug, and `tests/test_agent_loop.py::test_the_registry_tool_set_mixes_builtin_and_registered_tools`
+        # caller bug, and the test that pins it is
+        # `tests/test_agent_loop.py::test_the_registry_tool_set_mixes_builtin_and_registered_tools`
+
         # pins exactly that (`tool_set_for(kind="registry", store=None)` must raise). The
         # convenience of resolving `<runtime>/tools.db` lives in
         # `agent_toolset.build_agent_toolset`, whose signature advertises `store=None`.
@@ -2543,7 +2545,8 @@ class AgentLoop:
                                 f"approval[{gate_verdict.mode}]: {gate_verdict.reason}"
                             ]
                             outcome.error = (
-                                f"the call was not executed (approval: {gate_verdict.decision.value}). "
+                                "the call was not executed (approval: "
+                                f"{gate_verdict.decision.value}). "
                                 f"{gate_verdict.reason}"
                                 + (
                                     " — this needs your explicit approval"

@@ -2236,11 +2236,12 @@ AdapterRefusal = container_adapter.AdapterRefusal
 from .container_cli_templates import (  # noqa: E402 — after AdapterRefusal exists
     TEXT_TEMPLATES as _CLI_TEXT_TEMPLATES,
 )
-from .container_cli_templates import (  # noqa: E402
-    fixture_template,
+from .container_cli_templates import (  # noqa: E402, F401 — after AdapterRefusal exists;
+    #   re-exported facade: toolbuilder_cli imports ``load_schema_template`` THROUGH
+    #   skaldir.toolbuilder (``from .toolbuilder import AdapterRefusal,
+    #   load_schema_template``), so the name must keep resolving here even though this
+    #   module body never calls it.
     load_schema_template,
-    oracle_fixture,
-    oracle_host_twin,
 )
 
 

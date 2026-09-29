@@ -204,7 +204,6 @@ def test_register_cli_is_idempotent_and_upgrades_a_legacy_call_parser():
 
 
 def test_the_command_entry_carries_the_loop_call_path_as_evidence():
-    from skaldir import cli_contract as cc
     from skaldir.cli_shared import install_contract_entries
 
     entry = C.proposed_contract_entries()["tools.call"]
@@ -216,9 +215,10 @@ def test_the_command_entry_carries_the_loop_call_path_as_evidence():
     # the entry installs cleanly into a scratch contract table (idempotent shape):
     # the real table is left exactly as the other groups own it
     scratch: dict[str, object] = {"tools.show": object()}
-    assert install_contract_entries({"tools.call": entry}, type("M", (), {"COMMANDS": scratch})) == [
-        "tools.call"
-    ]
+    installed_names = install_contract_entries(
+        {"tools.call": entry}, type("M", (), {"COMMANDS": scratch})
+    )
+    assert installed_names == ["tools.call"]
     again = install_contract_entries(
         {"tools.call": entry}, type("M", (), {"COMMANDS": scratch})
     )

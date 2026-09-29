@@ -96,7 +96,7 @@ def test_the_tools_pane_shows_a_short_preview_per_call():
 
 
 def test_a_done_call_is_marked_and_a_running_one_is_marked_differently():
-    screen = Screen()
+    Screen()
     done = CallRow(call_id="#1", label="t", state=CallState.DONE).line(60)
     running = CallRow(call_id="#1", label="t", state=CallState.RUNNING).line(60)
     failed = CallRow(call_id="#1", label="t", state=CallState.FAILED).line(60)
@@ -336,6 +336,7 @@ def test_the_corner_indicator_is_the_confirmed_three_lines():
 
 def test_the_tui_reuses_the_host_indicator_rather_than_rewording_it():
     import inspect
+
     from skaldir import tui
     assert "indicator_lines" in inspect.getsource(tui.desktop_indicator)
 

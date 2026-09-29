@@ -404,7 +404,8 @@ def test_act_subtool_run_reobserves_when_the_anchor_is_not_observed(act_home, ca
 
 
 def test_act_subtool_run_reobserves_when_an_app_state_needle_is_absent(act_home, capsys):
-    """``focus_search_bar`` needs 'Search' in the app state — the channel works, the needle does not."""
+    """``focus_search_bar`` needs 'Search' in the app state — the channel works,
+    the needle does not."""
     code, document, _out, _err = _run(
         ["subtool", "run", "focus_search_bar", "--runner", "dry-run", "--json"], capsys
     )

@@ -29,9 +29,10 @@ import datetime as dt
 import json
 import threading
 import time
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Iterable, Mapping
+from typing import Any
 
 __all__ = ["SchedulerWorker", "WorkerTick", "WorkerReport"]
 

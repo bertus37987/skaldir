@@ -27,8 +27,10 @@ def _cwd_of(result) -> str:
 
 @pytest.fixture()
 def dirs(tmp_path):
-    a = tmp_path / "workspace-a"; a.mkdir()
-    b = tmp_path / "workspace-b"; b.mkdir()
+    a = tmp_path / "workspace-a"
+    a.mkdir()
+    b = tmp_path / "workspace-b"
+    b.mkdir()
     return a, b, tmp_path / "runtime"
 
 

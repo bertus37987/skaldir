@@ -49,7 +49,7 @@ __all__ = [
 ]
 
 
-class ApprovalMode(str, enum.Enum):
+class ApprovalMode(enum.StrEnum):
     """One of exactly three modes (APR-01). Order here is the Tab order."""
 
     ASK_EVERYTHING = "ask"

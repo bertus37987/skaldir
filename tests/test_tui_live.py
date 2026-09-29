@@ -12,12 +12,8 @@ The confirmed UI rule is asserted where it is implemented:
 
 from __future__ import annotations
 
-import threading
-import time
-
 import pytest
 
-from skaldir.approval_modes import ApprovalMode
 from skaldir.tui import CallState
 from skaldir.tui_live import LiveTui, LiveTuiConfig
 
@@ -52,10 +48,9 @@ def test_a_tool_shows_up_while_it_runs(tui):
 
 
 def test_the_loop_draws_more_than_once_as_events_arrive(tui):
-    steps = 0
     for i in range(5):
         tui.push_seq(i + 1, "tool.start", call_id=f"c{i}", tool="read_file")
-        steps = tui.step()
+        tui.step()
     assert tui.frame_count == 5, "the loop must keep drawing"
     assert len(tui.state.calls) == 5
 

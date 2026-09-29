@@ -507,7 +507,10 @@ def live_model_rows(
     data = PROVIDERS.get(choice.provider_id or choice.id.split("#", 1)[0], {})
     endpoint = base_url or choice.base_url
     state = role_state(path=path, env=env_map).get(role) or {}
-    bound = bool(state.get("base_url")) and str(state["base_url"]).rstrip("/") == endpoint.rstrip("/")
+    bound = bool(state.get("base_url")) and str(state["base_url"]).rstrip(
+        "/"
+    ) == endpoint.rstrip("/")
+
     current = str(state.get("model") or "") if bound else ""
     key_names = []
     if bound and state.get("api_key_env"):
@@ -536,7 +539,8 @@ def live_model_rows(
     return tuple(
         PickRow(
             f"{number} {model}",
-            "Listed by endpoint; tool support not tested" if live else f"Saved catalog {CATALOG_DATE}",
+            "Listed by endpoint; tool support not tested"
+            if live else f"Saved catalog {CATALOG_DATE}",
             ("current/custom" if custom else "current") if model == current
             else ("live" if live else "catalog/offline"), model,
         )
@@ -2568,7 +2572,9 @@ def _ask_key_value(
             where,
             name=name,
             say=lambda text: print(text, file=sys.stderr),
-            read=lambda prompt: (str(input(prompt)) if getattr(sys.stdin, "isatty", lambda: False)() else ""),
+            read=lambda prompt: (
+                str(input(prompt)) if getattr(sys.stdin, "isatty", lambda: False)() else ""
+            ),
             select=globals().get("select_in_terminal"),
         )
         if action == "keep":
@@ -2639,7 +2645,6 @@ def _pick_in_frame(
             )
             if backing is None:
                 return _cancelled(front)
-    current = str((states.get(chosen_role) or {}).get("model") or "")
     provider_answer = select_in_frame(
         front,
         title=(

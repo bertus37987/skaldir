@@ -22,17 +22,23 @@ from skaldir.tools_core import bridge
 
 def _cwd_of(result) -> str:
     output = result.get("output") if isinstance(result, dict) else None
-    return str(output.get("cwd") or "") if isinstance(output, dict) else str(result.get("cwd") or "")
+    if isinstance(output, dict):
+        return str(output.get("cwd") or "")
+    return str(result.get("cwd") or "")
 
 
 @pytest.fixture()
 def two_runs(tmp_path):
-    a = tmp_path / "ws-a"; a.mkdir()
-    b = tmp_path / "ws-b"; b.mkdir()
+    a = tmp_path / "ws-a"
+    a.mkdir()
+    b = tmp_path / "ws-b"
+    b.mkdir()
     (a / "data.txt").write_text("IN-A", encoding="utf-8")
     (b / "data.txt").write_text("IN-B", encoding="utf-8")
-    ra = tmp_path / "runtime-a"; ra.mkdir()
-    rb = tmp_path / "runtime-b"; rb.mkdir()
+    ra = tmp_path / "runtime-a"
+    ra.mkdir()
+    rb = tmp_path / "runtime-b"
+    rb.mkdir()
     (ra / "marker.txt").write_text("RUNTIME-A", encoding="utf-8")
     (rb / "marker.txt").write_text("RUNTIME-B", encoding="utf-8")
     return a, b, ra, rb
@@ -71,7 +77,7 @@ def test_two_runs_keep_their_own_files_shell_and_runtime(two_runs):
         t.join(timeout=90)
 
     assert not errors, errors
-    for name, root, runtime in (("run-a", a, ra), ("run-b", b, rb)):
+    for name, root, _runtime in (("run-a", a, ra), ("run-b", b, rb)):
         row = seen[name]
         assert row["cwd"] == str(root), f"{name} ran its shell in {row['cwd']!r}"
         blob = str(row["read"])
@@ -90,7 +96,10 @@ def test_a_write_in_one_run_never_reaches_the_other(two_runs):
 
     t1 = threading.Thread(target=write_in, args=("run-a", a, ra))
     t2 = threading.Thread(target=write_in, args=("run-b", b, rb))
-    t1.start(); t2.start(); t1.join(timeout=90); t2.join(timeout=90)
+    t1.start()
+    t2.start()
+    t1.join(timeout=90)
+    t2.join(timeout=90)
 
     assert (a / "from_run-a.txt").exists(), "run-a did not write in its own workspace"
     assert (b / "from_run-b.txt").exists(), "run-b did not write in its own workspace"
@@ -106,7 +115,8 @@ def test_required_isolation_refuses_when_the_backend_is_unusable(tmp_path):
     """'Bei vorgeschriebener Isolation und fehlendem Backend verweigern'."""
     from skaldir.tools_core import sandbox
 
-    ws = tmp_path / "ws"; ws.mkdir()
+    ws = tmp_path / "ws"
+    ws.mkdir()
     monkeypatch_state = sandbox._ISOLATION_CACHE.get("bwrap")
     try:
         sandbox._ISOLATION_CACHE["bwrap"] = {
@@ -132,7 +142,8 @@ def test_requested_isolation_still_falls_back_but_says_so(tmp_path):
     """`isolated` is a request: it falls back, and the warning is explicit."""
     from skaldir.tools_core import sandbox
 
-    ws = tmp_path / "ws"; ws.mkdir()
+    ws = tmp_path / "ws"
+    ws.mkdir()
     saved = sandbox._ISOLATION_CACHE.get("bwrap")
     try:
         sandbox._ISOLATION_CACHE["bwrap"] = {
@@ -176,7 +187,8 @@ def test_the_code_tool_never_claims_its_effects_were_approved(tmp_path):
     """'niemals behaupten, jede Codewirkung sei automatisch einzeln genehmigt'."""
     from skaldir.code_exec_tool import run_code_tool
 
-    ws = tmp_path / "ws"; ws.mkdir()
+    ws = tmp_path / "ws"
+    ws.mkdir()
     tool = run_code_tool(workspace=ws, runtime=tmp_path / "rt", run_id="r")
     result = tool.handler(source="result = 1")
     assert "not automatically" in result["isolation"]

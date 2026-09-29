@@ -33,7 +33,6 @@ from typing import Any
 
 from . import registry
 
-
 # --------------------------------------------------------------------------- #
 # run context (audit F03)
 # --------------------------------------------------------------------------- #
@@ -67,7 +66,7 @@ class RunContext:
         self.isolation_required = bool(isolation_required)
         self._previous: tuple[Any, Any, Any, Any] | None = None
 
-    def __enter__(self) -> "RunContext":
+    def __enter__(self) -> RunContext:
         self._previous = (
             getattr(_RUN_CONTEXT, "root", None),
             getattr(_RUN_CONTEXT, "runtime", None),

@@ -26,11 +26,12 @@ therefore checked first and cannot be widened by any policy document.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, Iterable
+from typing import Any
 
 from .approval import Decision
-from .approval_modes import ALWAYS_NEEDS_APPROVAL, ApprovalMode, policy_for
+from .approval_modes import ApprovalMode, policy_for
 
 __all__ = [
     "ApprovalGate",
@@ -93,7 +94,11 @@ def _needs_explicit(tool: str, text: str) -> tuple[bool, str]:
     """APR-02: does this call spend money or do something irreversible?"""
     name = (tool or "").strip().lower()
     if name in SpendingTools:
-        return True, f"{name!r} spends money — new spending needs explicit approval in every mode (APR-02)"
+        return True, (
+            f"{name!r} spends money — new spending needs explicit approval in "
+            "every mode (APR-02)"
+        )
+
     lowered = (text or "").lower()
     for marker in IrreversibleMarkers:
         if marker in lowered:
@@ -136,7 +141,10 @@ class ApprovalGate:
         """
         mode = self.mode_for(run_id)
         policy = policy_for(mode)
-        judge = Decision(judge_decision) if not isinstance(judge_decision, Decision) else judge_decision
+        judge = (
+            Decision(judge_decision) if not isinstance(judge_decision, Decision) else judge_decision
+        )
+
 
         # 1. a refusal is final — no mode turns FORBID into anything else
         if judge is Decision.FORBID:
@@ -220,7 +228,10 @@ class ApprovalGate:
         results = [
             self.decide(
                 tool=str(item.get("tool", "") or item.get("name", "")),
-                text=" ".join(str(v) for v in item.get("args", {}).values()) if isinstance(item.get("args"), dict) else str(item),
+                text=(
+                    " ".join(str(v) for v in item.get("args", {}).values())
+                    if isinstance(item.get("args"), dict) else str(item)
+                ),
                 judge_decision=verdicts[index] if index < len(verdicts) else Decision.ALLOW,
                 run_id=run_id,
             )

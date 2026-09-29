@@ -81,7 +81,7 @@ def test_the_framed_approve_bar_moves_with_left_right_and_enter():
             self.chooser = None
 
         def pick(self, chooser):
-            from skaldir.picker import SELECT, CANCEL
+            from skaldir.picker import CANCEL, SELECT
 
             self.chooser = chooser
             for key in self._keys:
@@ -249,7 +249,6 @@ class SimpleShell:
 @pytest.fixture()
 def no_existing_optin(monkeypatch):
     """No configured opt-in: the environment, the settings, everything empty."""
-    import os
 
     for key in ("SKALDIR_CU_ALLOW_LIVE_DESKTOP", "SKALDIR_CU_LIVE_TARGET"):
         monkeypatch.delenv(key, raising=False)

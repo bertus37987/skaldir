@@ -15,8 +15,6 @@ the parts that can be proven without a browser:
 
 from __future__ import annotations
 
-import json
-
 import pytest
 
 from skaldir.browser_layer import (

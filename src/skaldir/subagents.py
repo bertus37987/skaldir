@@ -751,7 +751,7 @@ def resolve_subagent_provider(
     model: str = "",
     role: str = "",
     runtime=None,
-    env: "Mapping[str, str] | None" = None,
+    env: Mapping[str, str] | None = None,
 ) -> tuple[Any, dict]:
     """Build the client **children** call through, and say where it came from.
 

@@ -34,10 +34,11 @@ import os
 import tempfile
 import threading
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 try:  # POSIX only; the in-process lock still applies elsewhere
     import fcntl
@@ -283,7 +284,10 @@ class DesktopLeaseStore:
         ``FileNotFoundError`` — measured in the concurrency test, not guessed.
         """
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp_name = tempfile.mkstemp(dir=str(self.path.parent), prefix=self.path.name + ".", suffix=".tmp")
+        fd, tmp_name = tempfile.mkstemp(
+            dir=str(self.path.parent), prefix=self.path.name + ".", suffix=".tmp"
+        )
+
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
                 handle.write(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
@@ -326,7 +330,10 @@ class DesktopLeaseStore:
         stamp = time.time() if now is None else float(now)
         with self._critical():
             data = self._read()
-            existing = DesktopLease.from_dict(data["lease"]) if isinstance(data.get("lease"), dict) else None
+            existing = (
+                DesktopLease.from_dict(data["lease"])
+                if isinstance(data.get("lease"), dict) else None
+            )
             # A released lease keeps its record for the audit trail but owns nothing: the
             # desktop is free again and the next run may take it without a forced takeover.
             if existing is not None and existing.state == LeaseState.FREE:
@@ -357,7 +364,10 @@ class DesktopLeaseStore:
         stamp = time.time() if now is None else float(now)
         with self._critical():
             data = self._read()
-            lease = DesktopLease.from_dict(data["lease"]) if isinstance(data.get("lease"), dict) else None
+            lease = (
+                DesktopLease.from_dict(data["lease"])
+                if isinstance(data.get("lease"), dict) else None
+            )
             if lease is None or lease.run_id != run_id:
                 return False
             lease.heartbeat_at = stamp
@@ -370,7 +380,10 @@ class DesktopLeaseStore:
         stamp = time.time() if now is None else float(now)
         with self._critical():
             data = self._read()
-            lease = DesktopLease.from_dict(data["lease"]) if isinstance(data.get("lease"), dict) else None
+            lease = (
+                DesktopLease.from_dict(data["lease"])
+                if isinstance(data.get("lease"), dict) else None
+            )
             if lease is None or lease.run_id != run_id:
                 return False
             lease.state = LeaseState.FREE
@@ -382,7 +395,10 @@ class DesktopLeaseStore:
             self._write(data)
             return True
 
-    def request_stop(self, *, reason: str = "double-escape", now: float | None = None) -> dict[str, Any]:
+    def request_stop(
+        self, *, reason: str = "double-escape", now: float | None = None
+    ) -> dict[str, Any]:
+
         """DESK-02/STOP-02: an emergency stop.
 
         Marks the run stopped, moves it to ``paused`` and — crucially — **bumps the
@@ -392,7 +408,10 @@ class DesktopLeaseStore:
         stamp = time.time() if now is None else float(now)
         with self._critical():
             data = self._read()
-            lease = DesktopLease.from_dict(data["lease"]) if isinstance(data.get("lease"), dict) else None
+            lease = (
+                DesktopLease.from_dict(data["lease"])
+                if isinstance(data.get("lease"), dict) else None
+            )
             if lease is None:
                 return {
                     "ok": False,
@@ -420,7 +439,10 @@ class DesktopLeaseStore:
         stamp = time.time() if now is None else float(now)
         with self._critical():
             data = self._read()
-            lease = DesktopLease.from_dict(data["lease"]) if isinstance(data.get("lease"), dict) else None
+            lease = (
+                DesktopLease.from_dict(data["lease"])
+                if isinstance(data.get("lease"), dict) else None
+            )
             if lease is None or lease.run_id != run_id:
                 raise LeaseRefused(f"run {run_id!r} does not hold the desktop lease")
             if not lease.stop_requested:

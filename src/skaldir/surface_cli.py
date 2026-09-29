@@ -30,7 +30,6 @@ environment; everything else is pure rendering or a small JSON file in the runti
 from __future__ import annotations
 
 import argparse
-import inspect
 import json
 from pathlib import Path
 from typing import Any
@@ -137,7 +136,8 @@ def _cmd_tui_preview(args: argparse.Namespace) -> int:
         report_envelope({"transcript": transcript, "run_id": state.run_id,
                          "calls": len(state.calls), "chat": len(state.chat),
                          "cursor": state.cursor},
-                        [{"ref": COMMAND_EVIDENCE.get("tui.preview", ""), "kind": "code", "note": ""}])
+                       [{"ref": COMMAND_EVIDENCE.get("tui.preview", ""),
+                         "kind": "code", "note": ""}])
         for line in lines:
             print(line)
         return EXIT_OK
@@ -272,7 +272,9 @@ def _cmd_tui_live(args: argparse.Namespace) -> int:
         "cursor": tui.state.cursor,
         "approval": tui.state.approval.value,
         "lines": frame,
-        "every_line_exactly_width_cells": all(len(l) == tui.config.width for l in frame),
+        "every_line_exactly_width_cells": all(
+            len(line) == tui.config.width for line in frame
+        ),
     }
     report_envelope(payload, [{"ref": COMMAND_EVIDENCE.get("tui.preview", ""),
                                "kind": "code", "note": ""}])
@@ -460,7 +462,9 @@ def _cmd_sources_add(args: argparse.Namespace) -> int:
         return EXIT_BLOCKED
     _save_sources(path, store)
     payload = {"source": source.to_dict(), "tool": getattr(args, "tool", "")}
-    report_envelope(payload, [{"ref": COMMAND_EVIDENCE.get("schedule.define", ""), "kind": "code", "note": ""}])
+    report_envelope(
+        payload, [{"ref": COMMAND_EVIDENCE.get("schedule.define", ""), "kind": "code", "note": ""}]
+    )
     dump(payload)
     return EXIT_OK
 
@@ -483,7 +487,9 @@ def _cmd_sources_report(args: argparse.Namespace) -> int:
         "disclaimer": ("Online availability is not universal and is not claimed here. "
                        "Access rights, data availability and each provider's terms apply."),
     }
-    report_envelope(payload, [{"ref": COMMAND_EVIDENCE.get("schedule.define", ""), "kind": "code", "note": ""}])
+    report_envelope(
+        payload, [{"ref": COMMAND_EVIDENCE.get("schedule.define", ""), "kind": "code", "note": ""}]
+    )
     dump(payload)
     return EXIT_OK
 
@@ -515,8 +521,11 @@ def _cmd_schedule_define(args: argparse.Namespace) -> int:
     )
     saved = _sched_store(args).define(schedule)
     payload = {"schedule": saved.to_dict(), "active": False,
-               "note": "SCHED-04: defined but NOT active — run `skaldir schedule activate` to enable it"}
-    report_envelope(payload, [{"ref": COMMAND_EVIDENCE.get("schedule.define", ""), "kind": "code", "note": ""}])
+               "note": "SCHED-04: defined but NOT active"
+                        " — run `skaldir schedule activate` to enable it"}
+    report_envelope(
+        payload, [{"ref": COMMAND_EVIDENCE.get("schedule.define", ""), "kind": "code", "note": ""}]
+    )
     dump(payload)
     return EXIT_OK
 
@@ -535,11 +544,14 @@ def _cmd_schedule_lifecycle(args: argparse.Namespace) -> int:
             result = {"deleted": store.delete(schedule_id), "schedule_id": schedule_id,
                       "note": "the execution ledger is kept: what already ran stays recorded"}
         else:
-            return usage(f"unknown schedule action {action!r}")
+            dump({"error": f"unknown schedule action {action!r}"})
+            return EXIT_USAGE
     except KeyError as exc:
         return blocked(str(exc), reason="not_found")
     payload = {"action": action, "result": result}
-    report_envelope(payload, [{"ref": COMMAND_EVIDENCE.get("schedule.define", ""), "kind": "code", "note": ""}])
+    report_envelope(
+        payload, [{"ref": COMMAND_EVIDENCE.get("schedule.define", ""), "kind": "code", "note": ""}]
+    )
     dump(payload)
     return EXIT_OK
 
@@ -548,7 +560,9 @@ def _cmd_schedule_list(args: argparse.Namespace) -> int:
     store = _sched_store(args)
     payload = {"schedules": [s.to_dict() for s in store.all()],
                "executions": [c.to_dict() for c in store.executions()]}
-    report_envelope(payload, [{"ref": COMMAND_EVIDENCE.get("schedule.define", ""), "kind": "code", "note": ""}])
+    report_envelope(
+        payload, [{"ref": COMMAND_EVIDENCE.get("schedule.define", ""), "kind": "code", "note": ""}]
+    )
     dump(payload)
     return EXIT_OK
 
@@ -575,7 +589,7 @@ def _cmd_schedule_run(args: argparse.Namespace) -> int:
     if ticks:
         worker.run_forever(max_ticks=ticks)
     else:
-        worker.tick(now=_dt.datetime.now(_dt.timezone.utc))
+        worker.tick(now=_dt.datetime.now(_dt.UTC))
     payload = {
         "report": worker.report.to_dict(),
         "evidence": str(evidence),
@@ -594,7 +608,7 @@ def _cmd_schedule_due(args: argparse.Namespace) -> int:
     import datetime as _dt
 
     store = _sched_store(args)
-    now = _dt.datetime.now(_dt.timezone.utc)
+    now = _dt.datetime.now(_dt.UTC)
     due = store.due(now=now)
     payload = {
         "now": now.isoformat(),
@@ -604,7 +618,9 @@ def _cmd_schedule_due(args: argparse.Namespace) -> int:
         "blocked_by_overlap": [s.schedule_id for s in store.all()
                                if s.active and s.serialize and store.is_running(s.schedule_id)],
     }
-    report_envelope(payload, [{"ref": COMMAND_EVIDENCE.get("schedule.define", ""), "kind": "code", "note": ""}])
+    report_envelope(
+        payload, [{"ref": COMMAND_EVIDENCE.get("schedule.define", ""), "kind": "code", "note": ""}]
+    )
     dump(payload)
     return EXIT_OK
 
@@ -856,7 +872,9 @@ def _cmd_desk_acquire(args: argparse.Namespace) -> int:
     payload = _desk_payload(store)
     payload["acquired"] = lease.to_dict()
     payload["fencing_token"] = lease.owner_token
-    report_envelope(payload, [{"ref": COMMAND_EVIDENCE["desk.acquire"], "kind": "code", "note": ""}])
+    report_envelope(
+        payload, [{"ref": COMMAND_EVIDENCE["desk.acquire"], "kind": "code", "note": ""}]
+    )
     dump(payload)
     return EXIT_OK
 
@@ -891,7 +909,9 @@ def _cmd_desk_release(args: argparse.Namespace) -> int:
         # has to reach the caller's stdout no matter which contract layer is installed
         payload["ok"] = False
         payload["reason"] = f"the desktop is not released: {decision.reason}"
-        report_envelope(payload, [{"ref": COMMAND_EVIDENCE["desk.release"], "kind": "code", "note": ""}])
+        report_envelope(
+            payload, [{"ref": COMMAND_EVIDENCE["desk.release"], "kind": "code", "note": ""}]
+        )
         dump(payload)
         return EXIT_BLOCKED
 
@@ -900,7 +920,9 @@ def _cmd_desk_release(args: argparse.Namespace) -> int:
     if not ok:
         return blocked(f"run {run_id!r} does not hold the desktop lease",
                        reason="not_lease_owner", details=payload)
-    report_envelope(payload, [{"ref": COMMAND_EVIDENCE["desk.release"], "kind": "code", "note": ""}])
+    report_envelope(
+        payload, [{"ref": COMMAND_EVIDENCE["desk.release"], "kind": "code", "note": ""}]
+    )
     dump(payload)
     return EXIT_OK
 
@@ -930,7 +952,9 @@ def _cmd_desk_stop(args: argparse.Namespace) -> int:
     from .stop_dispatch import StopDispatcher
 
     store = _store(args)
-    run_id = str(getattr(args, "run", "") or "") or (store.current().run_id if store.current() else "")
+    run_id = str(getattr(args, "run", "") or "") or (
+        store.current().run_id if store.current() else ""
+    )
     statuses: list[str] = []
     dispatcher = StopDispatcher(store, on_status=statuses.append)
     receipt = dispatcher.stop(run_id, reason=str(getattr(args, "reason", "") or "double-escape"))
@@ -1370,10 +1394,16 @@ def register_cli(subparsers: Any) -> Any:
     re_.add_argument("--reason", default="")
     re_.add_argument("--backend", default="", help="the display backend being released into")
     re_.add_argument("--session", default="", help="the session being released")
-    re_.add_argument("--proof", default="", help="path to the stop-path proof (default: runtime stop-feasibility.json)")
+    re_.add_argument(
+        "--proof",
+        default="",
+        help="path to the stop-path proof (default: runtime stop-feasibility.json)",
+    )
     re_.set_defaults(func=_cmd_desk_release)
 
-    sp = desk_sub.add_parser("stop", help="emergency stop: drain input, bump the fence, pause the owner")
+    sp = desk_sub.add_parser(
+        "stop", help="emergency stop: drain input, bump the fence, pause the owner"
+    )
     sp.add_argument("--reason", default="double-escape")
     sp.add_argument("--run", default="", help="the run to stop (default: the current owner)")
     sp.set_defaults(func=_cmd_desk_stop)

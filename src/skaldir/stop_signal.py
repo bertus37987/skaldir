@@ -43,12 +43,12 @@ import subprocess
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 __all__ = [
+    "Availability",
     "AVAILABILITY",
     "AVAILABILITY_VALUES",
-    "Backend",
     "BackendProbe",
     "DoubleEscapeDetector",
     "InputEvent",
@@ -72,7 +72,7 @@ DEFAULT_WINDOW_MS = 500
 DEFAULT_MIN_GAP_MS = 30
 
 
-class Availability(str, enum.Enum):
+class Availability(enum.StrEnum):
     """What a backend can honestly claim right now.
 
     ``UNKNOWN`` is not ``AVAILABLE``. It is the state STOP-05 cares about most: a backend
@@ -88,7 +88,7 @@ AVAILABILITY = Availability
 AVAILABILITY_VALUES: tuple[str, ...] = tuple(a.value for a in Availability)
 
 
-class Origin(str, enum.Enum):
+class Origin(enum.StrEnum):
     """Where an input event came from — the STOP-03 filter.
 
     ``AGENT`` covers everything Skaldir itself injects (``ydotool``, ``xdotool``, ``uinput``,
@@ -379,8 +379,11 @@ def _probe_global_shortcuts() -> BackendProbe:
 def _probe_x11_record() -> BackendProbe:
     """X11 XRecord grabs keys without focus — X11 only, and needs python-xlib."""
     if not os.environ.get("DISPLAY"):
-        return BackendProbe("x11-record", Availability.BLOCKED,
-                            "no DISPLAY in this environment", {}, "run under an X11/XWayland display")
+        return BackendProbe(
+            "x11-record", Availability.BLOCKED,
+            "no DISPLAY in this environment", {},
+            "run under an X11/XWayland display",
+        )
     try:
         import Xlib.display  # noqa: F401
     except Exception as exc:  # noqa: BLE001 - an optional extra, refused structurally

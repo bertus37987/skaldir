@@ -22,9 +22,9 @@ import re
 import shutil
 import subprocess
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Sequence
 
 __all__ = [
     "WindowInfo",
@@ -210,7 +210,10 @@ def _xdotool_key_argv(key: str) -> list[str]:
 def _wtype_key_argv(key: str) -> list[str]:
     tokens = normalize_key(key, "wtype")
     argv = ["wtype"]
-    mods = [t for t in tokens[:-1] if t.lower() in ("ctrl", "control", "alt", "super", "meta", "shift")]
+    mods = [
+        t for t in tokens[:-1]
+        if t.lower() in ("ctrl", "control", "alt", "super", "meta", "shift")
+    ]
     final = tokens[-1] if tokens else ""
     for mod in mods:
         argv += ["-M", mod.lower().replace("control", "ctrl").replace("meta", "super")]
@@ -748,7 +751,8 @@ class MacAdapter(PlatformAdapter):
 
     def list_windows(self) -> list[WindowInfo]:
         script = (
-            'tell application "System Events" to get name of every process whose background only is false'
+            'tell application "System Events" to get name of every process '
+            'whose background only is false'
         )
         code, output = _run(["osascript", "-e", script])
         if code != 0:
@@ -769,7 +773,10 @@ class MacAdapter(PlatformAdapter):
         return windows
 
     def get_active_window(self) -> WindowInfo | None:
-        script = 'tell application "System Events" to get name of first application process whose frontmost is true'
+        script = (
+            'tell application "System Events" to get name of first application process '
+            'whose frontmost is true'
+        )
         code, output = _run(["osascript", "-e", script])
         if code != 0 or not output.strip():
             return None
@@ -788,7 +795,10 @@ class MacAdapter(PlatformAdapter):
         return code == 0
 
     def close_window(self, wid: str) -> bool:
-        script = f'tell application "System Events" to tell process "{wid}" to keystroke "w" using command down'
+        script = (
+            f'tell application "System Events" to tell process "{wid}" '
+            'to keystroke "w" using command down'
+        )
         code, _ = _run(["osascript", "-e", script])
         return code == 0
 
@@ -927,7 +937,8 @@ class WindowsAdapter(PlatformAdapter):
             f"$p = Get-Process -Id {wid} -ErrorAction SilentlyContinue; "
             "if ($p) { "
             "  Add-Type -Name W -Namespace U -MemberDefinition "
-            "'[DllImport(\"user32.dll\")] public static extern bool SetForegroundWindow(IntPtr h);'; "
+            "'[DllImport(\"user32.dll\")] public static extern "
+            "bool SetForegroundWindow(IntPtr h);'; "
             "  [U.W]::SetForegroundWindow($p.MainWindowHandle) "
             "}"
         )
@@ -943,7 +954,10 @@ class WindowsAdapter(PlatformAdapter):
             self.focus_window(window)
         # PowerShell SendKeys: ^ = ctrl, % = alt, + = shift
         sk = key.lower().replace("ctrl+", "^").replace("alt+", "%").replace("shift+", "+")
-        ps = f'Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait("{sk}")'
+        ps = (
+            f'Add-Type -AssemblyName System.Windows.Forms; '
+            f'[System.Windows.Forms.SendKeys]::SendWait("{sk}")'
+        )
         code, _ = _run(["powershell", "-NoProfile", "-Command", ps])
         return code == 0
 
@@ -951,7 +965,10 @@ class WindowsAdapter(PlatformAdapter):
         if window:
             self.focus_window(window)
         escaped = text.replace('"', '`"')
-        ps = f'Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait("{escaped}")'
+        ps = (
+            f'Add-Type -AssemblyName System.Windows.Forms; '
+            f'[System.Windows.Forms.SendKeys]::SendWait("{escaped}")'
+        )
         code, _ = _run(["powershell", "-NoProfile", "-Command", ps])
         return code == 0
 
@@ -969,7 +986,8 @@ class WindowsAdapter(PlatformAdapter):
         up = 4 if button == 1 else 16
         ps = (
             "Add-Type -Name M -Namespace U -MemberDefinition "
-            "'[DllImport(\"user32.dll\")] public static extern void mouse_event(uint f, int x, int y, uint d, IntPtr e);'; "
+            "'[DllImport(\"user32.dll\")] public static extern void mouse_event("
+            "uint f, int x, int y, uint d, IntPtr e);'; "
             f"[U.M]::mouse_event({down},0,0,0,[IntPtr]::Zero); "
             f"[U.M]::mouse_event({up},0,0,0,[IntPtr]::Zero)"
         )
@@ -990,7 +1008,8 @@ class WindowsAdapter(PlatformAdapter):
         target.parent.mkdir(parents=True, exist_ok=True)
         ps = (
             'Add-Type -AssemblyName System.Windows.Forms,System.Drawing; '
-            '$b = New-Object System.Drawing.Bitmap([System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width, '
+            '$b = New-Object System.Drawing.Bitmap('
+            '[System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width, '
             '[System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height); '
             '$g = [System.Drawing.Graphics]::FromImage($b); '
             '$g.CopyFromScreen(0,0,0,0,$b.Size); '

@@ -8,19 +8,13 @@ disables; ``jev`` keeps today's behaviour and is the default.
 
 from __future__ import annotations
 
-from typing import Any
-
 import pytest
 
 from skaldir import context_manager as C
-
 from tests.test_context_manager import (  # the shared loop-history fixture builders
-    CRITERIA,
-    GOAL,
     loop_history,
     manager,
 )
-
 
 # --------------------------------------------------------------------------- #
 # the mode is resolved from the flag first, then the environment                #

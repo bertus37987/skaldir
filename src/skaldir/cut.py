@@ -90,7 +90,9 @@ def maybe_approve_live(*, goal: str = "", target: str = "") -> dict[str, Any]:
             "prompted": False,
             "persisted": False,
             "granted_now": False,
-            "reason": "no interactive shell is installed — the live-desktop approve bar cannot open",
+            "reason": (
+                "no interactive shell is installed — the live-desktop approve bar cannot open"
+            ),
         }
     # Always print the question first: even if the framed picker cannot draw, the
     # owner sees *why* and the three choices (the letter fallback reads them).
@@ -286,7 +288,9 @@ def live_desktop_decision(
         answer = (str(ask(prompt_question()) or "")).strip().lower()
         if answer in ("a", "once", "allow once", "1", "once_allow"):
             return _decide_from_value("once_allow", shell=shell)
-        if answer in ("s", "session", "allow session", "allow for this session", "2", "session_allow"):
+        if answer in ("s", "session", "allow session", "allow for this session", "2",
+                     "session_allow"):
+
             return _decide_from_value("session_allow", shell=shell)
         if answer in ("w", "always", "allow always", "a+", "always_allow"):
             return _decide_from_value("always_allow", shell=shell, target=target)

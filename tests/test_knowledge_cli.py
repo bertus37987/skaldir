@@ -11,7 +11,7 @@ import json
 import pytest
 
 from skaldir.knowledge import KnowledgeStore
-from skaldir.knowledge_cli import register_cli, contract_entries
+from skaldir.knowledge_cli import contract_entries, register_cli
 
 
 @pytest.fixture

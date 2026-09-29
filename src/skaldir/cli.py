@@ -947,7 +947,7 @@ def _cmd_tools_request(args: argparse.Namespace) -> int:
 
 def _cmd_tools_fulfill(args: argparse.Namespace) -> int:
     """Run the capability pipeline right now (pause-less CLI path)."""
-    from skaldir.capability import CapabilityStore, ToolBuildRunner
+    from skaldir.capability import CapabilityStore
 
     runtime = _registry_context(args).runtime_dir
     store = CapabilityStore(runtime)
@@ -1064,9 +1064,6 @@ def _toolbuild_llm_client(args: argparse.Namespace) -> tuple[object | None, dict
     ``client is None`` when no ready provider exists — the build then reports the
     honest ``no_source_no_client`` blocker instead of inventing code or a 401.
     """
-    import os
-
-    from . import cli_shared
 
     # No provider is configured (and no env/config file exists): skip the client
     # resolution entirely instead of raising through it — that keeps the honest

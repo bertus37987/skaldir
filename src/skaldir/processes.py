@@ -24,16 +24,16 @@ process group and cancel kills the **group**, exactly as ``terminal._run`` and
 
 from __future__ import annotations
 
-import errno
 import os
 import signal
 import subprocess
 import threading
 import time
 import uuid
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Iterable, Mapping
+from typing import Any
 
 __all__ = [
     "ManagedProcess",

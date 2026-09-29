@@ -20,8 +20,9 @@ more rights than the run already had.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Iterable
+from collections.abc import Iterable
+from dataclasses import dataclass
+from typing import Any
 
 __all__ = [
     "Rebrief",

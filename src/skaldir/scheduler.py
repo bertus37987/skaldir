@@ -20,14 +20,17 @@ The DST cases, spelled out because getting them wrong is silent and expensive:
 
 | Local time | Happens? | What this scheduler does |
 |---|---|---|
-| 02:30 on a spring-forward day | **no** | the occurrence is *shifted to the first instant after the gap*, once — not skipped, not run twice |
-| 02:30 on a fall-back day | **twice** | the occurrence is taken from the **first** pass only — once, never twice |
+| 02:30 on a spring-forward day | **no** | shifted to the first instant after the gap, once |
+| 02:30 on a fall-back day | **twice** | taken from the **first** pass only — once, never twice |
+
+The "once" above is not a simplification: in neither case may the occurrence be skipped
+or run twice, and both days are measured (2026-03-29 and 2026-10-25) rather than
+assumed — ``tests/test_scheduler.py`` pins each of them.
 """
 
 from __future__ import annotations
 
 import datetime as dt
-import hashlib
 import json
 import os
 import threading
@@ -35,7 +38,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Iterable, Iterator, Sequence
+from typing import Any
 
 try:
     from zoneinfo import ZoneInfo
@@ -82,7 +85,7 @@ class Occurrence:
     @property
     def key(self) -> str:
         """The identity of *this* firing — stable across processes and restarts."""
-        return self.utc.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        return self.utc.astimezone(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 @dataclass
@@ -179,11 +182,13 @@ class Schedule:
     @property
     def tz(self) -> Any:
         if ZoneInfo is None:  # pragma: no cover
-            return dt.timezone.utc
+            return dt.UTC
         try:
             return ZoneInfo(self.timezone)
-        except Exception:  # noqa: BLE001 — an unknown zone must not silently mean UTC
-            raise ValueError(f"unknown timezone {self.timezone!r} — refusing to fall back to UTC")
+        except Exception as exc:  # noqa: BLE001 — an unknown zone must not silently mean UTC
+            raise ValueError(
+                f"unknown timezone {self.timezone!r} — refusing to fall back to UTC"
+            ) from exc
 
 
 # --------------------------------------------------------------------------- #
@@ -211,7 +216,7 @@ def _local_occurrence(day: dt.date, hh: int, mm: int, tz: Any) -> tuple[dt.datet
         first = naive.replace(tzinfo=tz, fold=0)
         second = naive.replace(tzinfo=tz, fold=1)
     except Exception:  # noqa: BLE001
-        first = naive.replace(tzinfo=dt.timezone.utc)
+        first = naive.replace(tzinfo=dt.UTC)
         second = first
 
     utcoffset_a = first.utcoffset()
@@ -230,7 +235,7 @@ def _local_occurrence(day: dt.date, hh: int, mm: int, tz: Any) -> tuple[dt.datet
     #                lands the run just after the jump (02:30 -> 03:30 in Berlin), once
     #   ambiguous -> the FIRST pass of the repeated hour, once
     # Measured against Europe/Berlin 2026-03-29 and 2026-10-25, not assumed.
-    return first.astimezone(dt.timezone.utc), note
+    return first.astimezone(dt.UTC), note
 
 
 def occurrences_between(
@@ -245,8 +250,8 @@ def occurrences_between(
     """
     tz = schedule.tz
     hh, mm = _parse_hhmm(schedule.at_local)
-    start_utc = start.astimezone(dt.timezone.utc)
-    end_utc = end.astimezone(dt.timezone.utc)
+    start_utc = start.astimezone(dt.UTC)
+    end_utc = end.astimezone(dt.UTC)
 
     first_day = start_utc.astimezone(tz).date() - dt.timedelta(days=1)
     last_day = end_utc.astimezone(tz).date() + dt.timedelta(days=1)
@@ -264,7 +269,7 @@ def occurrences_between(
 
 def next_occurrence(schedule: Schedule, after: dt.datetime) -> Occurrence | None:
     """The first firing after ``after`` (UTC or aware)."""
-    after_utc = after.astimezone(dt.timezone.utc)
+    after_utc = after.astimezone(dt.UTC)
     for occ in occurrences_between(schedule, after_utc, after_utc + dt.timedelta(days=40)):
         return occ
     return None
@@ -275,7 +280,7 @@ def next_occurrence(schedule: Schedule, after: dt.datetime) -> Occurrence | None
 # --------------------------------------------------------------------------- #
 
 def _utc_now() -> dt.datetime:
-    return dt.datetime.now(dt.timezone.utc)
+    return dt.datetime.now(dt.UTC)
 
 
 class ScheduleStore:
@@ -478,7 +483,10 @@ class ScheduleStore:
             for c in self.executions()
         )
 
-    def recover(self, *, now: float | None = None, stale_after_s: float = 3600.0) -> list[ExecutionClaim]:
+    def recover(
+        self, *, now: float | None = None, stale_after_s: float = 3600.0
+    ) -> list[ExecutionClaim]:
+
         """Crash recovery: claims whose owner died are released.
 
         A claim that is still ``claimed``/``running`` after ``stale_after_s`` without a
@@ -493,7 +501,11 @@ class ScheduleStore:
             ledger = dict(data.get("executions", {}) or {})
             for key, record in list(ledger.items()):
                 claim = ExecutionClaim.from_dict(record)
-                if claim.state in ("claimed", "running") and stamp - claim.claimed_at > stale_after_s:
+                if (
+                    claim.state in ("claimed", "running")
+                    and stamp - claim.claimed_at > stale_after_s
+                ):
+
                     claim.state = "failed"
                     claim.detail = "released by crash recovery (owner did not report back)"
                     ledger[key] = claim.to_dict()
@@ -513,8 +525,8 @@ class ScheduleStore:
         missed runs. It is deliberately bounded: an unbounded window is exactly the
         "unkontrolliert alle nachholen" the requirement forbids.
         """
-        moment = (now or _utc_now()).astimezone(dt.timezone.utc)
-        window_start = (since or (moment - dt.timedelta(hours=24))).astimezone(dt.timezone.utc)
+        moment = (now or _utc_now()).astimezone(dt.UTC)
+        window_start = (since or (moment - dt.timedelta(hours=24))).astimezone(dt.UTC)
         out: list[tuple[Schedule, Occurrence]] = []
         for schedule in self.all():
             if not schedule.active:

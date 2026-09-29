@@ -1,15 +1,12 @@
 """TDD voice_cockpit: one payload of status + latest triage + next best action."""
 from __future__ import annotations
 
-import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest import mock
 
 from skaldir import events as events_mod
 from skaldir import voice_cockpit as vc
-from skaldir import voice_service
 
 
 def _runtime(tmp: Path) -> Path:

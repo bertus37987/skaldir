@@ -482,7 +482,10 @@ def test_every_handler_a_delegation_registers_is_inside_the_roles_own_ceiling(tm
         handlers = set(rd.child_handlers(workspace, role=role, state_dir=tmp_path / "state"))
         ceiling = set(roles.tools_for(role))
         assert handlers <= ceiling, (role, sorted(handlers - ceiling))
-        assert "write_file" in handlers if role in ("worker", "implementer") else "write_file" not in handlers
+        if role in ("worker", "implementer"):
+            assert "write_file" in handlers
+        else:
+            assert "write_file" not in handlers
         assert ("run_tests" in handlers) is (
             role in ("worker", "verifier", "debugger", "evidence_collector", "implementer")
         )

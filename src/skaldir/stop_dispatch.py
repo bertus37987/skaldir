@@ -28,11 +28,11 @@ What it guarantees, and what it deliberately refuses:
 from __future__ import annotations
 
 import time
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Any
 
-from .desktop_lease import DesktopLeaseStore, LeaseState
+from .desktop_lease import DesktopLeaseStore
 from .stop_signal import InputEvent, Origin, StopSignal
 
 __all__ = [

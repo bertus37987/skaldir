@@ -3661,7 +3661,11 @@ class Shell:
                     _cut.install_gate(self)
                 goal = str(text.split(" ", 1)[-1] if " " in text else "a computer-use action")
                 decision = _cut.maybe_approve_live(goal=goal.lstrip("/").split(" ", 1)[-1])
-                if decision and decision.get("prompted") and not decision.get("granted_now") and self.interactive:
+                if (
+                    decision and decision.get("prompted")
+                    and not decision.get("granted_now") and self.interactive
+                ):
+
                     self.say(self.paint(
                         f"  live desktop: {decision.get('reason', 'refused')}", "warn"))
                     return False
@@ -3938,7 +3942,11 @@ class Shell:
                             from .telemetry import format_tokens_short
 
                             if prompt_tokens:
-                                bar._last_ctx = f"ctx ~{format_tokens_short(int(prompt_tokens))} tok"
+                                if prompt_tokens:
+                                    bar._last_ctx = (
+                                        f"ctx ~{format_tokens_short(int(prompt_tokens))} tok"
+                                    )
+
                 except Exception:  # noqa: BLE001
                     pass
                 front.end_turn()

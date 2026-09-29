@@ -151,7 +151,8 @@ BROWSER_TITLE_RE = r"Zen|Firefox|Chrome|Chromium|Brave|Edge|Opera|browser"
 #: existing instance (new tab) instead of spawning another process — measured: the agent
 #: launched zen + firefox + zen-browser as three separate processes in one goal.
 BROWSER_LAUNCH = (
-    "BROWSER=${SKALDIR_CU_BROWSER:-$(xdg-settings get default-web-browser 2>/dev/null | sed 's/\\.desktop$//')}; "
+    "BROWSER=${SKALDIR_CU_BROWSER:-$(xdg-settings get default-web-browser "
+    "2>/dev/null | sed 's/\\.desktop$//')}; "
     "BROWSER=${BROWSER:-xdg-open}; command -v \"$BROWSER\" >/dev/null 2>&1 || BROWSER=xdg-open; "
     "pgrep -f 'zen|firefox|chrome|chromium|brave|edge' >/dev/null 2>&1 && BROWSER=xdg-open; "
 )
@@ -1340,7 +1341,11 @@ def check_end_state(
             except Exception:  # noqa: BLE001 — observe failure is not a crash
                 pass
         if channel == "app_state":
-            state = dict(app_state) if app_state is not None else read_app_state({}, observation_text)
+            state = (
+                dict(app_state) if app_state is not None
+                else read_app_state({}, observation_text)
+            )
+
             observation_text = str(state.get("text") or observation_text)
         expected = [
             str(value).strip()
@@ -2205,7 +2210,8 @@ BUILTIN_SUBTOOLS: tuple[dict, ...] = (
                 "argv": [
                     "sh",
                     "-c",
-                    BROWSER_LAUNCH + '"$BROWSER" about:blank >/dev/null 2>&1 & sleep 2; echo LAUNCHED',
+                    BROWSER_LAUNCH + '"$BROWSER" about:blank >/dev/null 2>&1 '
+                    '& sleep 2; echo LAUNCHED',
                 ],
                 "description": "launch the browser",
                 "verify": {"expect_stdout_contains": "LAUNCHED"},
@@ -2256,7 +2262,8 @@ BUILTIN_SUBTOOLS: tuple[dict, ...] = (
                 "argv": [
                     "sh",
                     "-c",
-                    BROWSER_LAUNCH + '"$BROWSER" https://www.youtube.com >/dev/null 2>&1 & sleep 3; echo LAUNCHED',
+                    BROWSER_LAUNCH + '"$BROWSER" https://www.youtube.com >/dev/null 2>&1 '
+                    '& sleep 3; echo LAUNCHED',
                 ],
                 "description": "open YouTube in the browser",
                 "verify": {"expect_stdout_contains": "LAUNCHED"},
@@ -2933,7 +2940,8 @@ def observe_anchors(
         label = f"{kind} {entry.get('id', text)!r} ({text!r})"
         if not state_ok:
             unobservable.append(
-                f"{label} needs the app's own state — {state.get('detail') or 'no app-state channel'}"
+                f"{label} needs the app's own state — "
+                f"{state.get('detail') or 'no app-state channel'}"
             )
             return
         if _window_matches(text, state_text):
@@ -3328,7 +3336,12 @@ def learn_subtool(
         finally:
             store.close()
     except Exception as exc:  # noqa: BLE001 — a broken store is a fact, not a crash
-        return {"learned": False, "error": "not_found", "reason": f"the event store is unreadable: {exc}"}
+        return {
+            "learned": False,
+            "error": "not_found",
+            "reason": f"the event store is unreadable: {exc}",
+        }
+
     if not rows:
         return {
             "learned": False,
@@ -3337,8 +3350,8 @@ def learn_subtool(
         }
     steps = [
         (
-            f"{str(entry.payload.get('kind', '') or '')}"
-            f"+{str(entry.payload.get('anchor', '') or entry.payload.get('detail', '') or '').strip()}"
+            f"{str(entry.payload.get('kind', '') or '')}+"
+            + str(entry.payload.get("anchor", "") or entry.payload.get("detail", "") or "").strip()
         )
         for entry in rows
     ]
@@ -3360,9 +3373,15 @@ def learn_subtool(
     for index, step_token in enumerate(pattern):
         kind = step_token.split("+", 1)[0] or "cli"
         anchor_text = step_token.split("+", 1)[1]
-        first = payloads[steps.index(step_token)]
         if index == 0:
-            anchors.append({"id": f"anchor_{index + 1}", "text": anchor_text or "target", "source": "window_title"})
+            anchors.append(
+                {
+                    "id": f"anchor_{index + 1}",
+                    "text": anchor_text or "target",
+                    "source": "window_title",
+                }
+            )
+
         declared = {
             "kind": kind if kind in DECLARED_KINDS else "cli",
             "channel": str(payloads[steps.index(step_token)].get("channel", "") or "api"),
@@ -3376,8 +3395,7 @@ def learn_subtool(
             declared["argv"] = ["true"]
             declared["verify"] = {"expect_observe_contains": step_token}
         actions.append(declared)
-    for index, entry in enumerate(anchors[:1]):
-        pass  # preconditions mirror the pattern's first anchor
+    # (the pattern's first anchor is mirrored as a precondition below, in `spec`)
     spec = {
         "name": name,
         "version": "0.1",

@@ -36,9 +36,10 @@ import shutil
 import subprocess
 import threading
 import time
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 __all__ = [
     "BackendKind",
@@ -66,7 +67,7 @@ OPERATIONS: tuple[str, ...] = (
 )
 
 
-class ErrorClass(str, enum.Enum):
+class ErrorClass(enum.StrEnum):
     """The error classes a result may carry — never a bare string."""
 
     NONE = ""
@@ -83,7 +84,7 @@ class ErrorClass(str, enum.Enum):
     UNKNOWN = "unknown"
 
 
-class BackendKind(str, enum.Enum):
+class BackendKind(enum.StrEnum):
     """Which executor a result actually came from (§4: "tatsächliches Backend")."""
 
     NONE = "none"
@@ -192,7 +193,7 @@ class TabInfo:
                 "owner": self.owner, "run_id": self.run_id, "session_id": self.session_id}
 
 
-class Operation(str, enum.Enum):
+class Operation(enum.StrEnum):
     DISCOVER = "browser.discover"
     ATTACH = "browser.attach"
     TABS = "browser.tabs"
@@ -253,11 +254,11 @@ def agent_browser_probe(*, binary: str = "agent-browser",
         return BrowserCapability(
             BackendKind.AGENT_BROWSER, available=False, binary=binary,
             reason=(
-                "`%s` is neither project-local (`node_modules/.bin`) nor on PATH. Install "
+                f"`{binary}` is neither project-local (`node_modules/.bin`) nor on PATH. Install "
                 "it pinned (never `latest`), e.g. `npm install --save-dev "
                 "agent-browser@<exact version>`, then record the version and its licence "
                 "here — §9.2/§9.3"
-            ) % binary,
+            ),
             missing=OPERATIONS,
         )
     version = ""

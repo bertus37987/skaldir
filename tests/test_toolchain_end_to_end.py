@@ -17,12 +17,11 @@ The chain is measured link by link: each stage's output is the next stage's inpu
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 
-from skaldir.toolhub import build_hub_manifest, discover, search, tool_dir
-from skaldir.toolbuilder import ContainerToolBuilder, ToolBuildRequest, ToolBuilder, choose_kind
+from skaldir.toolbuilder import ContainerToolBuilder, ToolBuilder, ToolBuildRequest, choose_kind
+from skaldir.toolhub import build_hub_manifest, discover, tool_dir
 
 # The chain is split across two classes on purpose: `ToolBuilder` builds and validates,
 # `ContainerToolBuilder` adds the container mining/reuse stages. Both are checked below

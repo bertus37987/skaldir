@@ -12,8 +12,6 @@ acceptance below pins both sides.
 
 from __future__ import annotations
 
-import os
-
 import pytest
 
 from skaldir.toolcall import ToolIntent, judge_tool_call

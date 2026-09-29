@@ -8,7 +8,6 @@ sleep, and nothing that could move the user's mouse.
 from __future__ import annotations
 
 import json
-import time
 
 import pytest
 

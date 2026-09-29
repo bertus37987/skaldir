@@ -24,8 +24,9 @@ from __future__ import annotations
 
 import re
 import time
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 __all__ = ["run_code_tool", "CODE_TOOL_NAME"]
 
@@ -45,7 +46,9 @@ CODE_INPUT_SCHEMA: dict[str, Any] = {
             "type": "string",
             "enum": ["python"],
             "default": "python",
-            "description": "only python is executed here; other runtimes go through the terminal tool",
+            "description": (
+                "only python is executed here; other runtimes go through the terminal tool"
+            ),
         },
         "timeout_s": {
             "type": "number",

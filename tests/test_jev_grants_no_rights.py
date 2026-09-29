@@ -17,10 +17,7 @@ from __future__ import annotations
 
 import inspect
 
-import pytest
-
 from skaldir.jev import contracts as C
-
 
 # --------------------------------------------------------------------------- #
 # existing coverage, asserted by name so it cannot quietly disappear

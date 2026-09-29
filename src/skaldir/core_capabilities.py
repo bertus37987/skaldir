@@ -22,8 +22,9 @@ So there is one assembly function here, and both entries use it. Its rules:
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 __all__ = ["core_capability_tools", "CAPABILITY_INDEX"]
 
@@ -59,7 +60,7 @@ def core_capability_tools(
     a policy-limited entry stays limited without getting a second, differently-named copy
     of the same tool.
     """
-    from .agent_loop import AgentTool, builtin_tools
+    from .agent_loop import builtin_tools
     from .code_exec_tool import run_code_tool
 
     ws = Path(workspace).expanduser().resolve()
@@ -139,7 +140,6 @@ def _registry_capabilities(ws: Path, rt: Path | None, *, store: Any, keep) -> li
     second execution path. Each call runs inside a :class:`~skaldir.tools_core.bridge.
     RunContext`, which is what makes the run's workspace win over the process cwd (F03).
     """
-    from .agent_loop import AgentTool
     from .tools_core import bridge as core_bridge
 
     out: list[Any] = []
@@ -190,7 +190,9 @@ def _bound_tool(capability: str, wrapper: Any, ws: Path, rt: Path | None, *,
         description=f"{CAPABILITY_INDEX.get(capability, capability)} (core tool, run-bound)",
         input_schema={"type": "object", "properties": properties, "required": required},
         handler=handler,
-        parallel_safe=capability in ("read_file", "list_dir", "search_files", "web_search", "web_fetch"),
+        parallel_safe=capability in (
+            "read_file", "list_dir", "search_files", "web_search", "web_fetch"
+        ),
         mutating=capability in ("terminal", "patch", "write_file"),
         source="core",
         source_name=f"skaldir.tools_core.bridge.{capability}",
@@ -274,13 +276,16 @@ def _process_tool(ws: Path, rt: Path | None, run_id: str) -> Any | None:
 
     def handler(do: str = "start", argv: list | None = None, process_id: str = "",
                 data: str = "", timeout_s: float = 0.0, **_ignored: Any) -> Any:
-        from .processes import ProcessState
 
         mgr = manager()
         action = str(do).lower()
         if action in ("start", "spawn"):
             if not argv:
-                return {"ok": False, "error": "usage", "reason": "`argv` is required to start a process"}
+                return {
+                    "ok": False,
+                    "error": "usage",
+                    "reason": "`argv` is required to start a process",
+                }
             try:
                 result = mgr.spawn(
                     [str(a) for a in argv], cwd=str(ws),

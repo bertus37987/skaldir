@@ -3,12 +3,10 @@ permissions, EXPAND promotion, SIGKILL crash recovery."""
 
 from __future__ import annotations
 
-import json
-
 from skaldir.action_engine import (
+    ActionEngine,
     ActionGraph,
     ActionNode,
-    ActionEngine,
     Boundary,
     GraphStore,
     NodeKind,
@@ -22,7 +20,12 @@ PERMS = ["net", "fs"]
 
 
 def _ok_exec(node: ActionNode) -> dict:
-    return {"ok": True, "verified": True, "detail": f"{node.name} ok", "evidence": [f"{node.id}.log"]}
+    return {
+        "ok": True,
+        "verified": True,
+        "detail": f"{node.name} ok",
+        "evidence": [f"{node.id}.log"],
+    }
 
 
 def _fail_exec(node: ActionNode) -> dict:

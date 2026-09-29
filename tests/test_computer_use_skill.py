@@ -70,7 +70,14 @@ class TestComputerUseSkillContent:
     def test_skill_no_builtin_dependency(self):
         body = load_builtin("computer-use")
         # The skill must teach generic driving, not require built-ins
-        assert "No app-specific built-in is required" in body or "no built-in" in body.lower() or "without built-in" in body.lower() or "built-in is required" in body or "Built-ins" in body
+        body_lower = body.lower()
+        assert (
+            "No app-specific built-in is required" in body
+            or "no built-in" in body_lower
+            or "without built-in" in body_lower
+            or "built-in is required" in body
+            or "Built-ins" in body
+        )
 
     def test_skill_english_only(self):
         body = load_builtin("computer-use")
@@ -92,7 +99,9 @@ class TestSelfImprovementLoop:
 
     def test_record_correction_folds_into_review(self, tmp_path):
         store = self._store(tmp_path)
-        assert record_correction(store, "computer-use", "use the Omarchy menu Super+Space for app launching")
+        assert record_correction(
+            store, "computer-use", "use the Omarchy menu Super+Space for app launching"
+        )
         proposal = review_skill(store, "computer-use")
         assert proposal is not None
         assert proposal.kind == "correction"
@@ -101,7 +110,9 @@ class TestSelfImprovementLoop:
 
     def test_apply_review_updates_body(self, tmp_path):
         store = self._store(tmp_path)
-        record_correction(store, "computer-use", "always use the Omarchy capture menu for screenshots")
+        record_correction(
+            store, "computer-use", "always use the Omarchy capture menu for screenshots"
+        )
         proposal = review_skill(store, "computer-use")
         assert apply_review(store, proposal)
         updated = store.get("computer-use")

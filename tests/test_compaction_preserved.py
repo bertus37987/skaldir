@@ -14,7 +14,6 @@ three. These tests name all of them.
 from __future__ import annotations
 
 from skaldir.context_manager import (
-    Preserved,
     preserved_items,
     verify_preserved,
 )
@@ -99,11 +98,13 @@ def test_the_five_named_categories_are_all_covered():
         approval_state="a",
     )
     labels = {i.label for i in items}
-    assert any(l == "goal" for l in labels), "Primärgoal"
-    assert any(l.startswith("criterion:") for l in labels), "offene Kriterien"
-    assert any(l.startswith("user_correction:") for l in labels), "Nutzerkorrekturen"
-    assert any(l.startswith("unknown_effect:") for l in labels), "ungeklärte Wirkungen"
-    assert any(l in ("last_tool_result", "current_user_turn") for l in labels), "wichtige Belege"
+    assert any(label == "goal" for label in labels), "Primärgoal"
+    assert any(label.startswith("criterion:") for label in labels), "offene Kriterien"
+    assert any(label.startswith("user_correction:") for label in labels), "Nutzerkorrekturen"
+    assert any(label.startswith("unknown_effect:") for label in labels), "ungeklärte Wirkungen"
+    assert any(
+        label in ("last_tool_result", "current_user_turn") for label in labels
+    ), "wichtige Belege"
 
 
 def test_blank_corrections_and_effects_are_skipped_not_recorded_as_empty():
@@ -111,8 +112,8 @@ def test_blank_corrections_and_effects_are_skipped_not_recorded_as_empty():
         [], goal="g", user_corrections=["  ", ""], unknown_effects=[""]
     )
     labels = [i.label for i in items]
-    assert not any(l.startswith("user_correction:") for l in labels)
-    assert not any(l.startswith("unknown_effect:") for l in labels)
+    assert not any(label.startswith("user_correction:") for label in labels)
+    assert not any(label.startswith("unknown_effect:") for label in labels)
 
 
 def test_a_preserved_item_is_verified_after_compaction_not_just_remembered():

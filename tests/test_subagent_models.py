@@ -20,7 +20,6 @@ from skaldir import runtime_delegation as rd
 from skaldir import subagents as S
 from skaldir.subagents import StubProvider
 
-
 # --------------------------------------------------------------------------- #
 # the settings keys                                                            #
 # --------------------------------------------------------------------------- #
@@ -226,13 +225,12 @@ def test_a_root_client_alone_stays_todays_fallback(tmp_path: Path, runtime):
 
 def test_the_spawn_tool_carries_optional_provider_and_model(tmp_path: Path, monkeypatch):
     """Rule C: the model may name a provider/model per call — clamped, refuse unknown."""
-    from skaldir.subagent_roles import ROLE_EXPLORE
 
     seen: dict[str, Any] = {}
 
     def fake_family(*, provider=None, model_override="", requested_provider="", **kwargs):
         seen.update(model=model_override, requested=requested_provider)
-        stub = StubProvider(latency_s=0.0, default_turns=1)
+        StubProvider(latency_s=0.0, default_turns=1)
 
         class FakeFamily:
             record = {"children_total": 0, "provider": {"mode": "stub"}}
@@ -330,7 +328,6 @@ def fake_open_spy(seen: dict):
 def test_the_cli_refuses_an_unknown_provider_by_name(
     tmp_path: Path, runtime, monkeypatch, capsys
 ):
-    from skaldir import subagents_cli
 
     monkeypatch.setenv("GODSV_HOME", str(runtime))
     code, document = _cli_result(

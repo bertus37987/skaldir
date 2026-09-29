@@ -7,10 +7,8 @@ the exit code in the structured result.
 """
 from __future__ import annotations
 
-import pytest
-
-from skaldir.act_service import check_end_state, run_action_list
-from skaldir.computer_use import ActionResult, CURunResult, LocalSandboxRunner
+from skaldir.act_service import check_end_state
+from skaldir.computer_use import ActionResult, LocalSandboxRunner
 
 
 class _StdoutRunner(LocalSandboxRunner):

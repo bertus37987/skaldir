@@ -25,7 +25,6 @@ from skaldir.desktop_lease import (
     StaleFence,
 )
 
-
 SRC = str(Path(__file__).resolve().parents[1] / "src")
 
 ACQUIRE_WORKER = textwrap.dedent("""

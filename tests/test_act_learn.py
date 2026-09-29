@@ -12,8 +12,9 @@ from pathlib import Path
 
 import pytest
 
-from skaldir import act_cli, act_service as S
-from skaldir import cli, cli_contract, events as events_mod
+from skaldir import act_cli, cli_contract
+from skaldir import act_service as S
+from skaldir import events as events_mod
 
 
 @pytest.fixture
@@ -67,7 +68,8 @@ def _run(act_home: Path, argv: list[str], capsys) -> tuple[int, dict | None]:
     captured = capsys.readouterr()
     out = captured.out.strip()
     document = json.loads(out) if out.startswith("{") else None
-    data = (document or {}).get("data") if isinstance((document or {}).get("data"), dict) else dict(document or {})
+    raw = (document or {}).get("data")
+    data = raw if isinstance(raw, dict) else dict(document or {})
     return int(code), data
 
 

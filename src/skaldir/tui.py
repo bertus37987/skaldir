@@ -36,7 +36,7 @@ from __future__ import annotations
 import enum
 import re
 from dataclasses import dataclass, field
-from typing import Any, Sequence
+from typing import Any
 
 from .approval_modes import ApprovalMode
 from .desktop_lease import IndicatorState, indicator_lines
@@ -93,13 +93,13 @@ def _plain(text: Any) -> str:
     return _ANSI_RE.sub("", "" if text is None else str(text))
 
 
-class Pane(str, enum.Enum):
+class Pane(enum.StrEnum):
     CHAT = "chat"
     TOOLS = "tools"
     GOAL = "goal"
 
 
-class CallState(str, enum.Enum):
+class CallState(enum.StrEnum):
     """The states the tools pane may show. ``done`` never implies fachlich success."""
 
     QUEUED = "queued"
@@ -177,7 +177,10 @@ class CallRow:
         for raw in sanitize(self.details, limit=2000).splitlines() or [""]:
             rows.append(f"  {sanitize(raw, limit=max(0, width - 4))}"[:width])
         if self.error:
-            rows.append(f"  {_ERR_MARK(unicode)} {sanitize(self.error, limit=max(0, width - 4))}"[:width])
+            rows.append(
+                f"  {_ERR_MARK(unicode)} {sanitize(self.error, limit=max(0, width - 4))}"[:width]
+            )
+
         return [r.ljust(width) for r in rows]
 
 
@@ -209,7 +212,10 @@ class GoalPanel:
             mark = tick if done else cross
             out.append(f"{mark} {sanitize(text, limit=max(0, width - 3))}"[:width])
         for text in self.open_points:
-            out.append(f"{'·' if unicode else '-'} open: {sanitize(text, limit=max(0, width - 8))}"[:width])
+            out.append(
+                f"{'·' if unicode else '-'} open: {sanitize(text, limit=max(0, width - 8))}"[:width]
+            )
+
         for text in self.blockers:
             out.append(f"{_ERR_MARK(unicode)} {sanitize(text, limit=max(0, width - 9))}"[:width])
         # VERIFY-02: UNKNOWN never counts as done
@@ -342,7 +348,12 @@ def humor_at(at: float, *, every_s: float = 45.0) -> str:
 
 def _hline(width: int, left: str = "", right: str = "", *, unicode: bool = True) -> str:
     bar = "─" if unicode else "-"
-    return f"{left}{' ' + bar * max(0, width - len(left) - len(right) - 2) + ' ' if right else bar * max(0, width - len(left))}{right}"[:width].ljust(width)
+    if right:
+        fill = " " + bar * max(0, width - len(left) - len(right) - 2) + " "
+    else:
+        fill = bar * max(0, width - len(left))
+    return f"{left}{fill}{right}"[:width].ljust(width)
+
 
 
 class Screen:

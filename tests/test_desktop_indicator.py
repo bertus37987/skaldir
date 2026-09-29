@@ -21,7 +21,6 @@ from skaldir.desktop_indicator import (
 )
 from skaldir.desktop_lease import IndicatorState, LeaseState
 
-
 # --------------------------------------------------------------------------- #
 # the box: exactly three confirmed lines, in the confirmed wording
 # --------------------------------------------------------------------------- #

@@ -794,7 +794,7 @@ def test_tolerant_stdin_replaces_invalid_bytes_with_the_replacement_char(monkeyp
 def test_tolerant_stdin_leaves_normal_text_alone(monkeypatch):
     import io as _io
 
-    raw = _io.BufferedReader(_io.BytesIO("skál hëlp\n".encode("utf-8")))
+    raw = _io.BufferedReader(_io.BytesIO("skál hëlp\n".encode()))
     monkeypatch.setattr(sys, "stdin", _io.TextIOWrapper(raw, encoding="utf-8"))
     stream = repl._tolerant_stdin()
     assert stream.readline() == "skál hëlp\n"

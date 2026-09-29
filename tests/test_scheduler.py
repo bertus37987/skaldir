@@ -19,9 +19,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from skaldir.scheduler import (
-    DEFAULT_TIMEZONE,
     CatchUp,
-    ExecutionClaim,
     Occurrence,
     Schedule,
     ScheduleStore,
@@ -74,9 +72,8 @@ def test_an_unknown_timezone_is_refused_not_silently_utc():
 def test_a_normal_day_fires_exactly_once_at_the_configured_local_time():
     s = _sched(at_local="02:30")
     # 2026-04-01 is a plain day in Berlin (CEST from 2026-03-29)
-    day = dt.date(2026, 4, 1)
-    start = dt.datetime(2026, 4, 1, 0, 0, tzinfo=dt.timezone.utc)
-    end = dt.datetime(2026, 4, 2, 0, 0, tzinfo=dt.timezone.utc)
+    start = dt.datetime(2026, 4, 1, 0, 0, tzinfo=dt.UTC)
+    end = dt.datetime(2026, 4, 2, 0, 0, tzinfo=dt.UTC)
     occ = occurrences_between(s, start, end)
     assert len(occ) == 1
     assert occ[0].local.hour == 2 and occ[0].local.minute == 30
@@ -86,8 +83,8 @@ def test_a_normal_day_fires_exactly_once_at_the_configured_local_time():
 def test_a_spring_forward_day_that_skips_the_local_time_still_fires_exactly_once():
     """02:30 does not exist on 2026-03-29 in Berlin (clocks jump 02:00 -> 03:00)."""
     s = _sched(at_local="02:30")
-    start = dt.datetime(2026, 3, 28, 0, 0, tzinfo=dt.timezone.utc)
-    end = dt.datetime(2026, 3, 31, 0, 0, tzinfo=dt.timezone.utc)
+    start = dt.datetime(2026, 3, 28, 0, 0, tzinfo=dt.UTC)
+    end = dt.datetime(2026, 3, 31, 0, 0, tzinfo=dt.UTC)
     occ = occurrences_between(s, start, end)
     day_after_gap = [o for o in occ if o.local.date() == dt.date(2026, 3, 29)]
     assert len(day_after_gap) == 1, (
@@ -100,8 +97,8 @@ def test_a_spring_forward_day_that_skips_the_local_time_still_fires_exactly_once
 def test_a_fall_back_day_that_repeats_the_local_time_fires_exactly_once():
     """02:30 happens twice on 2026-10-25 in Berlin (clocks fall 03:00 -> 02:00)."""
     s = _sched(at_local="02:30")
-    start = dt.datetime(2026, 10, 24, 0, 0, tzinfo=dt.timezone.utc)
-    end = dt.datetime(2026, 10, 27, 0, 0, tzinfo=dt.timezone.utc)
+    start = dt.datetime(2026, 10, 24, 0, 0, tzinfo=dt.UTC)
+    end = dt.datetime(2026, 10, 27, 0, 0, tzinfo=dt.UTC)
     occ = occurrences_between(s, start, end)
     day_of_gap = [o for o in occ if o.local.date() == dt.date(2026, 10, 25)]
     assert len(day_of_gap) == 1, (
@@ -111,8 +108,8 @@ def test_a_fall_back_day_that_repeats_the_local_time_fires_exactly_once():
 
 def test_weekdays_narrow_the_schedule():
     s = _sched(at_local="09:00", weekdays=(0, 2, 4))     # Mon, Wed, Fri
-    start = dt.datetime(2026, 9, 28, 0, 0, tzinfo=dt.timezone.utc)   # a Monday
-    end = dt.datetime(2026, 10, 5, 0, 0, tzinfo=dt.timezone.utc)
+    start = dt.datetime(2026, 9, 28, 0, 0, tzinfo=dt.UTC)   # a Monday
+    end = dt.datetime(2026, 10, 5, 0, 0, tzinfo=dt.UTC)
     occ = occurrences_between(s, start, end)
     assert len(occ) == 3
     assert {o.local.weekday() for o in occ} == {0, 2, 4}
@@ -120,7 +117,7 @@ def test_weekdays_narrow_the_schedule():
 
 def test_the_next_occurrence_is_a_real_instant_not_a_rule():
     s = _sched(at_local="09:00")
-    after = dt.datetime(2026, 9, 25, 12, 0, tzinfo=dt.timezone.utc)
+    after = dt.datetime(2026, 9, 25, 12, 0, tzinfo=dt.UTC)
     nxt = next_occurrence(s, after)
     assert nxt is not None
     assert nxt.utc > after
@@ -137,7 +134,7 @@ def test_defining_a_schedule_does_not_activate_it(store):
     assert s.active is False, "defining must not fire anything"
     assert store.get(s.schedule_id).active is False
     # and it therefore never appears as due
-    assert store.due(now=dt.datetime(2026, 9, 25, 12, 0, tzinfo=dt.timezone.utc)) == []
+    assert store.due(now=dt.datetime(2026, 9, 25, 12, 0, tzinfo=dt.UTC)) == []
 
 
 def test_activation_pause_and_deletion_are_separate_actions(store):
@@ -157,7 +154,7 @@ def test_deleting_a_schedule_keeps_what_it_already_ran(store):
     s = store.define(_sched())
     store.activate(s.schedule_id)
     occ = Occurrence(
-        utc=dt.datetime(2026, 9, 25, 0, 30, tzinfo=dt.timezone.utc),
+        utc=dt.datetime(2026, 9, 25, 0, 30, tzinfo=dt.UTC),
         local=dt.datetime(2026, 9, 25, 2, 30, tzinfo=BERLIN),
     )
     claim = store.claim(s.schedule_id, occ)
@@ -176,7 +173,7 @@ def test_the_same_firing_is_claimed_exactly_once(store):
     s = store.define(_sched())
     store.activate(s.schedule_id)
     occ = Occurrence(
-        utc=dt.datetime(2026, 9, 25, 0, 30, tzinfo=dt.timezone.utc),
+        utc=dt.datetime(2026, 9, 25, 0, 30, tzinfo=dt.UTC),
         local=dt.datetime(2026, 9, 25, 2, 30, tzinfo=BERLIN),
     )
     first = store.claim(s.schedule_id, occ)
@@ -189,7 +186,7 @@ def test_the_execution_id_is_persisted_so_a_restart_does_not_refire(store):
     s = store.define(_sched())
     store.activate(s.schedule_id)
     occ = Occurrence(
-        utc=dt.datetime(2026, 9, 25, 0, 30, tzinfo=dt.timezone.utc),
+        utc=dt.datetime(2026, 9, 25, 0, 30, tzinfo=dt.UTC),
         local=dt.datetime(2026, 9, 25, 2, 30, tzinfo=BERLIN),
     )
     assert store.claim(s.schedule_id, occ) is not None
@@ -204,13 +201,13 @@ def test_overlap_is_avoided_by_default(store):
     s = store.define(_sched(serialize=True))
     store.activate(s.schedule_id)
     occ = Occurrence(
-        utc=dt.datetime(2026, 9, 25, 0, 30, tzinfo=dt.timezone.utc),
+        utc=dt.datetime(2026, 9, 25, 0, 30, tzinfo=dt.UTC),
         local=dt.datetime(2026, 9, 25, 2, 30, tzinfo=BERLIN),
     )
     store.claim(s.schedule_id, occ)          # still running
     assert store.is_running(s.schedule_id) is True
 
-    now = dt.datetime(2026, 9, 25, 6, 0, tzinfo=dt.timezone.utc)
+    now = dt.datetime(2026, 9, 25, 6, 0, tzinfo=dt.UTC)
     assert store.due(now=now) == [], "a second firing started while the first was running"
 
 
@@ -219,16 +216,16 @@ def test_missed_runs_are_caught_up_once_not_all(store):
     s = store.define(_sched(at_local="02:30", catch_up=CatchUp.ONCE))
     store.activate(s.schedule_id)
     # three days passed with nothing running
-    now = dt.datetime(2026, 9, 28, 12, 0, tzinfo=dt.timezone.utc)
-    due = store.due(now=now, since=dt.datetime(2026, 9, 25, 0, 0, tzinfo=dt.timezone.utc))
+    now = dt.datetime(2026, 9, 28, 12, 0, tzinfo=dt.UTC)
+    due = store.due(now=now, since=dt.datetime(2026, 9, 25, 0, 0, tzinfo=dt.UTC))
     assert len(due) == 1, f"catch-up 'once' must fire one run, got {len(due)}"
 
 
 def test_missed_runs_can_be_skipped_entirely(store):
     s = store.define(_sched(at_local="02:30", catch_up=CatchUp.SKIP))
     store.activate(s.schedule_id)
-    now = dt.datetime(2026, 9, 28, 12, 0, tzinfo=dt.timezone.utc)
-    due = store.due(now=now, since=dt.datetime(2026, 9, 25, 0, 0, tzinfo=dt.timezone.utc))
+    now = dt.datetime(2026, 9, 28, 12, 0, tzinfo=dt.UTC)
+    due = store.due(now=now, since=dt.datetime(2026, 9, 25, 0, 0, tzinfo=dt.UTC))
     assert due == [], "catch-up 'skip' must not run anything from the past"
 
 
@@ -237,8 +234,8 @@ def test_catching_up_everything_has_to_be_asked_for_by_name(store):
     assert Schedule().catch_up == CatchUp.ONCE
     s = store.define(_sched(at_local="02:30", catch_up=CatchUp.ALL))
     store.activate(s.schedule_id)
-    now = dt.datetime(2026, 9, 28, 12, 0, tzinfo=dt.timezone.utc)
-    due = store.due(now=now, since=dt.datetime(2026, 9, 25, 0, 0, tzinfo=dt.timezone.utc))
+    now = dt.datetime(2026, 9, 28, 12, 0, tzinfo=dt.UTC)
+    due = store.due(now=now, since=dt.datetime(2026, 9, 25, 0, 0, tzinfo=dt.UTC))
     # 25, 26, 27 and 28 September at 02:30 local all fall inside the window
     assert len(due) == 4
 
@@ -247,8 +244,8 @@ def test_a_paused_schedule_never_fires(store):
     s = store.define(_sched())
     store.activate(s.schedule_id)
     store.pause(s.schedule_id)
-    now = dt.datetime(2026, 9, 28, 12, 0, tzinfo=dt.timezone.utc)
-    assert store.due(now=now, since=dt.datetime(2026, 9, 25, 0, 0, tzinfo=dt.timezone.utc)) == []
+    now = dt.datetime(2026, 9, 28, 12, 0, tzinfo=dt.UTC)
+    assert store.due(now=now, since=dt.datetime(2026, 9, 25, 0, 0, tzinfo=dt.UTC)) == []
 
 
 def test_crash_recovery_releases_a_dead_owner_but_keeps_the_ledger(store):
@@ -256,7 +253,7 @@ def test_crash_recovery_releases_a_dead_owner_but_keeps_the_ledger(store):
     s = store.define(_sched())
     store.activate(s.schedule_id)
     occ = Occurrence(
-        utc=dt.datetime(2026, 9, 25, 0, 30, tzinfo=dt.timezone.utc),
+        utc=dt.datetime(2026, 9, 25, 0, 30, tzinfo=dt.UTC),
         local=dt.datetime(2026, 9, 25, 2, 30, tzinfo=BERLIN),
     )
     claim = store.claim(s.schedule_id, occ, now=1.0)
@@ -302,7 +299,7 @@ def test_a_missing_service_is_a_precise_blocker_not_a_silent_skip(store):
     s = store.define(_sched())
     store.activate(s.schedule_id)
     occ = Occurrence(
-        utc=dt.datetime(2026, 9, 25, 0, 30, tzinfo=dt.timezone.utc),
+        utc=dt.datetime(2026, 9, 25, 0, 30, tzinfo=dt.UTC),
         local=dt.datetime(2026, 9, 25, 2, 30, tzinfo=BERLIN),
     )
     claim = store.claim(s.schedule_id, occ)

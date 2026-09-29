@@ -1473,7 +1473,6 @@ COMMANDS: dict[str, CommandSpec] = {
         exit_codes=(0, 1, 2, 3, 7),
         data_schema={'type': 'object', 'additionalProperties': True},
     ),
-
 }
 
 
@@ -2324,7 +2323,10 @@ def _probe_act(runtime: Path) -> tuple[bool, str, list[Probe]]:
             for name in ("observe.screenshot", "host.session.screenshot")
             if name in by_name
         ]
-        name = f"live desktop refused without the opt-in: `--allow-live-desktop --live-target <window>`"
+        name = (
+            "live desktop refused without the opt-in: "
+            "`--allow-live-desktop --live-target <window>`"
+        )
         return True, (f"{name} — verdict={report.get('verdict')} via "
                       f"{', '.join(bridges) or 'no available bridge'}"
                       + (f"; {', '.join(shots)}" if shots else "")), \

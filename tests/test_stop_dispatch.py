@@ -130,7 +130,8 @@ def test_a_second_stop_does_not_bump_the_fence_twice(store, statuses):
 
 
 def test_a_pause_cannot_be_cleared_by_voice_a_scheduler_or_a_restart(store):
-    """GOAL §3: Pause darf durch Voice, Scheduler oder Neustart nicht eigenständig aufgehoben werden."""
+    """GOAL §3: Pause darf durch Voice, Scheduler oder Neustart nicht
+    eigenständig aufgehoben werden."""
     store.acquire("run-1", task="t", now=1.0)
     dispatcher = _dispatcher(store, [])
     dispatcher.stop("run-1", now=2.0)

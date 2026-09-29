@@ -1,16 +1,14 @@
 """Knowledge store: INFO-01..04 — Markdown units, search, versioned reads, freshness."""
 from __future__ import annotations
 
-import time
-
 import pytest
 
 from skaldir.knowledge import (
+    KINDS,
+    LINE_TOO_LARGE,
+    STALE_REFERENCE,
     KnowledgeEntry,
     KnowledgeStore,
-    KINDS,
-    STALE_REFERENCE,
-    LINE_TOO_LARGE,
 )
 
 
@@ -53,7 +51,7 @@ class TestINFO01Store:
         assert entry.revision == expected
 
     def test_frontmatter_roundtrip(self, store):
-        entry = store.upsert(
+        store.upsert(
             _entry(
                 sources=["evidence-1", "evidence-2"],
                 applies_to={"app": "firefox", "version": "1.0"},

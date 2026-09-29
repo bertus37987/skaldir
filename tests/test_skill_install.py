@@ -7,7 +7,6 @@ import pytest
 
 from skaldir.skill_install import InstallError, install_skill, parse_target
 
-
 # ---------- target parsing ----------
 
 
@@ -57,15 +56,15 @@ def test_install_from_github_writes_skill_md(tmp_path, monkeypatch):
     tar = _tar_bytes(
         {
             "repo-abc123/write-test.md": (
-                "---\nname: write-test\ndescription: write a focused test\n"
-                "---\n\n# Write test\n1. read the code\n"
-            ).encode()
+                b"---\nname: write-test\ndescription: write a focused test\n"
+                b"---\n\n# Write test\n1. read the code\n"
+            )
         }
     )
     monkeypatch.setattr("skaldir.skill_install._fetch_codeload", lambda u, m: tar)
     store = Path(tmp_path / "memory.db")
     skills_dir = Path(tmp_path / "skills")
-    out = install_skill("someone/write-test", db=store, skills_dir=skills_dir)
+    install_skill("someone/write-test", db=store, skills_dir=skills_dir)
     skill_md = skills_dir / "write-test.md"
     assert skill_md.is_file()
     assert skill_md.read_text().startswith("---")
