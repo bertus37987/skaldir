@@ -539,15 +539,25 @@ class ScheduleStore:
             claimed = {
                 c.occurrence for c in self.executions() if c.schedule_id == schedule.schedule_id
             }
+            if schedule.catch_up == CatchUp.ONCE:
+                # Exactly one of the missed ones, the most recent — selected from the FULL
+                # missed list, never from the already-claimed-filtered subset. An older
+                # term must not be promoted to "the most recent" just because a concurrent
+                # worker already claimed the newest: that promotion is what let two workers
+                # fire two *different* missed terms in one round (the measured race). claim()
+                # is the sole guard that keeps it to one execution, so once the newest term
+                # is taken there is nothing left to catch up in this tick.
+                newest = found[-1]
+                if newest.key in claimed:
+                    continue
+                out.append((schedule, newest))
+                continue
             fresh = [o for o in found if o.key not in claimed]
             if not fresh:
                 continue
             if schedule.catch_up == CatchUp.SKIP:
                 # only firings that are actually now; nothing from the past
                 fresh = [o for o in fresh if (moment - o.utc).total_seconds() < 60]
-            elif schedule.catch_up == CatchUp.ONCE:
-                # exactly one of the missed ones, the most recent — never all of them
-                fresh = [fresh[-1]]
             for occ in fresh:
                 out.append((schedule, occ))
         out.sort(key=lambda pair: pair[1].utc)

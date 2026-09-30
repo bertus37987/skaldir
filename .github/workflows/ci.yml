@@ -18,6 +18,10 @@ jobs:
       - name: Lint (ruff)
         run: ruff check src tests
       - name: Tests (pytest)
-        run: pytest
+        # `python -m pytest tests/ -q` — the invocation that adds the repo root to sys.path
+        # (a bare `pytest` console script does not, so `from tests.<mod> import …` in the
+        # collected modules raised ModuleNotFoundError and aborted collection). Matches the
+        # milestone gate in services.yaml.
+        run: python -m pytest tests/ -q
       - name: Security scan (bandit)
         run: bandit -q -r src -ll

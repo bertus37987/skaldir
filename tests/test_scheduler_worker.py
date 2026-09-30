@@ -88,9 +88,14 @@ def _occurrence_of(occurrence) -> str:
 def test_the_same_term_never_runs_twice(store):
     """A restart (or a second worker) must not cause an unintended second effect.
 
-    The property is about the SAME firing. A ``catch_up=once`` schedule deliberately picks
-    up one missed term per tick — 28 September, then 27 September — and that is intended
-    catch-up, not a double effect. What must never happen is the same occurrence twice.
+    The property is about the SAME firing, and it is the same property
+    ``test_concurrent_workers_race_and_only_one_wins`` proves from four threads at once.
+    With ``catch_up=once`` the schedule fires exactly one missed term — the most recent one
+    — and the execution ledger keeps that record, so the workers after the first (a restart
+    that finds the newest occurrence already claimed) run nothing rather than firing it
+    again. An *older* missed term is never promoted to "the most recent" to fill the gap:
+    that promotion is what let two workers fire two different terms in one round, and it is
+    fixed in :meth:`ScheduleStore.due`. What must never happen is the same occurrence twice.
     """
     _activate(store)
     ran: list = []

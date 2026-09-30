@@ -8,6 +8,8 @@ absent, because a stub test cannot prove a transport works.
 from __future__ import annotations
 
 import json
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
@@ -72,6 +74,54 @@ def test_the_action_vocabulary_is_the_tools_actual_verbs():
 # real invocation — the vertical prototype (§5)
 # --------------------------------------------------------------------------- #
 
+
+class _ProbePage(BaseHTTPRequestHandler):
+    """A deterministic, self-owned page: one paragraph carries a unique marker.
+
+    Serves real HTTP on the loopback (the repo's established ``ThreadingHTTPServer`` on
+    ``127.0.0.1:0`` pattern). The marker lives in the *body text* — ``agent-browser read``
+    extracts the rendered body, not ``<title>`` — so the read's content assertion can be exact
+    instead of depending on a page nobody here controls.
+    """
+
+    def do_GET(self) -> None:  # noqa: N802 — http.server's spelling
+        body = (
+            b"<!doctype html><html><head><title>skaldir read probe</title></head>"
+            b"<body><p>SKALDIR-E2E-READ-PROBE deterministic read target.</p></body></html>"
+        )
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args: object) -> None:  # noqa: A002 — http.server's name
+        pass  # keep the pytest output clean
+
+
+@pytest.fixture()
+def read_probe_url() -> str:
+    """Provision the real-read precondition: a loopback page with a known marker.
+
+    The read below used to target the live ``https://example.com`` and assert its rendered
+    text. That page is external and IANA-owned: its body text changed in 2025 (the old
+    "Example Domain" heading is now only the ``<title>``, which ``agent-browser read`` does
+    not return), so the assertion was *environment*-dependent, not deterministic. This
+    fixture provisions the precondition instead — a real loopback HTTP page whose content is
+    known — so the read is still exercised through the real ``agent-browser`` binary against a
+    real URL, just without a dependency no test in this repo controls.
+    """
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), _ProbePage)
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{httpd.server_port}/probe"
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        thread.join(timeout=5)
+
+
 def _real() -> AgentBrowserBackend:
     return AgentBrowserBackend()
 
@@ -84,16 +134,27 @@ def test_the_real_binary_reports_a_version():
     assert "agent-browser" in cap.version
 
 
-def test_a_real_read_returns_the_page_content_not_the_json_envelope():
-    """BR-07: strukturierte selektive Seiteninhalte — measured against the real tool."""
+def test_a_real_read_returns_the_page_content_not_the_json_envelope(read_probe_url):
+    """BR-07: strukturierte selektive Seiteninhalte — measured against the real tool.
+
+    The load-bearing property is unchanged and as strong as before: a read through the real
+    ``agent-browser`` returns the page's *content* and the JSON envelope is unwrapped away.
+    What changed is only the *precondition*: the target is now the self-owned deterministic
+    page from :func:`read_probe_url` rather than the live example.com, whose rendered text is
+    external and changed (its "Example Domain" heading moved into ``<title>``, which the read
+    does not return) — that external dependency is what made this test environment-dependent.
+    The marker must survive the read, and the content must not be the raw ``{…}`` envelope.
+    """
     b = _real()
     if not b.probe().available:
         pytest.skip("agent-browser is not installed here")
-    result = b.read(url="https://example.com", session="pytest-read")
+    result = b.read(url=read_probe_url, session="pytest-read")
     assert result["ok"] is True, result.get("detail")
-    assert "Example Domain" in result["content"], f"unexpected content: {result['content'][:200]}"
+    assert "SKALDIR-E2E-READ-PROBE" in result["content"], (
+        f"the self-owned probe page content did not survive the read: {result['content'][:200]}"
+    )
     assert not result["content"].lstrip().startswith("{"), "the JSON envelope was not unwrapped"
-    assert result["url"].startswith("https://example.com")
+    assert result["url"].startswith("http://127.0.0.1:"), result.get("url")
     assert result["duration_ms"] is not None
     assert result["source"].startswith("agent-browser read")
 

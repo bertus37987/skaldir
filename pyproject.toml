@@ -152,7 +152,12 @@ include = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src", "integrations/hermes"]
+# "." (the repo root) is first: the `pytest` console script, unlike `python -m pytest`,
+# does not add the cwd to sys.path, so `from tests.<mod> import …` and
+# `from tools.<mod> import …` in collected test modules raised
+# `ModuleNotFoundError: No module named 'tests'/'tools'` and aborted collection (exit 2).
+# Putting the root here makes both invocation forms collect identically.
+pythonpath = [".", "src", "integrations/hermes"]
 addopts = "-q"
 
 [tool.ruff]

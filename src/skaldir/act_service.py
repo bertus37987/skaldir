@@ -1550,12 +1550,12 @@ def _default_desktop_store() -> Any:
     and the file itself is the authority between processes.
     """
     from .desktop_lease import DesktopLeaseStore
+    from .env import getenv
 
-    base = (
-        os.environ.get("SKALDIR_HOME")
-        or os.environ.get("GODSV_HOME")
-        or str(Path.home() / ".skaldir")
-    )
+    # One door for the runtime home: getenv("HOME") reads SKALDIR_HOME and falls back to
+    # GODSV_HOME through skaldir.env, so a leaked value is read in the one place that is
+    # guarded (test_env_leak_guard / test_rename_compat) rather than here in a second read.
+    base = getenv("HOME") or str(Path.home() / ".skaldir")
     path = str(Path(base) / "state" / "desktop-lease.json")
     store = _DEFAULT_STORE.get(path)
     if store is None:

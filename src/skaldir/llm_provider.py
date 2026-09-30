@@ -1020,7 +1020,7 @@ class OpenAICompatibleLLM:
             except Exception:  # noqa: BLE001 — never let reporting break the call
                 pass
             return
-        if os.environ.get("SKALDIR_QUIET") or os.environ.get("SKALDIR_FORMAT") in ("json", "jsonl"):
+        if getenv("QUIET") or getenv("FORMAT") in ("json", "jsonl"):
             return
         try:
             if sys.stderr.isatty():
