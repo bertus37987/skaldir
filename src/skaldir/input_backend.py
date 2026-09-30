@@ -290,12 +290,32 @@ def ydotool_reachable() -> tuple[bool, str]:
 
 
 def _unix_connect(sock: str):
+    """Verbinde mit dem Socket-Typ, den der Daemon wirklich spricht.
+
+    Gemessen 2026-09-30 auf dem Host: ydotoold bietet einen **SOCK_DGRAM**-Socket an
+    (`ss -xl` → `u_dgr`); ein reiner SOCK_STREAM-Versuch bekam Errno 91 (EPROTOTYPE)
+    und klassifizierte einen **lebenden** Daemon als ``BACKEND_MISSING``. Der Check
+    probiert deshalb beide Typen und zählt nur einen echten connect als erreichbar.
+    Eine nur noch liegende Socket-Datei täuscht das hier nicht weg: spätestens die
+    Sendung endet mit rc≠0, und die Vorbedingung ist nie der Beweis.
+    """
     import socket as _socket
 
-    client = _socket.socket(_socket.AF_UNIX, _socket.SOCK_STREAM)
-    client.settimeout(2.0)
-    client.connect(sock)
-    return client
+    problems: list[str] = []
+    for socket_type in (_socket.SOCK_STREAM, _socket.SOCK_DGRAM):
+        client = _socket.socket(_socket.AF_UNIX, socket_type)
+        client.settimeout(2.0)
+        try:
+            client.connect(sock)
+        except OSError as exc:
+            try:
+                client.close()
+            except OSError:
+                pass
+            problems.append(f"{socket_type.name}: {exc}")
+            continue
+        return client
+    raise OSError("; ".join(problems) or f"no connect to {sock}")
 
 
 def backend_available(name: str) -> tuple[bool, str]:

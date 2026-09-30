@@ -180,6 +180,59 @@ def test_ein_socket_der_verbindungen_verweigert_ist_nicht_erreichbar(monkeypatch
     assert str(path) in why
 
 
+def test_ein_lebender_datagram_daemon_ist_erreichbar(monkeypatch, tmp_path):
+    """Gemessen 2026-09-30 auf dem Host: ydotoold bietet einen **SOCK_DGRAM**-Socket an.
+
+    `ss -xl` nennt ihn `u_dgr`; der alte Check verband nur mit SOCK_STREAM und bekam
+    Errno 91 (EPROTOTYPE, „Protocol wrong type for socket") — ein lebender Daemon wurde
+    als ``BACKEND_MISSING`` klassifiziert. Erreichbar ist, womit sich **wirklich**
+    verbinden lässt. Ein connect, der nur gelingt, weil die Datei noch liegt, endet
+    spätestens bei der Sendung mit rc≠0 — die Vorbedingung ist nie der Beweis.
+    """
+    import shutil
+
+    path = tmp_path / "live-dgram.sock"
+    daemon = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+    daemon.bind(str(path))
+    monkeypatch.setattr(IB, "MISSION_SOCKET", str(path))
+    monkeypatch.setattr(IB, "DEFAULT_SOCKET", str(tmp_path / "none.sock"))
+    monkeypatch.delenv(IB.SOCKET_ENV, raising=False)
+    monkeypatch.setattr(
+        shutil, "which",
+        lambda name: "/usr/bin/ydotool" if name == "ydotool" else "",
+    )
+    try:
+        ok, why = IB.backend_available("ydotool")
+    finally:
+        daemon.close()
+    assert ok is True, why
+    assert "reachable" in why, why
+
+
+def test_ein_stream_daemon_bleibt_erreichbar(monkeypatch, tmp_path):
+    """Der ältere ydotoold-Stream-Socket bleibt erreichbar — der Fix darf den
+    bisher funktionierenden Weg nicht kappen."""
+    import shutil
+
+    path = tmp_path / "live-stream.sock"
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    listener.bind(str(path))
+    listener.listen(1)
+    monkeypatch.setattr(IB, "MISSION_SOCKET", str(path))
+    monkeypatch.setattr(IB, "DEFAULT_SOCKET", str(tmp_path / "none.sock"))
+    monkeypatch.delenv(IB.SOCKET_ENV, raising=False)
+    monkeypatch.setattr(
+        shutil, "which",
+        lambda name: "/usr/bin/ydotool" if name == "ydotool" else "",
+    )
+    try:
+        ok, why = IB.backend_available("ydotool")
+    finally:
+        listener.close()
+    assert ok is True, why
+    assert "reachable" in why, why
+
+
 def test_die_socket_reihenfolge_gilt(monkeypatch):
     """`YDOTOOL_SOCKET` zuerst, dann der Mission-Socket, dann die Voreinstellung."""
     monkeypatch.setenv(IB.SOCKET_ENV, "/first.sock")
