@@ -604,6 +604,45 @@ def test_a_stood_down_frame_is_not_asked_to_clear_the_screen(runtime):
     assert "\x1b[2J" not in out.getvalue()[before:], "nothing was wiped"
 
 
+def test_the_frame_does_not_flush_what_was_already_typed(tmp_path):
+    """The prompt must not eat the line the user typed while it was being drawn.
+
+    ``tty.setcbreak`` defaults to ``TCSAFLUSH``, which discards the terminal's *pending*
+    input. The frame paints the logo, the band and four rows and only then calls
+    ``select()`` — so everything typed during that paint was already queued, and
+    ``TCSAFLUSH`` deleted it. Measured on a loaded host: the whole line ``scan -`` vanished
+    and the following ``^C`` only ever cleared an empty prompt.
+
+    The test is the mechanism, checked directly: put a terminal in the frame's input mode
+    with a byte already pending, and read it back. ``TCSAFLUSH`` leaves nothing to read
+    (the read is bounded, so the test fails rather than hangs), ``TCSADRAIN`` returns the
+    byte — which is the difference between a lost first character and a usable editor.
+    """
+    if termios_unavailable():  # pragma: no cover — Windows
+        pytest.skip("no pty on this platform")
+    import fcntl
+    import pty
+    import select
+    import struct
+    import termios as _termios
+
+    master, slave = pty.openpty()
+    try:
+        fcntl.ioctl(slave, _termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
+        # ISIG stays on (that is what turns a real ^C into a SIGINT for the shell), so the
+        # only thing under test is the flush mode.
+        chatbar.tty.setcbreak(slave, _termios.TCSADRAIN)
+        os.write(master, b"x")            # a character typed before the reader looks
+        time.sleep(0.2)                  # ... and now it is sitting in the queue
+        assert chatbar._cbreak_keep_input(slave) is None
+        ready, _w, _x = select.select([slave], [], [], 1.0)
+        assert ready, "the frame flushed a character that was already typed"
+        assert os.read(slave, 1) == b"x"
+    finally:
+        os.close(slave)
+        os.close(master)
+
+
 def test_ctrl_c_is_the_shells_interrupt_and_ctrl_d_is_the_exit(tree):
     bar, _ = _palette_bar(tree)
     for char in "/go":
@@ -1437,23 +1476,35 @@ def _pty_child(tmp_path, width: int = 80, height: int = 24):
     return master, child
 
 
-def _read_until(master: int, needle: bytes, deadline: float = 12.0) -> bytes:
+#: How long a pty readiness wait may take. A bound on a slow *start*, never a substitute
+#: for waiting: every step below still waits for its own condition. The child's startup is
+#: what a loaded host stretches (measured on this one: first prompt at 1.6 s idle, 13-40 s
+#: with the cores saturated), so the bound covers a slow start and nothing else.
+PTY_READY_TIMEOUT = 60.0
+
+
+def _read_until(master: int, needle: bytes, deadline: float = PTY_READY_TIMEOUT) -> bytes:
+    """Everything the pty has said so far, stopping as soon as ``needle`` shows up.
+
+    A readiness wait, not a sleep: it returns the moment the terminal really said the thing.
+    """
     import select
 
     seen = b""
     end = time.monotonic() + deadline
-    while time.monotonic() < end:
+    while True:
         try:
             ready, _, _ = select.select([master], [], [], 0.2)
-            if not ready:
-                continue
-            chunk = os.read(master, 65536)
+            if ready:
+                chunk = os.read(master, 65536)
+                if not chunk:
+                    break
+                seen += chunk
         except OSError:
             break
-        if not chunk:
-            break
-        seen += chunk
         if needle in seen:
+            break
+        if time.monotonic() > end:
             break
     return seen
 
@@ -1463,6 +1514,11 @@ def test_a_real_pty_shows_the_two_bars_and_survives_a_ctrl_c(tmp_path):
 
     Skipped when the PTY machinery is not available; the ``MVP/62`` capture is the same
     journey with every step recorded.
+
+    The two fixed sleeps this used to carry (after the echoed text, after the ``SIGWINCH``)
+    are now readiness waits. A sleep after a *resize* is a guess with no way to be right:
+    the redraw lands whenever the child gets round to it, and the assertion that followed
+    read the screen in whatever state that sleep happened to land in.
     """
     if termios_unavailable():  # pragma: no cover — Windows
         pytest.skip("no pty on this platform")
@@ -1472,8 +1528,7 @@ def test_a_real_pty_shows_the_two_bars_and_survives_a_ctrl_c(tmp_path):
         seen = _read_until(master, bar_bytes)
         assert bar_bytes in seen, seen[-400:]
         os.write(master, b"hello")
-        time.sleep(0.3)
-        seen += _read_until(master, b"hello", deadline=4.0)
+        seen += _read_until(master, b"hello", deadline=10.0)
         assert b"hello" in seen
         # a resize: the child gets SIGWINCH through the pty and redraws at the new width
         import fcntl
@@ -1483,12 +1538,12 @@ def test_a_real_pty_shows_the_two_bars_and_survives_a_ctrl_c(tmp_path):
 
         fcntl.ioctl(master, _termios.TIOCSWINSZ, struct.pack("HHHH", 30, 100, 0, 0))
         os.kill(child.pid, _signal.SIGWINCH)
-        time.sleep(0.4)
-        seen += _read_until(master, bar_bytes, deadline=3.0)
+        # readiness: the redraw the resize caused, not a guess about when it lands
+        seen += _read_until(master, bar_bytes, deadline=20.0)
         assert seen.count(bar_bytes) >= 2  # the frame came back after the resize
         # Ctrl-C at the prompt: the shell clears the line and keeps its session
         os.write(master, b"\x03")
-        seen += _read_until(master, b"cleared", deadline=6.0)
+        seen += _read_until(master, b"cleared", deadline=20.0)
         assert b"cleared" in seen, seen[-600:]
         assert bar_bytes in seen  # the frame is still there after the cancel
     finally:

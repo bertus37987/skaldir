@@ -57,7 +57,16 @@ Raw logs stay under ignored `logs/`; this is the sanitized summary.
   (same working form as `services.yaml`).
 
 ## STILL BLOCKING a fully-green full run (NOT part of a–f; environmental/timing)
-On THIS host the full suite reports exactly 4 failures, all real-terminal PTY/real-subprocess tests
+
+**RESOLVED** — see `docs/audit/PTY-TESTS-LOAD-ROBUST.md` (feature `pty-tests-load-robust`). The four
+failures below were reproduced under synthetic CPU load and fixed at their measured root: the frame's
+`tty.setcbreak` default (`TCSAFLUSH`) was discarding already-typed input, the SIGINT was sent to a
+child still importing, and the prompt mark was matching the echo of the test's own keystrokes. The
+wait is now readiness-polled. A clean full run is green (8222 passed, 0 failed) and the four are
+green in 13 consecutive targeted runs under load 18–21 on this 12-core host. The original findings
+are kept below as the record they were.
+
+On THIS host the full suite reported exactly 4 failures, all real-terminal PTY/real-subprocess tests
 that pass at idle and fail only under the full suite's own CPU load (proven by a synthetic CPU-load
 reproduction, no earlier tests involved; therefore NOT related to a–f):
 

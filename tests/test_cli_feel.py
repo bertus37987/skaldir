@@ -50,6 +50,32 @@ _ANSI = re.compile(rb"\x1b\[[0-9;?]*[A-Za-z]|\x1b[=>()][A-Za-z0-9]?")
 PROMPT_BYTES = repl.PROMPT_MARK.encode("utf-8")
 ACTION_BYTES = "⏺".encode()
 
+#: The verdict a cancelled command reports. Waiting for the *prompt* after a Ctrl-C only
+#: says "the shell is asking again" — which is also what it says when the ``^C`` arrived
+#: before the command ever started, and then the line under test never ran. This is the
+#: shell's own cancel line, so a step that waits for it waits for the cancel to be real.
+CANCELLED_BYTES = b"cancelled `skaldir scan -`"
+
+#: The result line a **finished** command prints: ``  ⎿ exit 0 (OK) · …``.
+#:
+#: This is the marker the framework got wrong, and the measurement is the reason. The bare
+#: prompt mark is *also* painted on the composer row while a line is being typed, so
+#: ``until(PROMPT_BYTES)`` after a command is sent is satisfied by the **echo of the very
+#: keystrokes the test just wrote** (measured: it matched in 0.2 s, on ``  ❯ s`` — the first
+#: character echoed — while the command was still running and its result line arrived
+#: seconds later). The next keystroke then landed before the shell was back at its prompt,
+#: which is the whole class of load failure this work is about.
+#:
+#: So a step that means *"wait until this command has finished"* waits for the command's
+#: own verdict, not for a glyph that appears in half a dozen other places. The prompt mark
+#: stays for the steps that really only mean "the frame drew a row" (startup, the palette).
+RESULT_LINE = re.compile("⎿ exit \\d+ \\([A-Z]+\\)".encode())
+
+#: The history table's own header line — what ``history 3`` prints once it has really run.
+#: The test asserts on the history that follows it, so the step has to wait for the table
+#: rather than for the prompt mark (which the echo satisfies, see :data:`RESULT_LINE`).
+HISTORY_BYTES = b"last 1 command(s)"
+
 
 @pytest.fixture
 def runtime(tmp_path, monkeypatch):
@@ -461,8 +487,8 @@ def pty_session(
     rows: int = 24,
     runtime: Path,
     settle: float = 0.1,
-    timeout: float = 120.0,
-    expect_timeout: float = 15.0,
+    timeout: float = 300.0,
+    expect_timeout: float = 60.0,
 ):
     """Run the shell on a real 80x24 PTY and send real keystrokes; return (code, raw).
 
@@ -476,6 +502,12 @@ def pty_session(
     with the pty as its controlling terminal**, otherwise the line discipline has no
     foreground process group to signal and a Ctrl-C keystroke is swallowed instead of
     becoming SIGINT (measured: the shell then hangs on the blocked command).
+
+    ``expect_timeout`` is a **bound**, not a guess: the condition each step waits for is
+    unchanged, only the ceiling moved, because the child's *start* is what a loaded host
+    stretches (measured on this one: the first prompt at 1.6 s idle, 13-40 s with the
+    cores saturated — the old 15 s ceiling could not cover a slow start, and a session that
+    was merely slow looked exactly like a cancelled command that never ran).
     """
     env = _child_env(runtime)
     pid, master = pty.fork()
@@ -508,15 +540,25 @@ def pty_session(
                 return
             chunks.append(data)
 
-    def until(needle: bytes, *, start: int = 0, seconds: float = 10.0) -> bool:
+    def until(needle, *, start: int = 0, seconds: float = 10.0) -> bool:
         """Wait for ``needle`` (searching from ``start``); ``False`` on timeout.
 
         A fixed sleep is a guess about a loaded machine; waiting for the prompt is not
         (measured: under a parallel test run a fixed 0.6 s let a keystroke arrive before
         readline was ready, and the completion was simply lost).
+
+        ``needle`` is bytes or a compiled **bytes** pattern. Which marker a step waits for is
+        the substance, not a detail: the bare prompt mark is painted on the composer row
+        while a line is being *typed* as well, so a step that means "this command has
+        finished" has to wait for that command's own verdict — see :data:`RESULT_LINE`.
         """
+        def seen(blob: bytes) -> bool:
+            if hasattr(needle, "search"):
+                return bool(needle.search(blob))
+            return needle in blob
+
         end = time.monotonic() + seconds
-        while needle not in captured()[start:]:
+        while not seen(captured()[start:]):
             if time.monotonic() > end:
                 return False
             drain(0.2)
@@ -688,9 +730,16 @@ def test_real_pty_session_at_80x24(tmp_path):
             (b"\x15", 0.2),                   # C-u: clear the line
             (b"/\r", 0.3, PROMPT_BYTES),      # `/` + Enter: the palette
             (b"/je\r", 0.3, PROMPT_BYTES),    # a filtered palette (the query filters)
-            (b"selftest --layer ACT\r", 0.3, PROMPT_BYTES),  # a real command
+            # a real command: the wait is for the command's own verdict line, because the
+            # prompt mark is also painted while a line is being typed (see RESULT_LINE)
+            (b"selftest --layer ACT\r", 0.3, RESULT_LINE),
             (b"scan -\r", 0.3, ACTION_BYTES),  # blocks on stdin (the action started)
-            (b"\x03", 0.3, PROMPT_BYTES),     # Ctrl-C: cancel just this command
+            # Ctrl-C: cancel just this command. The wait is for the shell's own cancel
+            # verdict, then for the prompt it returns to — a prompt on its own is also what
+            # a `^C` that arrived *before* the command started leaves behind, and then the
+            # line this test is about never ran at all.
+            (b"\x03", 0.3, CANCELLED_BYTES),
+            (None, 0.3, PROMPT_BYTES),
             (b"?\r", 0.3, PROMPT_BYTES),      # the help overlay
             (b"/quit\r", 0.5),                # leave
         ],
@@ -735,7 +784,7 @@ def test_real_pty_tab_completes_a_unique_command(tmp_path):
         [
             (None, 0.2, PROMPT_BYTES),
             (b"selftest --lay\t", 0.4, PROMPT_BYTES),   # Tab: the prefix completes
-            (b"ACT\r", 0.3, PROMPT_BYTES),              # continue typing, then run
+            (b"ACT\r", 0.3, RESULT_LINE),               # continue typing, then run
             (b"/quit\r", 0.5),
         ],
         runtime=runtime,
@@ -756,8 +805,9 @@ def test_real_pty_cancel_keeps_the_session_and_the_raw_capture_is_readable(tmp_p
         [
             (None, 0.2, PROMPT_BYTES),
             (b"scan -\r", 0.3, ACTION_BYTES),
-            (b"\x03", 0.3, PROMPT_BYTES),
-            (b"history 3\r", 0.3, PROMPT_BYTES),
+            (b"\x03", 0.3, CANCELLED_BYTES),   # the shell's own cancel verdict, not the prompt
+            (None, 0.3, PROMPT_BYTES),         # and the prompt it hands the turn back at
+            (b"history 3\r", 0.3, HISTORY_BYTES),   # the history table, before the shell leaves
             (b"/quit\r", 0.5),
         ],
         runtime=runtime,

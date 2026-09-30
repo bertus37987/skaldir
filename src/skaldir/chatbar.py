@@ -2298,7 +2298,7 @@ class ChatBar:
         self.install_signals()
         saved = termios.tcgetattr(fd)
         try:
-            tty.setcbreak(fd)
+            _cbreak_keep_input(fd)
             self.reset()
             # the logo goes up once, above the frame, *before* the first paint — so the first
             # screen is logo, band, live row, the two bars and the hint in one draw
@@ -2364,6 +2364,36 @@ _CONTROL: dict[str, str] = {
     "\x08": "backspace",
     "\x1b": "esc",
 }
+
+
+def _cbreak_keep_input(fd: int) -> None:
+    """Character-at-a-time input **without throwing away what was already typed**.
+
+    ``tty.setcbreak`` defaults to ``TCSAFLUSH``, which discards the terminal's *pending*
+    input on every call. That is a real defect for a line editor, and this frame is a line
+    editor: the prompt is painted (logo, band, frame — dozens of writes) and only then does
+    the key loop call ``select()``. Everything a person typed while that paint was in flight
+    was already in the input queue, and ``TCSAFLUSH`` deleted it — silently, character by
+    character, and always the *first* characters of the line.
+
+    Measured (real 80x24 PTY, synthetic CPU load so the paint window widens): with
+    ``TCSAFLUSH`` the whole line ``scan -`` was discarded on a loaded host and the ``^C``
+    that followed only ever cleared an empty prompt ("``^C input cleared``"); with
+    ``TCSADRAIN`` the line arrives whole, the command starts and cancels, on every run.
+    ``TCSADRAIN`` is the right rule here precisely because the restore is already
+    ``TCSADRAIN``: a drained terminal is the contract on both sides of the prompt, and the
+    only thing that is deliberately discarded is nothing — nothing was read to discard.
+
+    ``ISIG`` stays **on** (that is cbreak's own rule, and it is what makes a real ``^C``
+    arrive as ``SIGINT`` and cancel the *running command* rather than a keystroke), so this
+    changes what the frame loses, never what the shell sees.
+    """
+    if tty is None:  # pragma: no cover — no terminal module: the caller already guarded
+        return
+    try:
+        tty.setcbreak(fd, termios.TCSADRAIN)
+    except (TypeError, ValueError, termios.error, OSError):  # pragma: no cover
+        tty.setcbreak(fd)
 
 
 def _raw_terminal(fd: int, saved: Any) -> None:

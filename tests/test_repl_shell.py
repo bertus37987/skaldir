@@ -16,9 +16,12 @@ import argparse
 import io
 import json
 import os
+import re
+import select
 import signal
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -639,6 +642,131 @@ def _child_env(runtime: Path) -> dict:
     return env
 
 
+#: What a **piped** shell prints once it is up and about to read stdin. A pipe is not a
+#: TTY, so the frame stands down and the shell reads with ``readline()`` on a non-echoing
+#: stream: it draws its banner and its one status line, and its plain ``skaldir > `` prompt
+#: only appears together with the *echo of the line it just read* (measured). The status
+#: line is therefore the last thing printed before the shell blocks for input — which makes
+#: it the honest readiness signal, and a fixed sleep after the spawn is not: on a loaded host
+#: the interpreter is still importing at 1.0 s, the SIGINT lands mid-import and kills the
+#: child (measured: 13 of 14 runs, ``rc=-2``).
+PIPE_READY = b"goal:none"
+
+#: The action mark of a command that has really started, in the shell's own vocabulary.
+#: On a pipe the action glyph is the plain ``*`` (``_OWN_GLYPHS["action"]``).
+PIPE_ACTION = re.compile(rb"^\* skaldir scan -$", re.M)
+
+#: How long a readiness wait may take. A loaded host starts this interpreter slowly
+#: (measured: 1.6 s idle, 13-40 s with the host's cores saturated), so the bound has to
+#: cover a slow *start*, not a slow assertion. It is a bound, not a substitute for waiting:
+#: every wait below returns as soon as its readiness condition holds.
+READY_TIMEOUT = 120.0
+
+
+class _PipedShell:
+    """A real child shell on a pipe, read **continuously** while the test drives it.
+
+    Two measured facts make this shape necessary, and both are load symptoms:
+
+    * an unread ``stdout`` pipe is a second clock. The child blocks on it once the buffer
+      fills, and a blocked child cannot answer the SIGINT it was sent;
+    * ``SIGINT`` before the shell is up does not cancel a command — it kills the
+      interpreter mid-import (measured: 13 of 14 runs under load died with ``rc=-2`` and a
+      ``KeyboardInterrupt`` traceback out of ``dataclasses``), because there is no session
+      yet to survive it.
+
+    So: read on a thread (the capture is the same bytes ``communicate()`` would return),
+    and gate every write on the readiness of what the child last printed.
+    """
+
+    def __init__(self, runtime: Path):
+        self.child = subprocess.Popen(
+            [sys.executable, "-m", "godsv.repl", "--no-probe"],
+            cwd=str(REPO),
+            env=_child_env(runtime),
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+        self._out = bytearray()
+        self._stop = threading.Event()
+        self._reader = threading.Thread(target=self._pump, daemon=True)
+        self._reader.start()
+
+    def _pump(self) -> None:
+        """Drain stdout into the capture — the child's own write side never blocks."""
+        stream = self.child.stdout
+        assert stream is not None
+        while not self._stop.is_set():
+            try:
+                ready, _w, _x = select.select([stream], [], [], 0.1)
+                if not ready:
+                    continue
+                data = os.read(stream.fileno(), 65536)
+            except (OSError, ValueError):  # the child is gone; the capture is complete
+                return
+            if not data:
+                return
+            self._out.extend(data)
+
+    def text(self) -> str:
+        return bytes(self._out).decode("utf-8", "replace")
+
+    def until(self, needle, *, start: int = 0, seconds: float = READY_TIMEOUT) -> bool:
+        """Wait for ``needle`` in what the child has written since ``start``.
+
+        ``needle`` is bytes or a compiled **bytes** pattern. Returns ``False`` on timeout
+        **or** if the child died — the caller asserts on the real exit code and the real
+        output, so a hang and a crash are both reported honestly instead of as a mysterious
+        missing string.
+        """
+        def seen(blob: bytes) -> bool:
+            if needle is None:
+                return False
+            if hasattr(needle, "search"):  # a compiled bytes pattern
+                return bool(needle.search(blob))
+            return needle in blob
+
+        end = time.monotonic() + seconds
+        while not seen(bytes(self._out)[start:]):
+            if self.child.poll() is not None:
+                return False
+            if time.monotonic() > end:
+                return False
+            time.sleep(0.05)
+        return True
+
+    def write(self, line: str) -> bool:
+        """Type one line; ``False`` (never an exception) if the shell is no longer there."""
+        if self.child.stdin is None or self.child.poll() is not None:
+            return False
+        try:
+            self.child.stdin.write(line)
+            self.child.stdin.flush()
+        except (BrokenPipeError, ValueError, OSError):
+            return False
+        return True
+
+    def finish(self, seconds: float = 90.0) -> str:
+        """Close stdin, wait for the exit, return everything the child wrote."""
+        self._stop.set()
+        if self.child.stdin is not None:
+            try:
+                self.child.stdin.close()
+            except (BrokenPipeError, ValueError, OSError):
+                pass
+            self.child.stdin = None
+        try:
+            self.child.wait(timeout=seconds)
+        except subprocess.TimeoutExpired:  # pragma: no cover — a hung shell
+            self.child.kill()
+            self.child.wait()
+        self._reader.join(timeout=5.0)
+        return self.text()
+
+
 def test_real_session_subprocess_transcript(tmp_path):
     runtime = tmp_path / "rt"
     runtime.mkdir()
@@ -668,34 +796,51 @@ def test_real_session_subprocess_transcript(tmp_path):
 
 
 def test_real_sigint_cancels_the_running_command(tmp_path):
+    """A real SIGINT to a real child cancels the running command; the session survives.
+
+    Every wait here is a readiness wait on what the child actually printed. The fixed
+    ``sleep(1.0)`` this replaces was a guess, and the guess is what the test's own failure
+    was: on a loaded host the interpreter is still importing at 1.0 s, so the SIGINT killed
+    the shell mid-import (measured: 13 of 14 runs, ``rc=-2``, a ``KeyboardInterrupt``
+    traceback out of ``dataclasses``) instead of cancelling a command, and the child was
+    gone before ``history 3`` could be typed. The SIGINT is sent from exactly the same
+    place in the journey — after the command has really started — and the assertions are
+    byte-for-byte the same.
+    """
     runtime = tmp_path / "rt"
     runtime.mkdir()
-    child = subprocess.Popen(
-        [sys.executable, "-m", "godsv.repl", "--no-probe"],
-        cwd=str(REPO),
-        env=_child_env(runtime),
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-    )
-    assert child.stdin is not None
-    child.stdin.write("scan -\n")  # blocks reading stdin: a running command
-    child.stdin.flush()
-    time.sleep(1.0)
-    child.send_signal(signal.SIGINT)
-    time.sleep(0.6)
-    child.stdin.write("history 3\n/quit\n")
-    child.stdin.flush()
-    child.stdin.close()
-    child.stdin = None  # communicate() must not flush a closed pipe
+    shell = _PipedShell(runtime)
+    child = shell.child
     try:
-        output, _ = child.communicate(timeout=90)
-    except subprocess.TimeoutExpired:  # pragma: no cover
-        child.kill()
-        output, _ = child.communicate()
-        pytest.fail("the shell did not survive the SIGINT")
+        # readiness 1: the shell is up and about to read stdin
+        assert shell.until(PIPE_READY), (
+            f"the shell never reached its status line (rc={child.poll()}):\n"
+            f"{shell.text()[-2000:]}"
+        )
+        mark = len(shell._out)
+        assert shell.write("scan -\n"), "the shell was already gone before the command"
+        # readiness 2: the action line — the command really started and is blocked on stdin
+        assert shell.until(PIPE_ACTION, start=mark), (
+            f"`scan -` never started (rc={child.poll()}):\n{shell.text()[-2000:]}"
+        )
+        child.send_signal(signal.SIGINT)
+        # readiness 3: the shell reported the cancel itself
+        assert shell.until(b"cancelled", start=mark), (
+            f"the SIGINT was never answered (rc={child.poll()}):\n{shell.text()[-2000:]}"
+        )
+        assert shell.write("history 3\n"), "the shell did not survive the SIGINT"
+        # readiness 4: the history table itself, so the recording is *observed* before the
+        # shell is asked to leave. `finish()` only returns what was written by then.
+        history_mark = len(shell._out)
+        assert shell.until(b"last 1 command(s)", start=history_mark), (
+            f"`history 3` never answered (rc={child.poll()}):\n{shell.text()[-2000:]}"
+        )
+        assert shell.write("/quit\n"), "the shell did not survive the SIGINT"
+        output = shell.finish()
+    finally:
+        if child.poll() is None:  # pragma: no cover — only on a failed assertion above
+            child.kill()
+            child.wait()
     assert child.returncode == 0, output
     assert "cancelled `skaldir scan -`" in output
     assert "the session is still here" in output
