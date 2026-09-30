@@ -94,3 +94,28 @@ No test was weakened and none was modified here.
 - Both invocation forms collect identically after (a) (`--collect-only` exit 0 for the console-script
   form; full run for the `-m pytest` form). The test set is identical, so the console-script form
   shows the same 4 load-flaky PTY failures on this host only.
+
+## Re-verification after `pty-tests-load-robust` (suite-green-followup re-run, 2026-09-30)
+
+Revision under test: `3bafc07` (PTY fix landed). Single session, NO concurrent full-suite runs,
+NO parallel pytest processes (per the (c) contention rule). Raw logs: `logs/reverify_*.txt`.
+
+- (a) Collection: `uv run pytest tests/ --collect-only -q` rc=0 AND
+  `uv run python -m pytest tests/ --collect-only -q` rc=0 (identical test set, 8255 items).
+- (b) Guards unchanged and green: `uv run pytest tests/test_env_leak_guard.py tests/test_rename_compat.py -q`
+  rc=0, 23 passed. Guard files untouched at HEAD (`git diff HEAD -- tests/` empty).
+- (c) Subagent import-order: `tests/test_subagents.py` byte-identical to HEAD (unmodified), green
+  in the targeted run and in both clean full-suite runs (no concurrent runs this session).
+- (d) Browser real read: `tests/test_browser_backend.py` green (10 passed), self-owned localhost
+  page assertion kept, no weakening.
+- (e) Scheduler: `tests/test_scheduler_worker.py` (11) + `tests/test_scheduler.py` (21) = 32 passed,
+  rc=0; race test `test_concurrent_workers_race_and_only_one_wins` green in **10 consecutive**
+  targeted runs (rc=0 each).
+- (f) CI: `.github/workflows/ci.yml` runs `python -m pytest tests/ -q` (confirmed at `3bafc07`).
+- Full suite `uv run python -m pytest tests/ -q` → **rc=0, 8222 passed, 33 skipped,
+  0 FAILED, 0 ERROR**.
+- Full suite `uv run pytest tests/ -q` → **rc=0, 8222 passed, 33 skipped, 0 FAILED, 0 ERROR**
+  (identical counts, both invocation forms green to completion).
+- Milestone gate: `uv run ruff check src tests` rc=0; `uv run python -m compileall -q src` rc=0.
+- No code or test file changed in this re-run; zero assertion changes, zero skips added.
+  The 33 skips are pre-existing (incl. load/external-dependent markers), not new skip-as-green.
