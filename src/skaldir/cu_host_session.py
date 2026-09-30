@@ -79,11 +79,13 @@ from .computer_use import (
     BaseRunner,
     Observation,
     ScreenCapture,
+    encode_png,
     png_size,
     safe_label,
     xwd_to_png,
 )
 from .evdev_keys import UnknownKeyError, key_event_argv, keycode_for
+from .xlib_capture import XlibCaptureError, capture_window_image
 
 #: Bridges this module provides. ``host-session`` is isolated (a display this run owns);
 #: ``live-desktop`` is not, and is therefore gated twice.
@@ -100,13 +102,24 @@ ENV_TARGET = "SKALDIR_CU_LIVE_TARGET"
 FULL_DESKTOP = "*"
 FULL_TARGETS = frozenset({"*", "all", "full", "desktop", "everything"})
 
-#: Host binaries each mode needs. Measured, not assumed: ``xwd`` is *not* installed on this
-#: host, so a host-session screenshot uses ImageMagick's ``import`` (present) — and if
-#: neither exists the runner refuses to claim a capture capability.
+#: Host binaries each mode needs. Measured, not assumed: on this host (2026-09-30)
+#: BOTH are broken — ``xwd`` is not installed and ImageMagick's ``import`` rejects
+#: every invocation — so the primary capture is the X server itself (python-xlib
+#: GetImage, ``xlib_capture``) and these binaries remain the fallbacks.
 CAPTURE_TOOLS: tuple[str, ...] = ("xwd", "import")
 INPUT_TOOLS: tuple[str, ...] = ("xdotool",)
 
 _TRUE = {"1", "true", "yes", "on", "enabled"}
+
+
+def _xlib_capture_available() -> bool:
+    """Is the X-server capture (python-xlib GetImage) importable on this host?"""
+    try:
+        from .xlib_capture import xlib_available
+
+        return xlib_available()
+    except Exception:  # noqa: BLE001 — an unimportable capture module is simply "no"
+        return False
 
 
 def _setting(runtime: str | Path | None, *keys: str) -> str:
@@ -191,10 +204,16 @@ def host_session_availability() -> dict:
     """Can a host-session runner really start a display on this machine?"""
     xvfb = shutil.which("Xvfb") or ""
     xdotool = shutil.which("xdotool") or ""
-    capture = shutil.which("xwd") or shutil.which("import") or ""
+    # Measured 2026-09-30: both binaries are broken on this host (``xwd`` absent,
+    # ``import`` rejects every invocation), so the X server itself — python-xlib
+    # GetImage — counts as the capture tool as well.
+    capture = shutil.which("xwd") or shutil.which("import") or (
+        "python-xlib" if _xlib_capture_available() else ""
+    )
     missing = [
         name
-        for name, path in (("Xvfb", xvfb), ("xdotool", xdotool), ("xwd or import", capture))
+        for name, path in (("Xvfb", xvfb), ("xdotool", xdotool),
+                           ("xwd, import or python-xlib", capture))
         if not path
     ]
     if missing:
@@ -1997,12 +2016,6 @@ class HostSessionRunner(BaseRunner):
                     "that is not its target"
                 )
             window_id = wid
-        xwd = shutil.which("xwd")
-        magick = shutil.which("import")
-        if not xwd and not magick:
-            return None, (
-                "no host capture tool: neither 'xwd' nor ImageMagick's 'import' is installed"
-            )
         name = safe_label(label, fallback="host-session")
         target_path = (
             Path(path)
@@ -2011,6 +2024,36 @@ class HostSessionRunner(BaseRunner):
         )
         target_path.parent.mkdir(parents=True, exist_ok=True)
         scope = f"window {window_id}" if window_id else "root"
+        # The X-server capture first (measured 2026-09-30, feature
+        # cu-screenshot-fallback): BOTH host tools are broken on this host — ``xwd``
+        # is not installed and ImageMagick's ``import`` rejects every invocation —
+        # so the pixels are read through the X server itself (python-xlib
+        # GetImage), which also proves the window is mapped AND what it draws.
+        # The tool attempts below stay as fallbacks for hosts without python-xlib.
+        xlib_problem = ""
+        try:
+            image = capture_window_image(self.display, window_id)
+        except (XlibCaptureError, ImportError) as exc:
+            image = None
+            xlib_problem = str(exc)
+        if image is not None:
+            png = encode_png(image)
+            target_path.write_bytes(png)
+            return (
+                ScreenCapture(
+                    path=str(target_path),
+                    sha256=hashlib.sha256(png).hexdigest(),
+                    size_bytes=len(png),
+                    width=image.width,
+                    height=image.height,
+                    scope=scope,
+                    label=name,
+                    converter="builtin-xlib",
+                ),
+                "",
+            )
+        xwd = shutil.which("xwd")
+        magick = shutil.which("import")
         if xwd:
             argv = ([xwd, "-id", window_id, "-silent"] if window_id
                     else [xwd, "-root", "-silent"])
@@ -2077,6 +2120,11 @@ class HostSessionRunner(BaseRunner):
                 converter="host-import",
             ),
             "",
+        )
+        return None, (
+            f"no capture path for window {window_id or 'root'} on {self.display}: "
+            f"the X-server capture failed ({xlib_problem}) and neither 'xwd' nor "
+            "ImageMagick's 'import' produced a usable capture"
         )
 
     def close(self) -> None:

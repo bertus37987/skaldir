@@ -170,3 +170,65 @@ Rohberichte: `logs/input-live/report-20260930-214322.json`,
 - Offen (nächster Schritt, nicht Blocker der Eingabekette): Portal-/EIS-Zustimmung der
   Nutzerin erteilen und den dritten Weg live messen; `APP_EFFECT_VERIFIED` über den
   produktiven Pfad in einer echten Anwendung (Calc) — Gegenstand der AMD→Calc-Abnahme.
+
+---
+
+# Nachtrag 2026-09-30 — Screenshot-Fallback über python-xlib GetImage (Feature cu-screenshot-fallback)
+
+Datum: 2026-09-30 (gleicher Tag, nachträglich gemessen). Feature: `cu-screenshot-fallback`
+(backend-worker). Rohzeuge: `logs/cu-xlib-capture/` (gitignored), Referenzmuster:
+`logs/input-live/capture_window.py`.
+
+## Ergebnis in einem Satz
+
+**Der produktive Capture-Pfad des Produkts liefert wieder echte Pixel**: Beide auf diesem
+Host gemessenen Werkzeuge sind nachweislich defekt (siehe §2 der Originalabnahme) —
+`HostSessionRunner.screenshot()` liest jetzt die Fensterelemente **primär direkt vom
+X-Server** (python-xlib `GetImage`, neu `src/skaldir/xlib_capture.py`, Konverter-Name
+`builtin-xlib`) und behält `xwd`/`import` als Rückfallebene für Hosts ohne python-xlib.
+
+## 1. Was jetzt funktioniert (mit Marker-Nachweis)
+
+- Testdatei `tests/test_cu_xlib_capture.py` (TDD, erst fehlschlagend: Sammlung brach mit
+  `ModuleNotFoundError: No module named 'skaldir.xlib_capture'` ab, rc 2):
+  - Xvfb-tauglicher Einheitsteil: eigenes Marker-Fenster (rot 120×80, blaues 20×20-Quadrat
+    in der Mitte) auf einem eigenen Xvfb, PNG-Abmessungen == Fenstergeometrie, Marker-Pixel
+    an Eckpunkt und Mitte verifiziert, Datei-Hash == `ScreenCapture.sha256`.
+  - **Live-Beweis auf dem echten `:0`**: dasselbe eigene Fenster auf dem Real-Desktop,
+    Ziel ist die Fenster-ID (der Live-Runner verweigert den Titel zu Recht — mutter
+    benennt den Rahmen mit dem Client-Titel, gemessen: 2 Treffer), Abmessungen + Marker
+    verifiziert; eigenes Fenster nur über seine gemessene ID zerstört.
+  - Negativfälle: unbekannte Fenster-ID → `None` mit Grund (ID genannt), keine
+    Stellvertreter-Datei; feindliche ID (`12; touch ignored`) wird **vor jedem X-Aufruf**
+    als Argumentfehler abgewiesen; ohne python-xlib greift die alte Kette
+    (`import`-Rückfall, Konverter `host-import`) — Kette bleibt intakt.
+- Gemessene WM-Falle (für spätere eigene Fenster-Tests): ein um-parentender WM (openbox auf
+  dem eigenen Xvfb, mutter auf `:0`) verwirft Inhalte, die **vor** dem Settle gezeichnet
+  wurden — zeichnen erst nach `map_state == 2` plus kurzem Warten, sonst liest man Schwarz.
+
+## 2. Nachweisführung (kommandos mit echten Exitcodes)
+
+| Befehl | rc | Beobachtung |
+|--------|----|-------------|
+| `uv run pytest tests/test_cu_xlib_capture.py -q` (vor der Implementierung) | 2 | Sammlung bricht ab: `ModuleNotFoundError: skaldir.xlib_capture` (fehlschlagend-erst, kein Skip-als-grün) |
+| `uv run pytest tests/test_cu_xlib_capture.py -v` (nach der Implementierung) | 0 | **6 passed** (inkl. Live-Beweis auf `:0`, 69.8 s) |
+| `uv run pytest tests/test_live_desktop_launch_env.py tests/test_security_audit_regressions.py tests/test_cu_screenshot.py -q` | 0 | 34 passed (11+9+14) — Wächter `test_no_run_closes_a_window_by_title_or_process` grün, XWD-Decoder-Tests unverändert grün |
+| `uv run pytest tests/test_cu_live_desktop.py -q` | 0 | 24 passed — Host-Session-Laufzeit, Live-Bereichsregeln unverändert |
+| `uv run ruff check src tests` | 0 | „All checks passed!" (voller Satz, nicht nur eigene Dateien) |
+| `uv run python -m compileall -q src` | 0 | Syntax-Gate sauber |
+| `printf '/quit\n' \| uv run skaldir chat --no-probe` | 0 | Chat-Fallback intakt |
+| `printf 'selftest --layer ACT\n/quit\n' \| uv run skaldir chat --format jsonl` | 0 | JSONL-Umschlag intakt (echtes Selbsttest-Ergebnis als JSON) |
+
+Rohzeuge: `logs/cu-xlib-capture/tests-*.log`, `regressions*.log`, `ruff*.log`,
+`cli-chat.log`, `cli-jsonl.log`.
+
+## 3. Grenzen (ehrlich benannt)
+
+- **Nicht angefasst:** `skaldir/workflows.py::screenshot` (Vision-/Verify-Fluss) ruft
+  weiterhin das defekte `import` direkt auf — gleiche Host-Störung, anderes Executor-Niveau;
+  der Fix dort (gleiche GetImage-Mechanik) ist ein eigener Schritt und nicht Teil dieses
+  Features.
+- Ein X-Server-GetImage-Capture beweist, dass das Fenster gemappt ist und was es zeichnet;
+  auf Wayland bleibt der komposite Gesamtschirm (anderer Fensterinhalt um das eigene
+  Fenster) damit **nicht** messbar — dafür gilt weiter: Portal-Zustimmung ist die Nutzerin
+  zu erteilen, nie zu umgehen.
