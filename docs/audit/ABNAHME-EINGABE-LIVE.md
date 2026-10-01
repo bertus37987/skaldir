@@ -232,3 +232,69 @@ Rohzeuge: `logs/cu-xlib-capture/tests-*.log`, `regressions*.log`, `ruff*.log`,
   auf Wayland bleibt der komposite Gesamtschirm (anderer Fensterinhalt um das eigene
   Fenster) damit **nicht** messbar — dafür gilt weiter: Portal-Zustimmung ist die Nutzerin
   zu erteilen, nie zu umgehen.
+
+---
+
+# Nachtrag 2026-10-01 — Keycode-Deutung korrigiert: das Live-Protokoll zeigt Roh-X-Codes, keine evdev-Codes (Scrutiny-Fund m1)
+
+Feature: `fix-keycode-doc-claims` (audit-worker). Anlass: Scrutiny-Review von
+`input-live-proof` (Befund #1, non_blocking; routiert über die Synthese,
+`suggestedGuidanceUpdates` Punkt 5 „evidence basis"). **An dieser Abnahme wurde nichts
+gemessen, gelöscht oder umgeschrieben** — der Text oben und der Commit-Text von 7611e77
+(der die falschen Labels wiederholt) bleiben als Geschichte stehen. Dieser Nachtrag
+korrigiert die *Deutung*, nicht die Messung.
+
+## 1. Was die `records` wirklich melden: `event.detail` = Roh-X-Code
+
+Die Empfänger-Records des Probe-Fensters (§2.1 oben) zeigen `"keycode"`, das ist
+`event.detail` des X-Ereignisses — der **Roh-X-Code**, nicht der evdev-Code. Korrektur
+der vier Labels (evdev-Werte gegen den installierten Header geprüft, 2026-10-01):
+
+| Roh-X-Code (im Protokoll) | Zeichen | evdev-Code (X − 8) |
+|---------------------------|---------|--------------------|
+| 39 | 'S' | **KEY_S = 31** (`/usr/include/linux/input-event-codes.h:107`) |
+| 45 | 'K' | **KEY_K = 37** (Header: 113) |
+| 33 | 'P' | **KEY_P = 25** (Header: 101) |
+| 19 | '0' | **KEY_0 = 11** (Header: 87) |
+
+Die Zeile „(KEY_S = 39, NICHT der X-Code 47)" oben ist damit falsch gelesen: 39 **ist**
+genau der Roh-X-Code von 's' auf diesem Host (`xmodmap -pke`: `keycode 39 = s S`), und
+der evdev-Code derselben Taste ist 31. Als evdev-Deutung wären alle vier Zahlen falsch
+gewesen; der X−8-Offset (gemessen: X 'a' = 38 → `KEY_A = 30`) gilt unverändert.
+
+## 2. Der Lauf beweist Zustellung (VAL-INPUT-007/008), nicht VAL-INPUT-003
+
+Der Marker wurde als **Text** gesendet — `ydotool type --key-delay 40 <marker>`
+(`src/skaldir/input_backend.py`, Backend-Weg ydotool; xdotool ebenfalls `type`). Auf
+diesem Weg ist kein X→evdev-Code-Übersetzungs-Glied beteiligt: die Zeichenkette geht
+an die Text-Schnittstelle des Tools, nicht durch die Keycode-Tabelle. Damit kann dieser
+Lauf VAL-INPUT-003 (X→evdev-Übersetzung) **nicht** belegen — die Überschrift oben
+(„mit korrekten evdev-Codes … live nachgewiesen, VAL-INPUT-003") war ein Über-Anspruch,
+ebenso die Formulierung in §5 („übersetzte evdev-Codes + gültige Flags"). Die
+Unterschrift im §5 bleibt als Geschichte stehen; diese Nachträge sind die Korrektur.
+
+Was der Lauf **trotzdem** beweist, ist unverändert gültig und war der Zweck:
+
+- **VAL-INPUT-007 — Zustellung:** `INPUT_OBSERVED_AT_TARGET`, zweifach mit
+  unabhängigen Markern am eigenen, bestätigten Probe-Fenster (Rohzeug §2.1).
+- **VAL-INPUT-008 — Lease/Fence/Not-Aus/Cleanup:** Fence vor jeder Sendung,
+  StaleFence-Abbruch vor dem Senden, Not-Aus im Wartetakt, Cleanup nur eigener
+  Ressourcen (§2.2).
+- Dass der Empfänger Roh-X-Codes meldet, zeigt nur, auf welchem Code-Raum X den
+  Empfänger berichtet — nicht, dass eine Übersetzung geprüft wurde.
+
+## 3. Wo VAL-INPUT-003 tatsächlich belegt ist: die evdev_keys-Unit-Tests
+
+Die X→evdev-Übersetzung ist durch `tests/test_evdev_keys.py` belegt, gemessen am
+2026-10-01: `uv run pytest tests/test_evdev_keys.py -o addopts='' -q` → **36 passed,
+Exit 0**. Abgedeckt sind: 'a' → `KEY_A = 30` und nie 38 (= `KEY_L`), Großbuchstabe als
+Shift-Halt (`KEY_LEFTSHIFT` = 42), Kombo-Zerlegung in Press/Release-Paare
+(`ctrl+c` → 29/46), `Return` = 28, Verweigerung unbekannter Namen ohne Rate-Fallback,
+der auf diesem Host gemessene Offset (`test_der_offset_ist_auf_diesem_host_gemessen`:
+`X_KEYCODE_OFFSET == 8`) und der Header-Abgleich jeder Tabellenzahl
+(`test_jede_tabellenzahl_ist_ein_key_des_headers`).
+
+Offen, kein Blocker: eine Live-Wiederholung über die **Keycode**-Schnittstelle
+(`ydotool key <evdev>:1 <evdev>:0`) statt `type` wäre der direkte Live-Beweis der
+Übersetzung; der aktuelle Beleg bleibt die Unit-Test-Ebene. Das ändert nichts an der
+Zustellungs-Bilanz (§3 des Originalberichts).
