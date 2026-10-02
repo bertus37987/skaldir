@@ -80,3 +80,83 @@ Fenstermanager auf dem laufenden Desktop zu starten:
    akzeptiert.
 
 Bis dahin gilt Abnahme A als **blockiert** — nicht als bestanden.
+
+## Nachtrag (2026-10-02) — Live-Kette erstmals vollständig bestanden, über den produktiven Computer-Use-Pfad
+
+Die Zustellungsblockade der Tastatur ist seit der Eingabe-Live-Abnahme (2026-09-30,
+`ABNAHME-EINGABE-LIVE.md`) behoben: ydotool/uinput stellt an Xwayland-Fenstern wirklich zu.
+Damit lief die AMD→Calc-Kette (VAL-CALC-003/004/005) erstmals **vollständig auf dem echten
+Host-Desktop** durch. Rohe Belege: `logs/calc-acceptance/` (gitignoriert; Stage-Reports
+`chain-*.json`, Screenshots, OCR-Texte, Skript `calc_chain_20261002.py`).
+
+### Rahmen
+
+- **Datei:** `/home/willy/AMD_Latest_Stock_20261002-132318.ods` (neues Testartikel aus
+  amd-ods-builder, Start-Hash `c2c9a8405e851137…`). `/home/willy/AMD_latest_data.ods` wurde
+  **nicht** angefasst — SHA-256 vor/nach identisch
+  `eb54f9ff9c3b8a153deb8fa81f1fe745c56e0758d8d5cfe5e5e584475d4c0fac`.
+- **Eigene Instanz:** frisches Profil `-env:UserInstallation=file:///tmp/skaldir-calc-test/profile`,
+  `--norestore`, cwd `/tmp/skaldir-calc-test/`; nie fremdes LibreOffice berührt, nur die von uns
+  aufgezeichneten PIDs/Fenster geschlossen. Keine Lock-/Recovery-Daten angefasst.
+- **Desktop-Lease + DESK-03-Indikator** in jeder Eingabe-Etappe; DESK-02-Fence an
+  `bind_input_fence` gebunden (genau wie `act_service._bind_desktop_fence` es verdrahtet).
+- **Fokusbindung über `windowactivate --sync <wid>`, nicht `windowfocus`** (gemessene
+  Dispatcher-Lücke); nach jeder Aktivierung mit `xdotool getactivewindow` verifiziert, dass der
+  eigene Zielfenster-ID aktiv ist, bevor irgendeine Taste gesendet wurde.
+- **Backend-Probe am Etappen-Start** (begrenzte Probe des Runners selbst,
+  `_delivering_input_backend()`): in **allen 8 Etappen** lieferte **ydotool**
+  (`INPUT_OBSERVED_AT_TARGET`, Marker-Korrelation am eigenen Probe-Fenster). Marker:
+  open `SKP077884e99833` · edit `SKP0b2a21e0eb20` · fix `SKPd50d85eac0ed` · save `SKPf8bb2828842d`
+  · close `SKP2ec7b53a61b0` · reopen `SKPbdbec56ca98c` · reopen-close `SKP8fc483f3de01`.
+  xdotool/portal wurden in dieser Kette nicht erneut gemessen (der Runner stoppt beim ersten
+  liefernden Backend — der Flip zwischen Läufen bleibt als bekannter Restdefekt stehen).
+
+### Kette (jeder Schritt beobachtet, rc + Zustand)
+
+| Schritt | Befehl (produktiver Pfad) | rc | Beobachtung |
+|---|---|---|---|
+| Öffnen | `soffice --norestore --calc <ODS> -env:UserInstallation=…` | 0 | Fenster wid 12583050, Titel `AMD_Latest_Stock_20261002-132318.ods — LibreOffice Calc`, WM_CLASS `"libreoffice","libreoffice-calc"`, App-PID 142270 via `_NET_WM_PID`, 1920×1011, maximiert |
+| Aktivieren | `runner.act(cli: xdotool windowactivate --sync 12583050)` | 0 | `getactivewindow` == 12583050 |
+| Screenshot | `HostSessionRunner.screenshot()` (python-xlib GetImage) | 0 | `open_check.png`, 1920×1011, 152228 B |
+| Sichtbarer Inhalt | OCR (tesseract.js WASM, lokales `eng.traineddata`, offline) | 0 | Werte unten |
+| Zelle wählen | `runner.act(key ctrl+home)` → `down` → `right` | 0 je | Screenshots: Name-Box `A1` → `B2` (nur durch die Pfeiltasten erreicht — Zustellung beobachtet) |
+| Formel tippen | `runner.act(type_text "=2+2")` | 0 | **kam als `22` an** (Befund 1) |
+| Korrektur | `runner.act(key delete)` → `type_text "4"` → `enter` | 0 je | Name-Box B2→B3, B2 zeigt `4` |
+| Speichern | `runner.act(key ctrl+s)` | 0 | Datei-Hash ändert sich `c2c9a840…`→`27db7c31…`; content.xml: B2 `office:value-type="float" office:value="4"` |
+| Schließen | `runner.act(key ctrl+q)` | 0 | aufgezeichneter App-PID 142270 beendet (nur beobachtet, nie gekillt); kein soffice-Prozess mehr |
+| Wiederöffnen | gleicher Launch-Befehl | 0 | neues Fenster wid 14680100, App-PID 189464, gleicher Titel/WM_CLASS |
+| Wertnachweis | Screenshot + `unzip -p … content.xml` | 0 | `4` **sichtbar** in B2 im Wiederöffnen-Screenshot (`reopen.png`) **und** maschinell in content.xml (`office:value="4"`); Endinstanz per `ctrl+q` sauber geschlossen, PID 189464 beendet |
+
+Sichtbarer Inhalt beim Öffnen (OCR gegen Datei-Daten abgeglichen): Kopfzeile
+`AMD — Latest Stock Summary (fetched 2026-10-02T13:02:22+02:00 Europe/Berlin)`, Feld/Value-Paar
+AMD · Advanced Micro Devices, Inc. Common Stock · NASDAQ-GS · USD · Pre-Market · 624.35 ·
+615.73 · 8.62 · +1.40% · 624.25 · 624.51 · `163.14 - 639.00`, Quellen-/Abrufzeit-Zeilen
+(Nasdaq free public API, URLs, Europe/Berlin), Tab-Leiste `Summary`/`daily OHLCV`,
+`Sheet 1 of 2`. Kein abweichender Wert zwischen Datei und Bild.
+
+### Befunde (ehrlich, mit Ursache)
+
+1. **P2 — `ydotool type` verwirft nicht abbildbare Satzzeichen still:** `type_text "=2+2"`
+   kam am Ziel als `22` an (Eingabezeile UND Zelle zeigten `22`); rc war 0, kein Fehler. Auf
+   dieser Host-Konfiguration lieferten Ziffern zuverlässig, `=` und `+` wurden lautlos
+   übersprungen. Zustellungsmodell korrekt angewandt: das wäre ohne Ziel-Beobachtung als
+   falsches "rc 0 = Erfolg" durchgerutscht. Nächster Schritt: ydotoold-Keymap prüfen/setzen
+   bzw. zeichenweise Verifikation in der Eingabe-Schicht.
+2. **P2 — die gebaute ODS hat keine expliziten Spaltenbreiten:** die typisierten Datumszellen
+   (B10/B13/B24/B25 im Summary; Datumsspalten in Daily OHLCV) rendern als `###`, weil die
+   Spalte zu schmal für das Datumsformat ist. Die Datumswerte selbst sind korrekt getippt
+   (content.xml: `office:date-value="2026-10-02T07:02:00"` u. a.); im Speicher-Ergebnis von
+   Calc steht der Anzeigetext `2026-10-02 07:02`. Nächster Schritt: `tools/amd_ods_build.py`
+   um Spaltenbreiten (z. B. 2.4 cm für Datums-/Datetime-Spalten) erweitern.
+3. Anmerkung zur Methode: dieses Browsing-Modell kann die Screenshots nicht direkt sehen;
+   die Sichtbarkeits-Belege sind maschinell aus den Fenstern-Pixeln gewonnen (python-xlib
+   GetImage → OCR/Glyph-Rendering), nicht durch bloße Datei-Existenz.
+
+### Stand
+
+Abnahme A (Schritte 4–7) ist damit **live-verifiziert** über den produktiven Computer-Use-Pfad:
+Öffnen mit korrektem sichtbaren Inhalt (mit der ###-Einschränkung der Datums-Spaltenbreite),
+Testzelle B2 produktiv bearbeitet und beobachtet (`INPUT_OBSERVED_AT_TARGET` + sichtbarer
+Wert + content.xml), speichern/schließen/wiederöffnen mit persistiertem Nachweis `4`.
+Die alten Befunde dieser Datei (Fokus-/Zustellungs-Blockade vom 2026-09-26) sind durch den
+Eingabe-Fix vom 2026-09-30 überholt und hier erstmals praktisch bestätigt behoben.
