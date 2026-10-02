@@ -221,3 +221,45 @@ Die neue, eindeutig benannte ODS-Datei ist gebaut und maschinenlesbar verifizier
 - **Tests:** `tests/test_amd_ods_build.py` — 9 grün (Exit 0), inkl. Unique-Name-Refus,
   User-Artefakt-Refus, Float/Date-Typisierung, Zeilenabgleich gegen den Beleg,
   Quellzeilen, Formatierung. `odfpy` ist im dev-Extra deklariert.
+
+## Nachtrag (2026-10-02) — Spaltenbreiten-Fix (Feature `ods-column-widths`)
+
+Die Calc-Live-Abnahme (`docs/audit/CALC-ABNAHME-A-STAND.md`, Befund 2, P2) hatte
+gezeigt: die gebaute ODS hatte keine expliziten Spaltenbreiten — Calc nutzte den
+odfpy-Standard (~2,26 cm), der schmaler als der FORMATTIERTE Datumstext ist, sodass
+typisierte Datumszellen als `###` gerendert wurden (Summary B10/B13/B24/B25,
+Datumsspalte in Daily OHLCV). Die Werte selbst waren korrekt getippt.
+
+**Fix:** `tools/amd_ods_build.py` setzt jetzt explizite Spaltenstile
+(`style:family="table-column"` + `style:column-width`), dimensioniert am breitesten
+formatierten Wert je Spalte: Summary Beschriftungsspalte 12 cm, Wertspalte 3,2 cm
+(fasst „2026-10-02 07:02"); Daily OHLCV Datum 2,4 cm, Preise 2,2 cm, Volumen 2,6 cm.
+
+**Evidenz (roh unter `logs/amd-ods-cw*/`, `logs/amd-ods-cw-build.log`):**
+- Reproduktion am ALTEN Stand: Headless-PDF-Render (`soffice --headless
+  --convert-to pdf`, isoliertes Profil) der gelieferten Datei
+  `AMD_Latest_Stock_20261002-132318.ods` → Seite 1 enthielt genau 4 `###`
+  (die vier Datetime-Zellen) — der Defekt ist headless reproduzierbar
+  (`logs/amd-ods-cw/old-pdf-page1.txt`). Ein CSV-Export zeigt `###` NICHT
+  (CSV schneidet nicht auf Spaltenbreite) — PDF-Render ist der geeignete
+  headless-Anzeigeproxies; echte Bildschirm-Beurteilung bleibt Calc-Live.
+- Neues kanonisches Artefakt: `/home/willy/AMD_Latest_Stock_20261002-141150.ods`
+  (sha256 `1aac31ef2a25bcd2bca2e269cfc1ba4a2059b66e7582771d5b30b26cfe5d3f61`),
+  gebaut aus dem gesicherten Rohbeleg (`logs/amd-normalized-20261002.json` +
+  `-rows.json`) mit dem dokumentierten Builder-Befehl.
+- Headless-PDF-Render des neuen Artefakts: **0 `###` auf allen 8 Seiten**; die
+  vier Datetime-Zellen rendern als „2026-10-02 07:02" bzw. „2026-10-01 16:00",
+  Abrufzeiten als „2026-10-02 13:02/11:02" (`logs/amd-ods-cw/pdf-page1.txt`).
+- Semantik unverändert: Zell-Semantik-Diff (`logs/ods-cw-semdiff.py`, Alt-Builder
+  aus `git show HEAD:` gegen Neubau mit gleichem Stamp) — **1694 Zellen,
+  0 Unterschiede** (getippte Floats, getippte Dates, Quellzeilen identisch).
+  Reproduzierbarkeit erneut belegt: gleiches Stamp → alle Zip-Member identisch.
+- Grenze ehrlich benannt: im PDF-Seitenrender werden die langen URL-/Beleg-Strings
+  am Seitenrand abgeschnitten (Bildschirm-Anzeige in Calc überläuft sie in leere
+  Nachbarzellen); die Spaltenbreiten-Fix-Zielaussage betrifft die Datumsrendering.
+- `/home/willy/AMD_latest_data.ods` unangetastet: sha256 vor/nach identisch
+  `eb54f9ff9c3b8a153deb8fa81f1fe745c56e0758d8d5cfe5e5e584475d4c0fac`
+  (`logs/amd-ods-cw-hashproof.txt`); bestehende Artefakte wurden nicht überschrieben.
+- Tests: `tests/test_amd_ods_build.py` jetzt 11 grün (2 neue Spaltenbreiten-Tests,
+  zuerst rot gemessen, dann implementiert); `uv run ruff check src tests` →
+  „All checks passed".

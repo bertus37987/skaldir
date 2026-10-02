@@ -136,8 +136,8 @@ def build(normalized: Path | str, rows: Path | str, out: Path | str) -> Path:
     from odf.number import DateStyle, Day, Hours, Minutes, Month, Number, NumberStyle, Year
     from odf.number import Text as NumText
     from odf.opendocument import OpenDocumentSpreadsheet
-    from odf.style import Style, TextProperties
-    from odf.table import Table, TableCell, TableRow
+    from odf.style import Style, TableColumnProperties, TextProperties
+    from odf.table import Table, TableCell, TableColumn, TableRow
     from odf.text import P
 
     doc = OpenDocumentSpreadsheet()
@@ -187,6 +187,27 @@ def build(normalized: Path | str, rows: Path | str, out: Path | str) -> Path:
                         datastylename="amd-volume")
     doc.automaticstyles.addElement(volume_cell)
 
+    # --- column styles (explicit widths) -----------------------------------------
+    # Calc live-acceptance finding: without explicit column widths, Calc uses a
+    # default (~2.26 cm) that is narrower than the FORMATTED date text, so typed
+    # date cells render as ### although the value is correct. Widths are sized
+    # to the widest formatted value each column ever carries:
+    #   date     "2026-10-02"        -> 2.4 cm
+    #   datetime "2026-10-02 07:02"  -> 3.2 cm (the widest case is a datetime)
+    #   price    "624.35"            -> 2.2 cm
+    #   volume   "17,134,530"        -> 2.6 cm (grouped digits)
+    #   label    longest source-row label -> 12 cm (Summary column A)
+    def column_style(name: str, width: str) -> None:
+        style = Style(name=name, family="table-column")
+        style.addElement(TableColumnProperties(columnwidth=width))
+        doc.automaticstyles.addElement(style)
+
+    column_style("amd-col-label", "12cm")
+    column_style("amd-col-value", "3.2cm")
+    column_style("amd-col-date", "2.4cm")
+    column_style("amd-col-price", "2.2cm")
+    column_style("amd-col-volume", "2.6cm")
+
     def add_cell(row: TableRow, *, text: str = "", style: str | None = None) -> None:
         cell = TableCell(stylename=style) if style else TableCell()
         cell.addElement(P(text=text))
@@ -207,6 +228,8 @@ def build(normalized: Path | str, rows: Path | str, out: Path | str) -> Path:
 
     # --- sheet 1: Summary with explicit source rows ------------------------------
     summary = Table(name="Summary")
+    summary.addElement(TableColumn(stylename="amd-col-label"))
+    summary.addElement(TableColumn(stylename="amd-col-value"))
     doc.spreadsheet.addElement(summary)
 
     fetch_local = _iso_datetime(norm["fetch_time"]["local"], "fetch_time.local")
@@ -324,6 +347,9 @@ def build(normalized: Path | str, rows: Path | str, out: Path | str) -> Path:
 
     # --- sheet 2: Daily OHLCV (typed dates, typed numbers) -----------------------
     history = Table(name="Daily OHLCV")
+    for column_style_name in ("amd-col-date", "amd-col-price", "amd-col-price",
+                              "amd-col-price", "amd-col-price", "amd-col-volume"):
+        history.addElement(TableColumn(stylename=column_style_name))
     doc.spreadsheet.addElement(history)
     columns_header = TableRow()
     for label_text in ("Date", "Open", "High", "Low", "Close", "Volume"):

@@ -204,6 +204,52 @@ def test_formatting_present(evidence, tmp_path):
     assert 'fontweight="bold"' in xml or 'font-weight="bold"' in xml
 
 
+def _column_widths(xml: str) -> dict[str, float]:
+    """Map amd-col-* style names to their explicit width in cm."""
+    widths: dict[str, float] = {}
+    for block in re.findall(r"<style:style style:name=\"amd-col-.*?</style:style>", xml):
+        name = re.search(r'style:name="(amd-col-[a-z]+)"', block)
+        width = re.search(r'style:column-width="([0-9.]+)cm"', block)
+        if name and width:
+            widths[name.group(1)] = float(width.group(1))
+    return widths
+
+
+def test_columns_have_explicit_widths(evidence, tmp_path):
+    """Calc live acceptance finding: without explicit widths, typed dates render ###.
+
+    Every table must declare its columns via named column styles that carry an
+    explicit cm width — wide enough for the FORMATTED value, not the odfpy
+    default 0.889in that clips '2026-10-02 07:02' into ###.
+    """
+    out = tmp_path / "AMD_Latest_Stock_w.ods"
+    build_into(evidence, out)
+    xml = content_xml(out)
+    widths = _column_widths(xml)
+    assert widths, "no explicit column-width styles found in content.xml"
+    # date-only cells ("2026-10-02") and datetime cells ("2026-10-02 07:02")
+    # need their formatted text to fit: at least 2.4 / 3.0 cm respectively.
+    assert min(widths.values()) >= 2.0, widths
+    assert any(w >= 3.0 for w in widths.values()), widths  # datetime columns
+    # the columns must actually be REFERENCED by the tables
+    assert xml.count('table:table-column table:style-name="amd-col-') >= 6
+
+
+def test_datetime_column_is_wider_than_plain_date_column(evidence, tmp_path):
+    """'2026-10-02 07:02' is ~60% wider than '2026-10-02' — widths must reflect that.
+
+    The Summary VALUE column carries the typed datetime quote times (the very
+    cells that rendered ### in the Calc acceptance: B10/B13/B24/B25); the Daily
+    OHLCV date column carries date-only values.
+    """
+    out = tmp_path / "AMD_Latest_Stock_wd.ods"
+    build_into(evidence, out)
+    widths = _column_widths(content_xml(out))
+    assert widths.get("amd-col-value", 0) >= 3.0, widths
+    assert widths.get("amd-col-date", 0) >= 2.4, widths
+    assert widths["amd-col-value"] > widths["amd-col-date"]
+
+
 def test_user_artifact_path_refused(evidence, tmp_path):
     """The builder refuses to write to the user artifact path — outright, not by luck."""
     with pytest.raises(Exception, match="AMD_latest_data"):

@@ -160,3 +160,17 @@ Testzelle B2 produktiv bearbeitet und beobachtet (`INPUT_OBSERVED_AT_TARGET` + s
 Wert + content.xml), speichern/schließen/wiederöffnen mit persistiertem Nachweis `4`.
 Die alten Befunde dieser Datei (Fokus-/Zustellungs-Blockade vom 2026-09-26) sind durch den
 Eingabe-Fix vom 2026-09-30 überholt und hier erstmals praktisch bestätigt behoben.
+
+## Nachtrag (2026-10-02, Feature `ods-column-widths`) — Befund 2 (###-Spaltenbreiten) behoben
+
+Befund 2 oben ist im Builder behoben: `tools/amd_ods_build.py` setzt jetzt explizite
+Spaltenstile mit `style:column-width` (Datums-/Wertspalten 2,4/3,2 cm, Preise 2,2 cm,
+Volumen 2,6 cm, Beschriftungsspalte 12 cm). Neues kanonisches Artefakt (nie überschrieben,
+neuer Stamp): `/home/willy/AMD_Latest_Stock_20261002-141150.ods`
+(sha256 `1aac31ef…3f61`), gebaut aus dem gesicherten Rohbeleg. Headless-PDF-Render:
+**0 `###` auf allen 8 Seiten** (alt: 4 `###` auf Seite 1 — Reproduktion in
+`logs/amd-ods-cw/old-pdf-page1.txt`, Fix-Beweis in `logs/amd-ods-cw/pdf-page1.txt`);
+Zell-Semantik gegen den Alt-Builder: 1694 Zellen, 0 Unterschiede. Details und Grenzen
+(URL-Abschnitt am PDF-Seitenrand) im Nachtrag in `docs/audit/QUELLENPRUEFUNG-AMD.md`.
+Der ###-Einschränkungshinweis im Abschnitt „Stand" oben gilt für die Datei 132318
+(Stand der Abnahme) — für weitere Calc-Läufe ist 141150 das Testartikel.
