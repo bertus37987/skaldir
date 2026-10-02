@@ -178,3 +178,46 @@ offener Rest.
 - Für Schritt 3 (ODS-Bau) gelten: 615.73 = regulärer Schlusskurs Okt 1 (heute), 624.35 =
   letzter Handel **Pre-Market** (eigene Zeile, klar gelabelt), Quelle = Nasdaq-API, Abrufzeit
   + Zeitzone als eigene Quellzeilen. Yahoo bleibt als Rate-Limit-Befund dokumentiert.
+
+## Nachtrag 3 (2026-10-02, Feature `amd-ods-builder` — Schritt 3 gebaut: neue typisierte ODS)
+
+Die neue, eindeutig benannte ODS-Datei ist gebaut und maschinenlesbar verifiziert:
+
+- **Artefakt:** `/home/willy/AMD_Latest_Stock_20261002-132318.ods`
+  (sha256 `c2c9a8405e851137a6856b5553ecf589378cf9ade60b3410c9e7a577d4a5c402`),
+  erzeugt mit odfpy 1.4.1 aus dem gesicherten Rohbeleg
+  (`logs/amd-normalized-20261002.json` + `-rows.json`, 273 Balken).
+- **Nutzerartefakt unangetastet:** `/home/willy/AMD_latest_data.ods` vor/nach dem Bau
+  sha256-identisch (`eb54f9ff…fac`, Nachweis `logs/amd-ods-hashproof.txt`); der Builder
+  lehnt diesen Pfad strukturell ab (Test `test_user_artifact_path_refused`) und lehnt
+  jeden bereits existierenden Ausgabepfad ab (ein Lauf = eine NEUE Datei).
+- **Typisierung maschinell geprüft** (`logs/amd-ods-verify.log`): 1370 Zellen
+  `office:value-type="float"`, 277 Zellen `office:value-type="date"` (273 Tagesdaten +
+  2 Quote-Times + lokale/UTC-Abrufzeit — der alte Defekt „Daten als Strings" ist
+  behoben); Kursarten-Zeilen getrennt gelabelt: „Last market price (pre-market trade,
+  NOT a regular-session close)" = 624.35 vs. „Regular-session close (Oct 1, 2026
+  session)" = 615.73; Abrufzeit 2026-10-02T13:02:22 (+02:00, Europe/Berlin) und
+  11:02:22 UTC als typisierte Date-Zellen mit Format; Quote-Times aus den
+  Quell-Labels („Oct 2, 2026 7:02 AM ET" → 07:02:00, „Closed at Oct 1, 2026 4:00 PM
+  ET" → 16:00:00) geparst und typisiert.
+- **Werte gegen den Rohbeleg abgeglichen:** alle 273 Balken (Datum, O/H/L/C, Volumen)
+  identisch mit `logs/amd-nasdaq-chart-20261002-130302-raw.json` — 0 Abweichungen;
+  Bid/Ask/Net-Change/52w-Range/Markestatus stimmen mit
+  `logs/amd-nasdaq-20261002-130220-raw.json`; fehlgeschlagene Quellen stehen als
+  Quellzeilen in der Tabelle (Yahoo chart API: 429; Stooq: 404 / PoW-Bot-Wand).
+- **Formatierung:** fette Kopfzeilen, Zahlenformate (Preise #,##0.00; Volumen mit
+  Tausendertrennzeichen), Date-/DateTime-Datenstile (gerendert „2026-10-02 07:02:00",
+  geprüft per Headless-Konvertierung mit isoliertem Profil `/tmp/skaldir-lo-profile`
+  — Fixture-Nachweis, kein Host-Live-Claim; das echte Calc-Fenster ist
+  `calc-live-acceptance`).
+- **Reproduzierbarkeit:** gleicher Input + gleiches Stamp → inhalts-bitidentisch
+  (alle Zip-Member gleich; nur Container-Zeitstempel des Zip unterscheiden sich).
+  Befehl dokumentiert im Docstring von `tools/amd_ods_build.py`:
+
+      .venv/bin/python tools/amd_ods_build.py \
+          --normalized logs/amd-normalized-20261002.json \
+          --rows logs/amd-normalized-20261002-rows.json
+
+- **Tests:** `tests/test_amd_ods_build.py` — 9 grün (Exit 0), inkl. Unique-Name-Refus,
+  User-Artefakt-Refus, Float/Date-Typisierung, Zeilenabgleich gegen den Beleg,
+  Quellzeilen, Formatierung. `odfpy` ist im dev-Extra deklariert.

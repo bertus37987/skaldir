@@ -57,6 +57,12 @@ dev = [
   "httpx>=0.27",
   "jsonschema>=4",
   "websockets>=12",
+  # `tools/amd_ods_build.py` builds the AMD→Calc ODS artifact with odfpy (the same library
+  # the user's old file was made with, measured "ODFPY/1.4.1" in its manifest) and
+  # `tests/test_amd_ods_build.py` exercises it through a real generated file. Like the
+  # schemathesis case above, naming it here is what makes `pip install -e '.[dev]'`
+  # self-sufficient instead of dependent on whichever environment has it installed.
+  "odfpy>=1.4,<2",
 ]
 # --- the capabilities that are *not* in the core install ---------------------------------------
 # Each one is imported lazily inside a function (never at module level) and each one is refused
