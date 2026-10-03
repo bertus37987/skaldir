@@ -119,3 +119,59 @@ NO parallel pytest processes (per the (c) contention rule). Raw logs: `logs/reve
 - Milestone gate: `uv run ruff check src tests` rc=0; `uv run python -m compileall -q src` rc=0.
 - No code or test file changed in this re-run; zero assertion changes, zero skips added.
   The 33 skips are pre-existing (incl. load/external-dependent markers), not new skip-as-green.
+
+## Nachtrag (2026-10-03, feature `test-process-scan-scoping`): Terminal-Kill-Verdict auf die eigene Prozessgruppe umgestellt
+
+Revision under test: `736950c` (nur `tests/test_tools_core_tools.py` geändert; Produktcode unverändert).
+
+**Gemessener Flake (ods-column-widths-Verifikation 2026-10-02):**
+`tests/test_tools_core_tools.py::test_terminal_times_out_and_kills_the_process_group` failed in
+einem CLEAN Full-Suite-Run (exit 1); isoliert grün. Ursache: der Survivor-Check scannte die
+HOST-Prozesstabelle nach `sleep 30`-Kommandozeilen (`ps -C sleep | grep -c 'sleep 30'`) und
+zählte fremde, nichts mit dem Test zu tun habende `sleep 30`-Prozesse — Kreuzsprech-Falschalarm,
+gleiche Klasse wie die pty-tests-load-robust-Fixes.
+
+**Reproduktion (vor dem Fix, echter Exitcode):** fremder Decoy `sleep 30` (eigene fremde
+Prozessgruppe, PID 401801) gestartet → Test FAILED, exit 1,
+`AssertionError: assert '1' == '0'` in der Survivor-Zählung; **alle** Timeout-/Kill-Assertions
+(`timed_out is True`, `exit_code == C.EXIT_UNKNOWN`, `elapsed < 10`) bestanden — kein
+Produktdefekt, nur der Detektions-Scope war falsch.
+
+**Fix (Test isoliert, keine Assertions geschwächt, kein Skip):** der getestete Befehl schreibt
+vor dem Sleep seine eigene Shell-PID in eine Marker-Datei im Workspace (`echo $$ > pgid-marker;
+sleep 30`); unter `start_new_session=True` ist die Shell der Process-Group-Leader, damit
+identifiziert die PID genau die vom Test erzeugte Gruppe. Der Verdict polled genau diese PGID
+mit `os.killpg(pgid, 0)` bis zur `ProcessLookupError`-Bestätigung — ein fremder Host-`sleep 30`
+kann in dieser Gruppe strukturell nie auftauchen. Die Zeitschutz-Fenster fängt kurzlebige Zombies
+ab; nach Ablauf wird mit den überlebenden PIDs aus `ps` failt (Diagnose statt Rätsel).
+
+**Regressionstest neu:** `test_a_foreign_host_sleep_process_is_not_counted_as_a_survivor` —
+startet einen eigenen Decoy `/bin/sleep 30` (eigene Session), weist während des Kills nach, dass
+die fremde Gruppe lebt, und dass die erzeugte Gruppe trotzdem tot ist; Decoy wird über die
+aufgezeichnete PID aufgeräumt.
+
+**Verifikation (echte Exitcodes, Rohlogs `logs/process-scan-scoping/`):**
+- Repro mit Decoy: exit 1 (oben). Baseline ohne Decoy: exit 0.
+- Zieltest mit laufendem `sleep 30`-Decoy: **14/14** aufeinanderfolgende Runs grün
+  (`loop30.log`); zusätzlich 12/12 mit `sleep 400`-Decoy (`loop.log`).
+- `uv run pytest tests/test_tools_core_tools.py -o addopts='' -q` → exit 0, 55 passed
+  (inkl. beider Terminal-Kill-Tests).
+- `uv run ruff check src tests` → exit 0; `uv run python -m compileall -q src` → exit 0.
+- Clean Full-Suite-Run `uv run python -m pytest tests/ -q` → exit 1 mit genau **3** Fehlern,
+  alle isoliert reproduzierbar (nicht Contention, nicht dieser Fix):
+  `test_coding_features.py::test_the_loop_without_a_fixer_claims_nothing`,
+  `test_coding_features_cli.py::test_testfix_without_a_fixer_reports_the_roster_and_exits_2`
+  (`parse_failures` findet `''` statt `test_x` — pytest 9.1.1 koloriert die Short-Summary auch
+  ohne TTY, ANSI-Präfixe brechen den `^(FAILED|ERROR)\s`-Regex), und
+  `test_packaging_install.py::test_uv_tool_list_names_the_installed_tool`
+  (`uv 0.11.29` koloriert `uv tool list` ebenfalls nicht-TTY). Beide Symptome sind Abhängigkeits-
+  Drift im modifizierten `uv.lock` (uncommittete Vorlaufarbeit), nicht Regression dieses Features.
+  Ein 30-Sekunden-Prozess-Sampler (82 Samples, `foreign-pytest-sampler.log`) belegte für den
+  gesamten Run: NULL fremde pytest-Prozesse (nur die eigenen uv/python/bwrap-PIDs).
+- (c) Subagent import-order: im cleanen Full-Suite-Run **grün** — passt zur Contention-Artefakt-
+  Einordnung oben; der vorherige rote Full-Suite-Run (2026-10-03, exakt `seen = ['', 'registry',
+  'perf_runtime']`) fiel in eine Phase mit paralleler Prozessaktivität.
+
+**Offen für den Gate (außerhalb dieses Features):** die 3 Drift-Fehler oben blockieren einen
+vollen grünen Full-Suite-Run, bis `parse_failures`/der packaging-Test ANSI-kolorenierte Ausgaben
+(`pytest 9.1.1`/`uv 0.11.29`) vertragen oder die Abhängigkeitsänderung zurückrollt/landet.
