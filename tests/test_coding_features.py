@@ -292,6 +292,47 @@ def test_parse_failures_reads_a_real_pytest_report(tmp_path: Path) -> None:
     assert "AssertionError" in failures[0]["reason"]
 
 
+def test_parse_failures_tolerates_ansi_colored_pytest_output(tmp_path: Path) -> None:
+    """pytest >= 9 colorizes the short summary even when stdout is not a TTY (FORCE_COLOR
+    / CLICOLOR_FORCE in the environment — dependency drift measured 2026-10-03). The ANSI
+    prefixes must not break the ``^(FAILED|ERROR)`` match: the product sees colored output
+    in the wild, so the parser strips escape sequences instead of demanding NO_COLOR."""
+    output = (
+        "\x1b[36m\x1b[1m"
+        "=========================== short test summary info ============================"
+        "\x1b[0m\n"
+        "\x1b[31mFAILED\x1b[0m tests/test_mod.py::\x1b[1mtest_x\x1b[0m - assert 1 == 2\n"
+        "\x1b[31m\x1b[1m1 failed\x1b[0m\x1b[31m in 0.02s\x1b[0m\x1b[0m\n"
+    )
+    failures = C.parse_failures(output)
+    assert [item["name"] for item in failures] == ["test_x"]
+    assert failures[0]["runner"] == "pytest"
+    assert failures[0]["path"] == "tests/test_mod.py"
+    assert "assert 1 == 2" in failures[0]["reason"]
+    assert "\x1b" not in failures[0]["raw"], "the fingerprint must not carry escape codes"
+
+
+def test_run_tests_parses_a_color_forced_pytest_summary(workspace: Path) -> None:
+    """The real subprocess path, deterministic: pytest runs with FORCE_COLOR=1 so its
+    summary is ANSI-colored although no TTY is attached — the roster must stay intact."""
+    (workspace / "tests" / "test_mod.py").write_text(FAILING_TEST, encoding="utf-8")
+    report = C.run_tests(_pytest_argv(), cwd=workspace, env={"FORCE_COLOR": "1"})
+    assert report["exit_code"] == 1
+    assert [item["name"] for item in report["failures"]] == ["test_x"]
+
+
+def test_the_loop_reports_the_roster_from_colored_output(workspace: Path) -> None:
+    """End to end through the loop surface: a color-forcing pytest round 0 must still
+    produce a named roster, not '' (the measured drift symptom)."""
+    (workspace / "tests" / "test_mod.py").write_text(FAILING_TEST, encoding="utf-8")
+    report = C.test_fix_loop(
+        _pytest_argv(), cwd=workspace, max_rounds=3, env={"FORCE_COLOR": "1"}
+    )
+    assert report["status"] == "no_fixer"
+    assert report["exit_code"] == 2
+    assert [item["name"] for item in report["failures"]] == ["test_x"]
+
+
 def test_the_traceback_twin_of_a_failure_is_not_counted_twice(tmp_path: Path) -> None:
     """pytest prints the same failure twice (traceback line + summary line). Counting both
     would double the roster and hide progress."""

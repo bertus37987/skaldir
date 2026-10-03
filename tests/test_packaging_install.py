@@ -92,7 +92,11 @@ def tool(tmp_path_factory) -> Iterator[dict]:
 
 
 def test_uv_tool_list_names_the_installed_tool(tool):
-    out = _run(["uv", "tool", "list"], tool["env"], tool["cwd"])
+    # `uv` >= 0.11 colorizes `tool list` even without a TTY when the environment forces
+    # color (FORCE_COLOR/CLICOLOR_FORCE) — dependency drift measured 2026-10-03. Capture the
+    # invocation colorless (`--color=never`) so the anchored assertion below stays on the
+    # real installed-tool line; the name+version+script assertion itself is NOT weakened.
+    out = _run(["uv", "tool", "list", "--color=never"], tool["env"], tool["cwd"])
     assert out.returncode == 0, out.stderr
     assert re.search(rf"^{DIST} v{re.escape(_version())}$", out.stdout, re.M), out.stdout
     assert re.search(rf"^-\s+{SCRIPT}$", out.stdout, re.M), out.stdout

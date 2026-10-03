@@ -934,13 +934,19 @@ _FAILURE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 
 _LINT_NOISE = ("warning:", "note:", "info:", "help:")
 
+# ANSI escape sequences (CSI), e.g. ``\x1b[31m`` / ``\x1b[1m``: pytest >= 9 and uv colorize
+# their output even when stdout is not a TTY (FORCE_COLOR/CLICOLOR_FORCE). The ANSI prefixes
+# break every ``^(FAILED|ERROR)…`` anchor, so the parser strips them instead of demanding a
+# colorless environment — colored output in the wild must stay parseable.
+_ANSI_CSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+
 
 def parse_failures(output: str, *, runner: str = "auto") -> list[dict[str, Any]]:
     """Extract typed failures from a real test output. No match ⇒ an empty list, never a guess."""
     failures: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
     for raw in output.splitlines():
-        line = raw.strip()
+        line = _ANSI_CSI.sub("", raw).strip()
         if not line:
             continue
         for name, pattern in _FAILURE_PATTERNS:

@@ -175,3 +175,49 @@ aufgezeichnete PID aufgeräumt.
 **Offen für den Gate (außerhalb dieses Features):** die 3 Drift-Fehler oben blockieren einen
 vollen grünen Full-Suite-Run, bis `parse_failures`/der packaging-Test ANSI-kolorenierte Ausgaben
 (`pytest 9.1.1`/`uv 0.11.29`) vertragen oder die Abhängigkeitsänderung zurückrollt/landet.
+
+## Nachtrag (2026-10-03, feature `ansi-drift-compat`): ANSI-Drift behoben — Kompatibilität statt Rollback
+
+Revision under test: working tree on top of `479a70c`. `uv.lock`/`cu_runs.jsonl`/`events.db`/
+`.gitignore` (Vorlaufarbeit des Users) wurden NICHT angerührt; der Fix macht den Code kompatibel.
+
+**Reproduktion (vor dem Fix, echte Exitcodes):** die 3 Node-IDs isoliert mit `FORCE_COLOR=1`
+(die vorige Worker-Session lieferte eine color-forcing-Umgebung — `pytest`/`uv` kolorieren
+damit auch ohne TTY) — je exit 1:
+`test_the_loop_without_a_fixer_claims_nothing` und
+`test_testfix_without_a_fixer_reports_the_roster_and_exits_2` mit
+`AssertionError: assert [''] == ['test_x']` (exakt das gemeldete Symptom);
+`test_uv_tool_list_names_the_installed_tool` mit
+`re.search('^skaldir-agent v1\.5\.0$', '\x1b[1mskaldir-agent v1.5.0\x1b[0m\n…')` → None.
+Direkt gemessen: `FORCE_COLOR=1 python -m pytest … -q` koloriert die Short-Summary ohne TTY
+(`\x1b[31mFAILED\x1b[0m …`); `FORCE_COLOR=1 uv tool list` koloriert die Toolzeile
+(`\x1b[1mskaldir-agent v1.5.0\x1b[0m`).
+
+**Fix (Produktcode + Tests, kein Skip, keine abgeschwächte Assertion):**
+- `src/skaldir/coding_features.py`: `parse_failures` streift CSI-Escape-Sequenzen pro Zeile,
+  bevor die Muster matchen (`_ANSI_CSI`), statt eine farbenfreie Umgebung zu verlangen —
+  farbige Ausgabe in der Wildnis bleibt parsebar; `raw`/Fingerprints tragen keine Escapes.
+- `tests/test_packaging_install.py::test_uv_tool_list_names_the_installed_tool`: der
+  gecapturete Aufruf ist jetzt `uv tool list --color=never`; die verankerten Assertions auf
+  `{DIST} v{version}` und `- {SCRIPT}` bleiben UNVERÄNDERT (kein Weakening).
+- Neue Regressionstests in `tests/test_coding_features.py` (failing-first, alle 3 rot mit dem
+  gemessenen Symptom vor dem Fix):
+  `test_parse_failures_tolerates_ansi_colored_pytest_output` (ANSI-Beispielzeile aus dem
+  gemessenen pytest-9.1.1-Output), `test_run_tests_parses_a_color_forced_pytest_summary`
+  (echter pytest-Subprozess mit `env={"FORCE_COLOR": "1"}`, deterministisch) und
+  `test_the_loop_reports_the_roster_from_colored_output` (end-to-end durch `test_fix_loop`).
+
+**Verifikation (echte Exitcodes, Rohlog `logs/ansi-drift-compat-fullsuite.txt`):**
+- Alle 3 ursprünglichen Node-IDs + 3 neue Tests unter `FORCE_COLOR=1`: **6 passed**, exit 0.
+- `uv run python -m pytest tests/test_coding_features.py tests/test_coding_features_cli.py
+  tests/test_packaging_install.py -q -o addopts=` → exit 0, **96 passed**.
+- `uv run ruff check src tests` → exit 0 ("All checks passed!");
+  `uv run python -m compileall -q src` → exit 0.
+- Clean Full-Suite-Run (Manifest-Kommando, Einzellauf, keine parallelen pytest-Prozesse):
+  `uv run python -m pytest tests/ -q` → **exit 0** = 0 FAILED, 0 ERROR
+  (pytest-Exit-Semantik: 0 nur ohne Fehlschläge und ohne Sammel-/Setup-Fehler).
+  Hinweis zur Logform: `pyproject.toml` setzt `addopts = "-q"`; das Manifest fügt `-q` hinzu,
+  also läuft der Gate-Run doppelt-quiet (`-qq`) und druckt die Zahlenzeile nicht — die
+  kleinen `/tmp`-Vergleichsläufe zeigten, dass die Zeile sonst da wäre. Nicht als Fehler
+  werten; der Exitcode ist die Bindungsevidenz.
+- Der oben stehende „Offen für den Gate“-Punkt ist damit abgearbeitet.
