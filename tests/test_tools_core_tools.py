@@ -63,24 +63,80 @@ def test_terminal_reports_an_unknown_command_honestly(ctx):
     assert "not found" in result.data["stderr"]
 
 
-def test_terminal_times_out_and_kills_the_process_group(ctx):
+def _timeout_call_with_pgid_marker(ctx, marker_name: str):
+    """Run the terminal timeout case; return (result, spawned pgid).
+
+    The command records its own shell PID first — under the terminal's
+    ``start_new_session`` spawn the shell IS the process-group leader, so that
+    PID identifies exactly the group this test spawned.
+    """
+    marker = ctx["root"] / marker_name
     started = time.time()
-    result = ctx["call"]("terminal", {"command": "sleep 30", "timeout_s": 1})
+    result = ctx["call"](
+        "terminal", {"command": f"echo $$ > {marker_name}; sleep 30", "timeout_s": 1}
+    )
     elapsed = time.time() - started
+    return result, elapsed, int(marker.read_text().strip())
+
+
+def _assert_process_group_gone(pgid: int) -> None:
+    """Assert the spawned process group is empty, scoped to that pgid.
+
+    Never scan the host process table for a command name ('sleep 30'): an
+    unrelated host process running the same command must not flip this verdict
+    (measured gate-flake, 2026-10-02). The poll absorbs the short window in
+    which killed children are still unreaped zombies; a live group after the
+    deadline fails with the surviving pids listed for diagnosis.
+    """
+    deadline = time.time() + 5.0
+    while time.time() < deadline:
+        try:
+            os.killpg(pgid, 0)
+        except ProcessLookupError:
+            return  # the group is gone
+        time.sleep(0.1)
+    remaining = subprocess.run(  # noqa: S603
+        ["/bin/sh", "-c", f"ps -eo pid=,pgid=,cmd= | awk -v g={pgid} '$2 == g'"],
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout.strip()
+    pytest.fail(f"process group {pgid} survived the timeout kill:\n{remaining}")
+
+
+def test_terminal_times_out_and_kills_the_process_group(ctx):
+    result, elapsed, pgid = _timeout_call_with_pgid_marker(ctx, "pgid-marker")
     assert result.ok is False and result.error_kind == "timeout"
     assert result.exit_code == C.EXIT_UNKNOWN
     assert result.data["timed_out"] is True
     assert result.data["exit_code"] == -1
     assert elapsed < 10, "the timeout must not wait for the command"
-    # the group is gone: a surviving child would show up as a live sleep process
-    time.sleep(0.2)
-    survivors = subprocess.run(  # noqa: S603
-        ["/bin/sh", "-c", "ps -o pid=,cmd= -C sleep | grep -c 'sleep 30' || true"],
-        capture_output=True,
-        text=True,
-        check=False,
-    ).stdout.strip()
-    assert survivors == "0"
+    # the group is gone: checked via the spawned group's own pgid
+    _assert_process_group_gone(pgid)
+
+
+def test_a_foreign_host_sleep_process_is_not_counted_as_a_survivor(ctx):
+    """Regression for the 2026-10-02 gate-flake: a live UNRELATED host 'sleep 30'
+    must not flip the timeout verdict. The spawned group is verified dead while
+    a foreign sleep with its own group provably still runs."""
+    decoy = subprocess.Popen(  # noqa: S603
+        ["/bin/sleep", "30"],
+        start_new_session=True,
+    )
+    try:
+        result, _elapsed, pgid = _timeout_call_with_pgid_marker(ctx, "pgid-marker-decoy")
+        assert result.ok is False and result.error_kind == "timeout"
+        assert result.data["timed_out"] is True
+        assert decoy.poll() is None, "the decoy died early — the cross-talk proof is void"
+        try:
+            os.killpg(os.getpgid(decoy.pid), 0)
+        except ProcessLookupError:  # pragma: no cover — decoy vanished mid-test
+            pytest.fail("the foreign sleep group vanished — the cross-talk proof is void")
+        # the spawned group is dead DESPITE the foreign sleep running:
+        _assert_process_group_gone(pgid)
+    finally:
+        decoy.kill()
+        decoy.wait(timeout=5)
 
 
 def test_terminal_caps_its_output_and_spills_the_rest(ctx):
