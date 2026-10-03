@@ -221,3 +221,22 @@ Direkt gemessen: `FORCE_COLOR=1 python -m pytest … -q` koloriert die Short-Sum
   kleinen `/tmp`-Vergleichsläufe zeigten, dass die Zeile sonst da wäre. Nicht als Fehler
   werten; der Exitcode ist die Bindungsevidenz.
 - Der oben stehende „Offen für den Gate“-Punkt ist damit abgearbeitet.
+
+## Nachtrag (2026-10-03, feature `test-process-scan-scoping`): Re-Run-Gate bestanden
+
+Revision under test: working tree on top of `e7096aa` (nur der Audit-Dok-Nachtrag in diesem
+Commit); Teil (a) war in `736950c` + `479a70c` bereits erledigt und wurde nur verifiziert,
+nicht wiederholt. Die Vorlaufarbeit des Users (`uv.lock`/`cu_runs.jsonl`/`events.db`/
+`.gitignore`) blieb unangerührt.
+
+**Verifikation (echte Exitcodes, Rohlog `logs/process-scan-scoping/gate-fullsuite-26f46233.log`):**
+- Teil (a) verifiziert: Decoy-Regressionstest
+  `test_a_foreign_host_sleep_process_is_not_counted_as_a_survivor` in
+  `tests/test_tools_core_tools.py` vorhanden; Kill-Verdict scoping (`_timeout_call_with_pgid_marker`,
+  `os.killpg`-Poll) im Code; Timeout/Kill-Semantik-Assertions unverändert.
+- `uv run pytest tests/test_tools_core_tools.py -q` → exit 0 (**55 passed**, inkl. Decoy-Regressionstest).
+- Clean Full-Suite-Run (Manifest-Kommando, Einzellauf): `uv run python -m pytest tests/ -q`
+  → **exit 0** = 0 FAILED, 0 ERROR. Logform wie oben: doppelt-quiet (`-qq`) druckt die
+  Zahlenzeile nicht; der Exitcode ist die Bindungsevidenz.
+- `uv run ruff check src tests` → exit 0 ("All checks passed!").
+- Kein Skip hinzugefügt, keine Assertion geändert; kein Produktcode geändert.
