@@ -43,6 +43,7 @@ is ever closed by title, and no process is ever signalled that this probe did no
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -61,6 +62,21 @@ from typing import Any
 #: The title every probe window carries: ``SKALDIR-PROBE-<nonce>``. The nonce is the per-probe
 #: identity that stops one probe's records from being read as another probe's delivery.
 PROBE_TITLE_PREFIX = "SKALDIR-PROBE-"
+
+
+def title_tail(nonce: str) -> str:
+    """The ASCII tail the window title carries for this nonce — deterministic, so both ends agree.
+
+    Measured (2026-10-03, live probe on :0): a non-ASCII nonce is stored in the X title
+    property as Latin-1 bytes, `xdotool getwindowname` answers those raw bytes, and the
+    confirmation compared UNICODE names — the probe refused its OWN window
+    (``PROBE_MISCONFIGURED``, unknown, nothing sent). The title is a runtime identity, so
+    it is an ASCII slug joined with a short nonce hash, keeping ``äöüß`` markers
+    workable while plain markers keep the exact old title.
+    """
+    slug = "".join(ch if 0x20 <= ord(ch) < 0x7F and ch not in " \t" else "_" for ch in nonce)
+    digest = hashlib.blake2b(nonce.encode("utf-8"), digest_size=3).hexdigest()
+    return f"{slug}-{digest}" if slug != nonce else slug
 
 #: How the probe's own receiver is started — a FRESH process, so the window really has a pid
 #: the probe can record and confirm (an in-process window would carry the *runner's* pid).
@@ -93,6 +109,14 @@ def run_command(
             timeout=timeout,
             check=False,
             env=env,
+            # Measured 2026-10-03 (feature input-type-charset-fix, live probe on :0):
+            # `xdotool getwindowname` answers a window whose WM stores the title as raw
+            # bytes (0xe4 = Latin-1) and the strict UTF-8 decode raised UnicodeDecodeError
+            # out of `communicate()` — a measurement tool crash, not a probe result.
+            # Foreign titles are read as text, whatever bytes they are; "replace" never
+            # invents input.
+            encoding="utf-8",
+            errors="replace",
         )
     except (OSError, subprocess.SubprocessError) as exc:
         return -1, f"{type(exc).__name__}: {exc}"
@@ -367,6 +391,8 @@ def _receiver_argv(run: str, log_path: Path, width: int, height: int) -> list[st
         run,
         "--log",
         str(log_path),
+        "--title",
+        title_tail(run),
         "--width",
         str(int(width)),
         "--height",
@@ -538,7 +564,7 @@ def confirm_binding(
 
     ============================  ==========================================================
     ``window_on_display``         the recorded id really is a window on this display
-    ``title_is_ours``             its title carries this probe's nonce (guards a reused id)
+    ``title_is_ours``             carries this run's nonce or its ASCII slug (a reused id fails)
     ``wm_state``                  ``Withdrawn`` fails; a raw X window legitimately has none
     ``map_state``                 the receiver's own view: ``IsViewable`` is mapped
     ``net_wm_pid``                equals the pid this probe recorded, so it is our window
@@ -570,10 +596,18 @@ def confirm_binding(
 
     _code, name = ask(["xdotool", "getwindowname", str(wid)])
     title = (name or "").strip()
-    checks["title_is_ours"] = binding.run in title
-    if binding.run not in title:
+    # The window must carry THIS probe's identity — the nonce itself when it is ASCII,
+    # otherwise the deterministic ASCII slug :func:`title_tail` computed from it (a non-ASCII
+    # nonce is stored as Latin-1 bytes in the X title property, so the literal token must
+    # never be demanded here). A foreign run's title fails both.
+    ours = str(binding.title or "")
+    slug = title_tail(str(binding.run or ""))
+    checks["title_is_ours"] = bool(ours) and ours in title and (
+        binding.run in title or slug in title
+    )
+    if not checks["title_is_ours"]:
         reasons.append(
-            f"the title of window {wid} is {title!r}, not this probe's {binding.title!r}"
+            f"the title of window {wid} is {title!r}, not this probe's {ours!r}"
         )
 
     if activate:
@@ -676,7 +710,7 @@ def spawn_probe_window(
     except OSError as exc:
         binding = ProbeBinding(
             run=nonce, pid=0, wid=0, log_path=log_path, directory=directory,
-            title=f"{PROBE_TITLE_PREFIX}{nonce}",
+            title=f"{PROBE_TITLE_PREFIX}{title_tail(nonce)}",
             reason=f"the probe receiver could not be started: {type(exc).__name__}: {exc}",
         )
         return ProbeWindow(binding=binding, proc=None)
@@ -686,7 +720,7 @@ def spawn_probe_window(
         pid=int(proc.pid),
         wid=0,
         log_path=log_path,
-        title=f"{PROBE_TITLE_PREFIX}{nonce}",
+        title=f"{PROBE_TITLE_PREFIX}{title_tail(nonce)}",
         directory=directory,
     )
     ready: dict[str, Any] = {}
@@ -859,6 +893,32 @@ def _printable_char(keysym: int) -> str:
     return ""
 
 
+#: Modifier masks of the event's ``state`` field (X protocol constants, ``Xlib.X`` module
+#: values spelled out so the whole receiver needs no X display at decode time).
+X_SHIFT_MASK = 1  # X.ShiftMask
+X_MOD5_MASK = 128  # X.Mod5Mask — the AltGr / ISO_Level3_Shift level
+
+
+def _keysym_index(state: int) -> int:
+    """The keysym index the CURRENT modifier state selects — Shift is not the whole truth.
+
+    Measured (2026-10-03, live probe on :0, feature input-type-charset-fix): a text marker of
+    the fixed path types 'äöüß' with a Level-3 (AltGr/Mod5) hold, and the receiver decoded
+    every such event with the shift index only — '.' arrived as '[' — and the honest
+    marker correlation rejected its OWN delivery. The index here is the same level table the
+    layout parser reads in :mod:`skaldir.text_keys`: plain 0, shift 1, AltGr 2, shift+AltGr 3.
+    """
+    altgr = bool(state & X_MOD5_MASK)
+    shift = bool(state & X_SHIFT_MASK)
+    if altgr and shift:
+        return 3
+    if altgr:
+        return 2
+    if shift:
+        return 1
+    return 0
+
+
 def _map_state_name(value: Any) -> str:
     return {0: "IsUnmapped", 1: "IsUnviewable", 2: "IsViewable"}.get(int(value or 0), str(value))
 
@@ -878,6 +938,7 @@ def receiver_main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog=RECEIVER_MODULE)
     parser.add_argument("--run", required=True)
     parser.add_argument("--log", required=True)
+    parser.add_argument("--title", default="")
     parser.add_argument("--width", type=int, default=460)
     parser.add_argument("--height", type=int, default=200)
     parser.add_argument("--max-events", type=int, default=96)
@@ -918,7 +979,11 @@ def receiver_main(argv: Sequence[str] | None = None) -> int:
         30, 30, int(args.width), int(args.height), 1, X.CopyFromParent
     )
     try:
-        window.set_wm_name(f"{PROBE_TITLE_PREFIX}{args.run}")
+        # The title is the probe's identity at the window manager. A non-ASCII nonce goes
+        # into the X string property as Latin-1 bytes and `xdotool getwindowname` answers
+        # them raw — so the title is the ASCII slug (--title, computed identically by
+        # :func:`title_tail`), never the raw nonce.
+        window.set_wm_name(f"{PROBE_TITLE_PREFIX}{args.title or title_tail(args.run)}")
         # The window publishes its OWN pid, so the probe can confirm the binding belongs to the
         # process it started rather than to whatever else holds a similar window.
         window.change_property(
@@ -940,8 +1005,8 @@ def receiver_main(argv: Sequence[str] | None = None) -> int:
             time.sleep(0.1)
         _write_record(log_path, {
             "kind": "READY", "ok": True, "run": args.run, "wid": int(window.id), "pid": pid,
-            "title": f"{PROBE_TITLE_PREFIX}{args.run}", "map_state": map_state,
-            "set_net_wm_pid": True,
+            "title": f"{PROBE_TITLE_PREFIX}{args.title or title_tail(args.run)}",
+            "map_state": map_state, "set_net_wm_pid": True,
         })
 
         events = 0
@@ -967,13 +1032,13 @@ def receiver_main(argv: Sequence[str] | None = None) -> int:
             press = event.type == X.KeyPress
             events += 1
             keycode = int(getattr(event, "detail", 0) or 0)
-            shift = bool(getattr(event, "state", 0) & X.ShiftMask)
+            state = int(getattr(event, "state", 0) or 0)
             try:
                 base = int(connection.keycode_to_keysym(keycode, 0) or 0)
-                shifted = int(connection.keycode_to_keysym(keycode, 1 if shift else 0) or 0)
+                level = int(connection.keycode_to_keysym(keycode, _keysym_index(state)) or 0)
             except Exception:  # noqa: BLE001 — an unmappable keycode is recorded as it is
-                base, shifted = 0, 0
-            keysym = shifted if press else base
+                base, level = 0, 0
+            keysym = level if press else base
             _write_record(log_path, {
                 "kind": "KEY", "run": args.run, "wid": int(window.id), "t": time.time(),
                 "keycode": keycode, "keysym": keysym, "char": _printable_char(keysym),

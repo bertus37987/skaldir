@@ -85,6 +85,7 @@ from .computer_use import (
     xwd_to_png,
 )
 from .evdev_keys import UnknownKeyError, key_event_argv, keycode_for
+from .text_keys import UnmappableTextError, text_event_argv
 from .xlib_capture import XlibCaptureError, capture_window_image
 
 #: Bridges this module provides. ``host-session`` is isolated (a display this run owns);
@@ -1240,15 +1241,30 @@ class HostSessionRunner(BaseRunner):
         if not _safe_text(text):
             raise TargetScopeRefused("a text action needs a non-empty bounded 'text' payload")
         if backend == "ydotool":
-            # `ydotool type` takes STRINGS, not keycodes (checked with the daemon up:
-            # `ydotool type --help` → "Usage: type [OPTION]... [STRINGS]..."). Passing
-            # '30:1 30:0' here would type that literal text instead of the character, so the
-            # text goes as ONE argument and no keycode pair ever enters a type argv.
-            # The flags are the real ones, measured against the running daemon:
-            # `--key-delay` (default 20 ms) and `--key-hold` (default 20 ms). ydotool does
-            # NOT know `--delay` — "type: unrecognized option '--delay'" — and it still
-            # returns rc 0 afterwards, so a wrong flag here would look like success.
-            return ["ydotool", "type", "--key-delay", "40", "--key-hold", "20", text]
+            # THE measured root of the charset defect (calc-live-acceptance 072b98f,
+            # re-measured in the live survey 2026-10-03): a plain string send to
+            # `ydotool type` silently DROPPED every character ydotool's own virtual
+            # keyboard could not map — rc 0, no report, and the target received a corrupted
+            # string ('=2+2' arrived as '22', 'äöüß' arrived as nothing). The productive
+            # path therefore builds the characters ITSELF from this session's keymap:
+            # * every character → (X keycode, level 1–4) from `xmodmap -pke`, typed as an
+            #   evdev press/release with shift/AltGr holds — the same translation the key
+            #   path uses (X−8; never a raw X keycode reaching uinput);
+            # * a character no level of this keymap carries is REFUSED, with the character
+            #   named — a silently corrupted send cannot exist here. A "type" send could
+            #   never guarantee what actually arrived, and the six-state honesty applies
+            #   to text too.
+            try:
+                pairs = text_event_argv(text, keymap=self._x_keymap())
+            except UnmappableTextError as exc:
+                raise TargetScopeRefused(
+                    f"the text contains characters this layout cannot type — refusing them "
+                    f"up front instead of silently sending a corrupted string ({exc})"
+                ) from exc
+            # `ydotool key` takes <keycode>:<pressed> — EVDEV codes ('ydotool key --help':
+            # "we're using raw keycodes now"); a string inside a `key` call would be typed
+            # as literal gibberish, so a string never enters this argv.
+            return ["ydotool", "key", *pairs]
         if background and wid:
             return ["xdotool", "type", "--window", wid, "--delay", "12", "--", text]
         if wid:
@@ -1615,7 +1631,29 @@ class HostSessionRunner(BaseRunner):
         # consent for the chosen Wayland path and must stay transparent, and taking the bus
         # away from every child breaks the apps that need it. A consent is the user's to
         # give, not the agent's to bypass — so a real dialog is surfaced, not suppressed.
+        # The ydotool CLI child must reach the daemon the runner PROBED. Measured
+        # (2026-10-03, feature input-type-charset-fix): ydotool 1.0.4 connects to
+        # $YDOTOOL_SOCKET or /run/user/1000/.ydotool_socket — neither matches the daemon
+        # this mission runs (/tmp/skaldir-ydotoold/ydotoold.sock), so an unpinned child env
+        # failed the send with rc 2 "failed to connect socket" before a character moved. An
+        # explicit YDOTOOL_SOCKET is the caller's choice and is left untouched.
+        if not env.get("YDOTOOL_SOCKET"):
+            self._pin_ydotoold_socket(env)
         return env
+
+    def _pin_ydotoold_socket(self, env: dict) -> None:
+        """Name the daemon the probe measures, in this child env — only when it exists.
+
+        Only the mission's own socket is named (``/tmp/skaldir-ydotoold/ydotoold.sock``):
+        the default socket is the CLI's built-in guess, which measured rc 2 here, so
+        guessing it again for a child would not help. A socket file with no daemon behind
+        it would fail the send loudly — but the file only exists while the mission daemon
+        actually ran, so this is the honest approximation of "the probed daemon".
+        """
+        from .input_backend import MISSION_SOCKET
+
+        if Path(MISSION_SOCKET).exists():
+            env["YDOTOOL_SOCKET"] = MISSION_SOCKET
 
     def _run(self, argv: list[str]) -> tuple[int, str]:
         try:
@@ -1743,6 +1781,7 @@ class HostSessionRunner(BaseRunner):
                 name,
                 timeout=5.0,
                 display=self.display,
+                keymap=self._x_keymap() if name == "ydotool" else "",
                 fence=self._input_fence if self.requires_input_fence else None,
             )
             self._input_probes.append(found)

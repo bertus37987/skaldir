@@ -242,6 +242,56 @@ def test_die_socket_reihenfolge_gilt(monkeypatch):
 
 
 # --------------------------------------------------------------------------- #
+# send_argv: der Marker geht zeichengenau raus, wenn die Keymap mitreist
+# --------------------------------------------------------------------------- #
+
+#: Real lines of this session's `xmodmap -pke` (measured 2026-10-03):
+#: '=' on the unshifted level of keycode 21, '+' on its shifted level.
+BACKEND_KEYMAP = (
+    "keycode  11 = 2 at 2 quotedbl twosuperior oneeighth 2 at\n"
+    "keycode  21 = equal plus dead_acute dead_grave dead_cedilla dead_ogonek equal plus\n"
+)
+
+
+def test_send_argv_bleibt_legacy_legatus_ohne_keymap():
+    """Without a keymap the probe keeps its measured `type` argv (alphanumeric markers only)."""
+    argv = IB.send_argv("ydotool", "SKP01234567", 0)
+    assert argv[:2] == ["ydotool", "type"]
+    assert argv[-1] == "SKP01234567"
+
+
+def test_send_argv_mit_keymap_ist_zeichengenau():
+    """`'=2+2'` leaves as per-character evdev pairs — the character-accurate shape."""
+    from skaldir.text_keys import text_event_argv
+
+    marker = "=2+2skp"
+    argv = IB.send_argv("ydotool", marker, 0, keymap=BACKEND_KEYMAP)
+    assert argv[:2] == ["ydotool", "key"]
+    assert argv[2:] == text_event_argv(marker, keymap=BACKEND_KEYMAP)
+    assert "type" not in argv
+
+
+def test_send_argv_verweigert_untypbare_marker():
+    """An untypeable marker is refused at argv-build time — never silently mis-typed."""
+    from skaldir.text_keys import UnmappableTextError
+
+    with pytest.raises(UnmappableTextError) as exc:
+        IB.send_argv("ydotool", "SKP首", 0, keymap=BACKEND_KEYMAP)
+    assert "首" in str(exc.value)
+
+
+def test_send_argv_xdotool_unveraendert():
+    """xdotool argv (and its classification) stays exactly what it was."""
+    assert IB.send_argv("xdotool", "SKP01234567", 4711) == [
+        "xdotool", "windowfocus", "--sync", "4711",
+        "type", "--delay", "40", "--", "SKP01234567",
+    ]
+    assert IB.send_argv("xdotool", "SKP01234567", 0) == [
+        "xdotool", "type", "--delay", "40", "--", "SKP01234567",
+    ]
+
+
+# --------------------------------------------------------------------------- #
 # probe(): nur ein gemeldetes Event zählt
 # --------------------------------------------------------------------------- #
 

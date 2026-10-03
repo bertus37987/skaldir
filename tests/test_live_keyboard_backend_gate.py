@@ -141,6 +141,8 @@ def test_text_wird_gebaut(runner, monkeypatch):
 #: unübersetzt an uinput zu übergeben: 38 ist im Kernel `KEY_L`, 'a' ist `KEY_A = 30`.
 KEYMAP = (
     "keycode   9 = Escape NoSymbol Escape NoSymbol Escape\n"
+    "keycode  11 = 2 at 2 quotedbl twosuperior oneeighth 2 at\n"
+    "keycode  21 = equal plus dead_acute dead_grave dead_cedilla dead_ogonek equal plus\n"
     "keycode  36 = Return NoSymbol Return NoSymbol Return\n"
     "keycode  38 = a A a A a A a A\n"
     "keycode  52 = z Z z Z z Z z Z\n"
@@ -205,26 +207,46 @@ def test_kombos_zerfallen_in_press_release(runner, monkeypatch):
     assert argv[2:] == ["29:1", "46:1", "46:0", "29:0"], argv
 
 
-def test_ydotool_type_bekommt_text_nicht_keycodes(runner, monkeypatch):
-    """`ydotool type` nimmt STRINGS — Keycodes würden als Text getippt.
+def test_ydotool_text_geht_als_zeichengenaue_key_folge_raus(runner, monkeypatch):
+    """Text goes as per-character evdev pairs, never again as a silently-dropped string.
 
-    Geprüft mit laufendem Daemon (`ydotool type --help`): "Usage: type [OPTION]... [STRINGS]...".
-    Eine argv wie ["ydotool","type","30:1","30:0"] würde den Buchstabensalat '30:1 30:0'
-    eintippen, nicht das Zeichen. Die echten Flags heißen `--key-delay` und `--key-hold`;
-    `--delay` erkennt ydotool nicht (gemessen: "type: unrecognized option '--delay'") und
-    meldet trotzdem rc 0.
+    Gemessene Wurzel (calc-live-acceptance 072b98f, wiederholt in der Live-Vermessung
+    2026-10-03): `ydotool type` legt die Zeichen an eine eigene virtuelle Tastatur an und
+    VERWIRFT jedes Zeichen, das es nicht abbilden kann — rc 0, keine Meldung, das Ziel
+    bekommt einen verfälschten Text ('=2+2' kam als '22' an, 'äöüß' als gar nichts). Die
+    argv ["ydotool","type","30:1","30:0"] wäre Keycodes als Text gewesen, und der reine
+    String-Send trägt die Stille: Beides passt nicht. Der Zustellpfad baut die Zeichen
+    daher SELBST: Keymap-Auflösung + evdev-Paar pro Zeichen (`ydotool key`).
     """
     monkeypatch.setattr(runner, "_delivering_input_backend", lambda: "ydotool")
     monkeypatch.setattr(HostSessionRunner, "_run", _fake_run)
     argv = runner._live_window_argv(Action(kind="type_text", payload={"text": "az"}), "4711")
     assert argv[0] == "ydotool"
-    assert argv[1] == "type"
-    assert argv[-1] == "az", "the text is exactly ONE argument"
-    assert "--key-delay" in argv and "--key-hold" in argv, argv
-    assert "--delay" not in argv, "ydotool does not know --delay"
-    assert not any(":1" in part or ":0" in part for part in argv), (
-        "keycode pairs belong to `ydotool key`, not to `ydotool type`"
+    assert argv[1] == "key", argv
+    assert argv[2:] == ["30:1", "30:0", "44:1", "44:0"], argv
+    assert not any("type" in part for part in argv), "no silently-dropping string send"
+    assert not any(part.startswith("-") for part in argv), "no guessed flags in a key sequence"
+
+
+def test_text_mit_satzzeichen_kommt_zeichengenau_raus(runner, monkeypatch):
+    """'=2+2' — die genau Zeichenkette, die die Calc-Abnahme als '22' ankommen sah.
+
+    Die Keymap des Tests ist ein Auszug der echten Messung (2026-10-03,
+    logs/input-charset-survey/xmodmap-us-20261003.txt): '=' unshifted auf keycode 21,
+    '+' shifted auf derselben Taste.
+    """
+    monkeypatch.setattr(runner, "_delivering_input_backend", lambda: "ydotool")
+    monkeypatch.setattr(HostSessionRunner, "_run", _fake_run)
+    argv = runner._live_window_argv(
+        Action(kind="type_text", payload={"text": "=2+2"}), "4711"
     )
+    assert argv[:2] == ["ydotool", "key"]
+    assert argv[2:] == [
+        "13:1", "13:0",                    # '='
+        "3:1", "3:0",                      # '2'
+        "42:1", "13:1", "13:0", "42:0",    # '+'
+        "3:1", "3:0",                      # '2'
+    ], argv
 
 
 def test_xdotool_type_hat_delay_und_trenner(runner, monkeypatch):
@@ -250,18 +272,22 @@ def test_unbekannter_key_wird_abgelehnt(runner, monkeypatch):
     assert "guessed" in text
 
 
-def test_ydotool_type_akzeptiert_zeichen_ohne_keycode(runner, monkeypatch):
-    """`ydotool type` tippt Strings — es braucht dafür keine eigene Keycode-Tabelle.
+def test_text_mit_zeichen_ohne_platz_wird_verweigert(runner, monkeypatch):
+    """'ä' auf einer Keymap ohne seine Ebene wird VERWEIGERT, nie still gedroppt.
 
-    Ein Zeichen, das die X-Keymap nicht kennt (z. B. 'ä' auf einem US-Layout), wird
-    deshalb nicht abgelehnt: ydotool erzeugt den Text selbst. Das ist der Unterschied
-    zu `ydotool key`, das den Keycode unbedingt braucht.
+    Der alte Test behauptete, ydotool "erzeugt den Text selbst" — die Live-Abnahme (072b98f)
+    und die Vermessung 2026-10-03 widerlegen das messbar: der String-Send verwarf 'ä' mit
+    rc 0 still. Ehrlich ist die Verweigerung MIT NAMEN, bevor irgendetwas erreicht — die
+    Sechs-Zustands-Ehrlichkeit gilt auch hier: „getippt“ steht nie für „getippt, bis auf ...".
     """
     monkeypatch.setattr(runner, "_delivering_input_backend", lambda: "ydotool")
     monkeypatch.setattr(HostSessionRunner, "_run", _fake_run)
-    argv = runner._live_window_argv(Action(kind="type_text", payload={"text": "ä"}), "4711")
-    assert argv[:2] == ["ydotool", "type"]
-    assert argv[-1] == "ä", argv
+    with pytest.raises(TargetScopeRefused) as exc:
+        runner._live_window_argv(Action(kind="type_text", payload={"text": "ä"}), "4711")
+    text = str(exc.value)
+    assert "ä" in text, "the refusal names the character it could not type"
+    assert "silently" in text or "refus" in text
+    assert "8:1" not in text, "no guessed keycode in a refusal"
 
 
 def test_die_keymap_wird_nur_einmal_gelesen(runner, monkeypatch):

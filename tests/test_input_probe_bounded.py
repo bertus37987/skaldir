@@ -463,6 +463,54 @@ def test_der_marker_ist_ein_zufallstoken():
 
 
 # --------------------------------------------------------------------------- #
+# 3b. Mit Keymap geht der Marker in zeichengenauer Form raus (VAL-INPUT-006)
+# --------------------------------------------------------------------------- #
+
+#: Real lines of this session's `xmodmap -pke` (measured 2026-10-03). '=' is unshifted on
+#: this layout, '+' shifted on the same key.
+PROBE_KEYMAP = (
+    "keycode  11 = 2 at 2 quotedbl twosuperior oneeighth 2 at\n"
+    "keycode  21 = equal plus dead_acute dead_grave dead_cedilla dead_ogonek equal plus\n"
+)
+
+
+def test_probe_mit_keymap_schickt_punktmarker_als_key_folge(tmp_path, ready):
+    """'=2+2' leaves the probe as per-character evdev pairs — never as a dropped string.
+
+    That is the shape the productive path builds after the charset fix (calc-live-acceptance
+    072b98f: '=2+2' arrived as '22'), so the probe measures delivery the SAME way the
+    product sends it — with the session keymap resolved in text_keys.
+    """
+    from skaldir.text_keys import text_event_argv
+
+    send = _counting()
+    own = _window(tmp_path)
+    marker = "=2+2"
+    found = IB.probe("ydotool", timeout=0.3, marker=marker, window=own, send=send,
+                     spawn=_no_spawn, keymap=PROBE_KEYMAP)
+    assert send.calls[1][:2] == ["ydotool", "key"], send.calls
+    assert send.calls[1][2:] == text_event_argv(marker, keymap=PROBE_KEYMAP), send.calls
+    assert "type" not in send.calls[1], "the mapped path is not a `ydotool type` string send"
+    assert found.sent is True
+
+
+def test_probe_untypbarer_marker_ist_eine_verweigerung(tmp_path, ready):
+    """A marker the layout cannot type is refused BEFORE anything is sent — never dropped."""
+    from skaldir.text_keys import UnmappableTextError
+
+    send = _counting()
+    own = _window(tmp_path)
+    with pytest.raises(UnmappableTextError) as exc:
+        IB.probe("ydotool", timeout=0.3, marker=MARKER + "首", window=own, send=send,
+                 spawn=_no_spawn, keymap=PROBE_KEYMAP)
+    assert "首" in str(exc.value)
+    assert send.calls == [], (
+        "the argv build (which refuses) runs BEFORE any send — nothing reached the socket, "
+        "not even the window focus"
+    )
+
+
+# --------------------------------------------------------------------------- #
 # 4. Aufräumen: genau die eigenen Ressourcen
 # --------------------------------------------------------------------------- #
 
@@ -647,6 +695,55 @@ def test_titel_aus_einem_anderen_lauf_wird_abgelehnt():
                        title="SKALDIR-PROBE-jemand-anders")
     assert binding.confirmed is False
     assert "title" in binding.reason
+
+
+def test_die_bittsteller_liest_altgr_ereignisse_auf_der_richtigen_ebene():
+    """The receiver must decode level-3 events as the characters the target actually sees.
+
+    Measured (2026-10-03, live proof for 'skp5d4äöüß'): with the shift index only, the
+    AltGr key events were recorded as their base level — '.' recorded as '[' — and the
+    honest correlation refused the probe's own intact delivery. Levels: plain 0, shift 1,
+    AltGr 2, shift+AltGr 3 — the same table the text mapping uses.
+    """
+    index = PT._keysym_index
+    assert index(0) == 0
+    assert index(1) == 1                 # ShiftMask
+    assert index(2) == 0                 # LockMask alone is not a level
+    assert index(128) == 2               # Mod5Mask (AltGr)
+    assert index(129) == 3               # Mod5Mask + ShiftMask
+
+
+def test_der_nicht_ascii_lauf_bekommt_einen_ascii_titel():
+    """'skp5d4äöüß' as run: the title is its ASCII slug, deterministic, same both ends.
+
+    Measured live (2026-10-03, feature input-type-charset-fix): the X title property stored
+    the Latin-1 bytes, `xdotool getwindowname` answered them raw, and the probe refused its
+    OWN window (PROBE_MISCONFIGURED, nothing sent). The tail is deterministic so the
+    receiver and the parent compute the same identity without sharing state.
+    """
+    tail = PT.title_tail("skp5d4äöüß")
+    assert tail == "skp5d4____-" + PT.title_tail("skp5d4äöüß").split("-")[-1]
+    assert all(ord(ch) < 0x7F for ch in tail), tail
+    assert PT.title_tail("skp5d4äöüß") == tail
+    # a plain ASCII run keeps the exact old identity (everything already live-proven stays)
+    assert PT.title_tail("run-1") == "run-1"
+    assert PT.title_tail("SKP0123456789abcdef") == "SKP0123456789abcdef"
+
+
+def test_der_ascii_titel_bestätigt_den_nicht_ascii_lauf():
+    """A window titled with the slug is THIS probe's window — the mojibake one is not."""
+    run = "skp5d4é"
+    slug = PT.title_tail(run)
+    binding = _confirm(run=run, pid_seen=4242, focus=lambda: 7, state="Normal",
+                       title=f"SKALDIR-PROBE-{slug}")
+    assert binding.confirmed is True, binding.reason
+
+    garbled = _confirm(run=run, pid_seen=4242, focus=lambda: 7, state="Normal",
+                       title="SKALDIR-PROBE-skp5d4\ufffd\ufffd\ufffd")
+    assert garbled.confirmed is False, (
+        "the replacement characters of a raw-byte title are NOT this probe's identity"
+    )
+    assert "title" in garbled.reason
 
 
 def test_nicht_gemappt_meldet_der_empfaenger_selbst():

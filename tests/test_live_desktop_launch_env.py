@@ -86,6 +86,38 @@ def test_an_owned_display_pins_its_own_display():
     assert r.child_env()["DISPLAY"] == ":95"
 
 
+def test_the_child_env_points_ydotool_at_the_probed_daemon(runner, monkeypatch, tmp_path):
+    """The ydotool CLI child reaches the daemon the runner probed — not its own guess.
+
+    Measured (survey 2026-10-03, feature input-type-charset-fix): ydotool 1.0.4 connects to
+    ``$YDOTOOL_SOCKET`` or to ``/run/user/1000/.ydotool_socket``; neither matches the daemon
+    this mission runs (``/tmp/skaldir-ydotoold/ydotoold.sock``), so a productive text send
+    from a child env without the pin failed with rc 2 *before a single character moved*: "failed
+    to connect socket `/run/user/1000/.ydotool_socket'". The child env therefore names the
+    daemon the probe measured, and leaves an explicit ``YDOTOOL_SOCKET`` untouched.
+    """
+    from skaldir import input_backend as IB
+
+    socket = tmp_path / "mission.sock"
+    socket.touch()
+    monkeypatch.delenv("YDOTOOL_SOCKET", raising=False)
+    monkeypatch.setattr(IB, "MISSION_SOCKET", str(socket))
+    monkeypatch.setattr(IB, "DEFAULT_SOCKET", str(tmp_path / "no-default.sock"))
+    env = runner.child_env()
+    assert env["YDOTOOL_SOCKET"] == str(socket), env.get("YDOTOOL_SOCKET")
+
+    # an explicit env pin wins — the caller's choice, never overwritten
+    monkeypatch.setenv("YDOTOOL_SOCKET", "/run/user/1000/.ydotool_socket")
+    env = runner.child_env()
+    assert env["YDOTOOL_SOCKET"] == "/run/user/1000/.ydotool_socket"
+
+    # neither known socket exists → no invented path
+    monkeypatch.delenv("YDOTOOL_SOCKET", raising=False)
+    monkeypatch.setattr(IB, "MISSION_SOCKET", str(tmp_path / "gone.sock"))
+    env = runner.child_env()
+    assert "YDOTOOL_SOCKET" not in env
+
+
 # --------------------------------------------------------------------------- #
 # the consent rule the owner set
 # --------------------------------------------------------------------------- #

@@ -24,9 +24,12 @@ translation lives:
   in press order, and a name that is in neither source is **refused**
   (:class:`UnknownKeyError`) — never guessed, never silently dropped.
 
-Text is a different question and is deliberately **not** translated here: ``ydotool type`` takes
-strings (its ``--help``: "Usage: type [OPTION]... [STRINGS]..."), so Unicode text goes there as
-ONE argument (see ``input_backend.send_argv`` / the runner's text action).
+Text needs ONE more source than key names: the layout of this session. ``ydotool type``
+took strings, but it mapped them against its own built-in virtual keyboard and silently
+DROPPED every character it cannot map (measured: '=2+2' arrived as '22', rc 0). The
+char-accurate text path lives in :mod:`skaldir.text_keys` — per character, resolved on the
+session's ``xmodmap -pke`` keymap (X keycode, level 1–4), typed with the same
+evdev press/release discipline as the key path here.
 """
 
 from __future__ import annotations

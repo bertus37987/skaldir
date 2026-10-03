@@ -174,3 +174,37 @@ Zell-Semantik gegen den Alt-Builder: 1694 Zellen, 0 Unterschiede. Details und Gr
 (URL-Abschnitt am PDF-Seitenrand) im Nachtrag in `docs/audit/QUELLENPRUEFUNG-AMD.md`.
 Der ###-Einschränkungshinweis im Abschnitt „Stand" oben gilt für die Datei 132318
 (Stand der Abnahme) — für weitere Calc-Läufe ist 141150 das Testartikel.
+
+## Nachtrag (2026-10-03, Feature `input-type-charset-fix`) — Befund 1 (Zeichen-Drop) behoben
+
+## Ursachen und Messreihe
+
+Neue Vermessung (eigenes Probe-Fenster auf `:0`, Empfänger am Fenster selbst, rc überall 0):
+
+| Zeichenklasse | `ydotool type` (alter String-Send) | Detail |
+|---|---|---|
+| Kleinbuchstaben, Großbuchstaben, Ziffern 0–9, Space, `-` | zugestellt | intakt; Shift setzt ydotool automatisch |
+| ASCII-Satzzeichen `=+_.!:;',()[]{}<>/ ?@#~$%&|^"\*` | zugestellt (heute) | Shift-Halt automatisch; der 072b98f-Stand ('=2+2'→'22') reproduzierte heute NICHT — Zustände flippen zwischen Läufen, der String-Send bleibt unvertrauenswürdig |
+| Umlauts/Ergänzungen `äöüÄÖÜß é è § µ °` | **STILL GEFALLEN** | rc 0, NICHTS angekommen — obwohl die Layout-Ebene 3 (AltGr) sie trägt |
+| `€` | **STILL GEFALLEN** | rc 0; sitzt nur auf Ebene 5+ (zweite Gruppe, ohne Tastenfolge erreichbar) |
+| `世 ж ة` | **STILL GEFALLEN** | rc 0 |
+
+Ursache fixiert am Produkt: der String-Send verlässt sich auf ydotools eigene virtuelle
+Tastatur, die Zeichen still verwirft, die sie nicht kennt. Behoben im Produkt (alle
+Grenzen gemessen): `src/skaldir/text_keys.py` löst jedes Zeichen auf **der echten Keymap
+dieser Session** (`xmodmap -pke`, Ebenen 1–4) auf und tippt evdev Press/Release mit
+Shift-/AltGr-Halt (`ydotool key`, X−8); ein Zeichen, das keine Ebene trägt, wird VORAB
+VERWEIGERT (`UnmappableTextError` → `TargetScopeRefused` benennt die betroffenen Zeichen)
+statt still zu fallen. `ydotool type` selbst bleibt unverändert gemessen.
+
+Live-Nachweis am eigenen Zielfenster (Sechs-Zustands-Modell, `INPUT_OBSERVED_AT_TARGET`
+per Marker-Korrelation, niemals nur rc): `SKP7c21=2+2!`, `skp3f0;:@()`, `skp5d4äöüß`,
+`skpH94a2z` intakt über den begrenzten Probe mit `keymap=`; über die echte
+`HostSessionRunner.act()`-Kette (DESK-02-Fence gebunden, Lease erworben und freigegeben):
+`'=2+2'`, `'0-1+4;:!=('`, `'?@'` intakt. Rohbefunde: `logs/input-charset-survey/`
+(survey- und proof-Skripte, xmodmap-Stand 2026-10-03). Zusätzlich behoben dabei, alles
+durch die Live-Läufe entdeckt: `ydotool`-Kinder müssen `YDOTOOL_SOCKET` auf den
+Mission-Daemon sehen (`_child_env` pinnt ihn); der Probe-Empfänger dekodiert AltGr-Ebene
+(`_keysym_index`); Probe-Titel sind deterministische ASCII-Slugs (nicht-ASCII-Läufe
+machten den Probe `PROBE_MISCONFIGURED`); `run_command` dekodiert mit
+`errors="replace"`.

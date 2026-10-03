@@ -469,12 +469,20 @@ class KernelEventObserver:
 # der begrenzte Versuch
 # --------------------------------------------------------------------------- #
 
-def send_argv(backend: str, marker: str, wid: int = 0) -> list[str]:
+def send_argv(backend: str, marker: str, wid: int = 0, *, keymap: str = "") -> list[str]:
     """Die argv, die den Marker als **Text** durch `backend` schickt.
 
     Der Marker ist ein Text-Token, weil nur ein Text den Zufallswert trägt, an dem die
     Korrelation ihn wiedererkennt. Keycodes gehören nicht hierher: Sie sind eine Übersetzungsfrage
     (X-Code → evdev) und stehen im Zustellpfad, nicht im Versuchsaufbau.
+
+    Mit ``keymap`` (der Keymap dieser Session) verlässt der Marker die zeichengenaue Form:
+    ein evdev-press/release-Paar pro Zeichen (gemessene Wurzel des Charset-Defekts,
+    2026-10-03: `ydotool type` verwarf nicht abbildbare Zeichen still, rc 0 — '=2+2' kam als
+    '22' an). Der Versuch misst dann die Zustellung in genau der Form, in der der
+    Zustellpfad sendet. Ohne ``keymap`` bleibt der gemessene `type`-Send (die
+    Marker-Alphabet-Senden dieses Probes sind ohnehin zeichengenau). Ein Zeichen, das die
+    Keymap nicht tragen kann, ist eine Verweigerung mit Namen — niemals ein stiller Verlust.
 
     ``wid`` ist die eigene Fenster-Nummer: gesendet wird **an das eigene Fenster**, nie in das,
     was gerade zufällig den Fokus hat. Bei `xdotool` ist die Fokussierung Teil derselben argv;
@@ -482,12 +490,17 @@ def send_argv(backend: str, marker: str, wid: int = 0) -> list[str]:
     fokussiert (:func:`focus_argv`).
     """
     if backend == "ydotool":
+        if keymap:
+            from .text_keys import text_event_argv
+
+            return ["ydotool", "key", *text_event_argv(marker, keymap=keymap)]
         # `ydotool type` nimmt STRINGS (geprüft mit laufendem Daemon:
         # "Usage: type [OPTION]... [STRINGS]...") — Keycodes würden als Text getippt. Und die
         # Flags sind die echten: `--key-delay` und `--key-hold` (beide Vorgabe 20 ms);
         # `--delay` kennt ydotool **nicht** (gemessen: "type: unrecognized option '--delay'",
         # und der Rückgabewert bleibt trotzdem 0 — ein falsches Flag darf nie wie Erfolg
-        # aussehen).
+        # aussehen). This branch stays the legacy one deliberately: without a keymap it
+        # measures backend capability, not the product's character accuracy.
         return ["ydotool", "type", "--key-delay", "40", marker]
     if wid > 0:
         # Derselbe Bau wie im Zustellpfad (`_live_window_argv`): erst Fokus auf das eigene
@@ -523,6 +536,7 @@ def probe(
     kernel_device: str = "",
     workdir: Path | None = None,
     display: str = "",
+    keymap: str = "",
     spawn: Callable[..., ProbeWindow] | None = None,
     focus: Callable[[], int] | None = None,
 ) -> ProbeResult:
@@ -615,7 +629,7 @@ def probe(
                     aborted=True,
                 )
 
-        argv = send_argv(backend, token, own.binding.wid)
+        argv = send_argv(backend, token, own.binding.wid, keymap=str(keymap or ""))
         if observer is not None:
             observer.start()
         if backend != "xdotool":
