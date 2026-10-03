@@ -240,6 +240,9 @@ class RunEvidence:
     platform: str = ""  # the platform the run really executed on
     outcome_contract: str = ""  # what the run promised to prove (empty = none)
     artifact: str = ""  # path (relative to the workspace) the run produced
+    # -- machine-readable facts (F05): the tool surface reports these, not prose --
+    exit_code: int | None = None  # the child's own exit, when a command really ran
+    runner: str = ""  # which project runner executed the suite: pytest|npm|make|script
 
     @property
     def passed(self) -> bool:
@@ -3463,11 +3466,178 @@ def _run_command(argv: list[str], cwd, timeout: int) -> tuple[int | None, str]:
         return None, f"spawn failed: {exc}"
 
 
+def _detect_test_runner(repo_root: Path) -> tuple[str, list[str]] | None:
+    """The project's OWN runner, read from its files — never invented (audit F05).
+
+    Priority order (explicit script beats inferred config; both are only names for
+    an *executed* command):
+
+    1. ``package.json`` with a non-empty ``scripts.test`` → ``npm test`` (a Node
+       project must not be told "your pytest suite failed" any more).
+    2. pytest markers — a ``tests``/``test`` directory, ``conftest.py``,
+       ``pytest.ini``, ``tox.ini``, or a ``pyproject.toml`` that names pytest →
+       ``<python> -m pytest -q`` (project ``.venv`` when present).
+    3. a ``Makefile`` with a real ``test:`` target → ``make test``.
+    4. ``scripts/run_tests.sh`` → run by the shell.
+
+    ``None`` means nothing declares a runner here — an honest ``no_test_runner``
+    state, not a fabricated green or a fabricated failure.
+    """
+    import sys
+
+    package_json = repo_root / "package.json"
+    if package_json.exists():
+        try:
+            data = json.loads(package_json.read_text(encoding="utf-8"))
+            script = str(((data.get("scripts") or {}).get("test")) or "").strip()
+            if script:
+                return "npm", ["npm", "test"]
+        except Exception:  # noqa: BLE001 — a broken manifest must not invent a runner
+            pass
+
+    pytest_named_in_pyproject = False
+    pyproject = repo_root / "pyproject.toml"
+    if pyproject.exists():
+        try:
+            pytest_named_in_pyproject = "pytest" in pyproject.read_text(
+                encoding="utf-8", errors="replace"
+            )
+        except OSError:
+            pytest_named_in_pyproject = False
+    # pytest's own default discovery collects test_*.py / *_test.py at the root and
+    # one level below — scattered test files ARE a pytest project (measured: the
+    # gate's dirty-repo fixture writes `test_ok.py` at the root and expects a run).
+    has_scattered_test_file = (
+        bool(list(repo_root.glob("test_*.py")) or list(repo_root.glob("*_test.py")))
+        or bool(list(repo_root.glob("*/test_*.py")) or list(repo_root.glob("*/*_test.py")))
+    )
+    has_pytest_marker = (
+        (repo_root / "tests").is_dir()
+        or (repo_root / "test").is_dir()
+        or (repo_root / "conftest.py").exists()
+        or (repo_root / "pytest.ini").exists()
+        or (repo_root / "tox.ini").exists()
+        or pytest_named_in_pyproject
+        or has_scattered_test_file
+    )
+    if has_pytest_marker:
+        venv_python = repo_root / ".venv" / "bin" / "python"
+        python = str(venv_python) if venv_python.exists() else sys.executable
+        return "pytest", [python, "-m", "pytest", "-q"]
+
+    makefile = repo_root / "Makefile"
+    if makefile.exists():
+        try:
+            for line in makefile.read_text(encoding="utf-8", errors="replace").splitlines():
+                if re.match(r"^test\s*:(?!=)", line.strip()):
+                    return "make", ["make", "test"]
+        except OSError:
+            pass
+
+    run_tests_sh = repo_root / "scripts" / "run_tests.sh"
+    if run_tests_sh.exists():
+        return "script", ["/bin/sh", str(run_tests_sh)]
+
+    return None
+
+
+#: Runner outputs that mean "the runner worked and found zero tests": pytest ``exit 5``
+#: ("collected 0 items"), jest ("No tests found") and pytest's legacy summary line.
+#: This is its OWN state — an empty test project is never "failed tests" (audit F05).
+_NO_TESTS_RE = re.compile(
+    r"no tests (?:found|collected|ran)|no test files? found|collected 0 items",
+    re.IGNORECASE,
+)
+
+
+_SUITE_PROBES = (
+    "package.json with a scripts.test entry",
+    "pytest markers (tests/ or test/ directory, conftest.py, pytest.ini, tox.ini, "
+    "pyproject.toml naming pytest)",
+    "a Makefile test target",
+    "scripts/run_tests.sh",
+)
+
+
+def _suite_runner_evidence(
+    check_id: str, repo_root: Path, *, timeout: int, revision: int, workspace: str,
+    session: str,
+) -> RunEvidence:
+    """Execute the project's detected runner and classify the real ending.
+
+    Four endings stay four endings: ``passed`` (exit 0), ``failed`` (the runner ran
+    and failed, or never finished / could not start), ``no_tests_found`` (the runner
+    ran fine and collected nothing — pytest's exit 5 or the runner saying so in its
+    own words) and ``no_test_runner`` (nothing here declares how tests run). A
+    timeout is a *failed* suite whose detail says why — never a pass.
+    """
+    import time as _time
+
+    runner = _detect_test_runner(repo_root)
+    if runner is None:
+        return RunEvidence(
+            name=str(check_id),
+            check_id=str(check_id),
+            source="runner",
+            status="no_test_runner",
+            ok=False,
+            cmd="<none detected>",
+            detail=(
+                "no test runner is declared here; looked for: " + "; ".join(_SUITE_PROBES)
+            ),
+            ts=_time.time(),
+            revision=int(revision or 0),
+            workspace=str(workspace or ""),
+            session=str(session or ""),
+            suite=False,
+        )
+    runner_name, command = runner
+    code, output = _run_command(command, repo_root, timeout)
+    if code is None:
+        status = "failed"
+        detail = output if output else "the suite could not be run here"
+    elif code == 0:
+        status = "passed"
+        detail = f"exit 0: {output}" if output else "exit 0"
+    elif runner_name == "pytest" and code == 5:
+        status = "no_tests_found"
+        detail = f"exit 5 — nothing collected: {output}" if output else "exit 5 — nothing collected"
+    elif _NO_TESTS_RE.search(output or ""):
+        status = "no_tests_found"
+        detail = f"exit {code} — the runner reports no tests: {output}" if output else (
+            f"exit {code} — the runner reports no tests"
+        )
+    else:
+        status = "failed"
+        detail = f"exit {code}: {output}" if code is not None else output
+    return RunEvidence(
+        name=str(check_id),
+        check_id=str(check_id),
+        source="runner",
+        status=status,
+        ok=(status == "passed"),
+        cmd=" ".join(command),
+        detail=detail[:300],
+        exit_code=code,
+        runner=runner_name,
+        ts=_time.time(),
+        revision=int(revision or 0),
+        workspace=str(workspace or ""),
+        session=str(session or ""),
+        suite=True,
+    )
+
+
 def _pytest_runner_evidence(
     check_id: str, repo_root: Path, *, timeout: int, revision: int, workspace: str,
     session: str,
 ) -> RunEvidence:
-    """Run the project's own suite with the project's own interpreter."""
+    """Run the project's own suite with the project's own interpreter.
+
+    Kept for direct callers of the pytest runner — the check route goes through
+    :func:`_project_test_evidence`, which detects the project's own runner first
+    (audit F05: the goal run offered ``pytest`` even to a Node project).
+    """
     import sys
     import time as _time
 
@@ -3485,8 +3655,10 @@ def _pytest_runner_evidence(
         source="runner",
         status=status,
         ok=(status == "passed"),
-        cmd="python -m pytest -q",
+        cmd=" ".join(command),
         detail=detail[:300],
+        exit_code=code,
+        runner="pytest",
         ts=_time.time(),
         revision=int(revision or 0),
         workspace=str(workspace or ""),
@@ -3543,6 +3715,7 @@ def _declared_argv_evidence(
         ok=(mapped == "passed"),
         cmd=str(cmd or " ".join(criterion.argv))[:200],
         detail=str(detail)[:300],
+        exit_code=exit_code,
         ts=_time.time(),
         revision=int(revision or 0),
         workspace=str(workspace or ""),
@@ -3624,7 +3797,9 @@ def execute_check(
                 result.session = str(session or "")
         return result
     if check_id in ("pytest", "tests", "test"):
-        return _pytest_runner_evidence(
+        # F05: the project's OWN runner — npm for a Node project, pytest for a pytest
+        # project, make/script where declared, and an honest state when nothing runs.
+        return _suite_runner_evidence(
             check_id, repo_root, timeout=timeout, revision=revision,
             workspace=workspace, session=session,
         )

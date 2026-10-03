@@ -35,6 +35,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+_KILL_GRACE_S = 1.0    # SIGTERM ->
+_REAP_GRACE_S = 3.0    # after a SIGKILL, wait for the child before calling it reaped
+
 __all__ = [
     "ManagedProcess",
     "ProcessState",
@@ -197,10 +200,14 @@ class ManagedProcess:
             return False
 
     def cancel(self, *, reason: str = "") -> dict[str, Any]:
-        """Stop it and clean up its own process group.
+        """Stop it, clean up its own process group, and REAP the corpse.
 
         The group is killed, not just the pid: a shell that started children would
-        otherwise leave them running after the agent thinks it stopped them.
+        otherwise leave them running after the agent thinks it stopped them. And the
+        killed child is waited for afterwards — a process that is only signalled stays
+        a ``<defunct>`` zombie in ``ps`` for as long as this parent lives, which is an
+        orphan bookkeeping defect of its own (measured 2026-10-03: the ``sh`` group
+        leader sat unreaped after every cancel).
         """
         with self._lock:
             if self.state != ProcessState.RUNNING:
@@ -209,13 +216,29 @@ class ManagedProcess:
             self.state = ProcessState.KILLED
             self.finished_at = time.time()
         killed = _kill_group(self.proc.pid)
+        reaped = True
+        try:
+            self.proc.wait(timeout=_REAP_GRACE_S)
+        except subprocess.TimeoutExpired:
+            reaped = False  # SIGKILL ignored is exotic; report it instead of lying silent
+        self._release_stdin()
         return {
             "process_id": self.process_id,
             "state": ProcessState.KILLED,
             "reason": reason,
             "group_signalled": killed,
+            "reaped": reaped,
             "pid": self.proc.pid,
         }
+
+    def _release_stdin(self) -> None:
+        """Close the parent's stdin side after the kill so a blocked reader sees EOF."""
+        stream = self.proc.stdin
+        if stream is not None:
+            try:
+                stream.close()
+            except OSError:
+                pass
 
     def wait(self, timeout_s: float = 30.0) -> dict[str, Any]:
         try:
@@ -304,8 +327,22 @@ class ProcessManager:
 
         timeout = self.default_timeout_s if timeout_s is None else float(timeout_s)
         # stdin is ALWAYS a pipe: a program that needs input *after* it started could not
-        # be given any if the pipe had been closed at spawn time.
-        stdin_arg = None if pty else subprocess.PIPE
+        # be given any if the pipe had been closed at spawn time. With ``pty=True`` the
+        # child's fd 0 is a real tty SLAVE from exec onwards — the master side becomes
+        # this parent's stdin writer. (Measured 2026-10-03: doing ``os.dup2`` in the
+        # parent *after* ``Popen`` changed only the parent's own fd table — the child
+        # still read a pipe and ``sys.stdin.isatty()`` answered ``False``. The tty must
+        # be handed over at exec time, not patched on afterwards.)
+        stdin_arg: Any = subprocess.PIPE
+        master_fd = -1
+        if pty:
+            try:
+                import pty as _pty_mod
+
+                master_fd, slave_fd = _pty_mod.openpty()
+                stdin_arg = slave_fd  # the child's fd 0, dup'd by Popen at exec time
+            except OSError as exc:
+                self._emit("pty.unavailable", {"process_id": pid, "error": str(exc)})
         try:
             proc = subprocess.Popen(
                 argv,
@@ -318,11 +355,23 @@ class ProcessManager:
                 bufsize=0,
             )
         except (OSError, subprocess.SubprocessError) as exc:
+            if master_fd >= 0:
+                os.close(master_fd)
             self._emit("spawn.failed", {"process_id": pid, "error": f"{type(exc).__name__}: {exc}"})
             raise
 
-        if pty:
-            self._attach_pty(proc)
+        if pty and isinstance(stdin_arg, int) and stdin_arg >= 0 and master_fd >= 0:
+            # this parent stops holding the child's side; the writer side is a dup
+            # of the master, exposed as ``proc.stdin`` so write_stdin() works unchanged
+            try:
+                os.close(stdin_arg)
+                proc.stdin = os.fdopen(os.dup(master_fd), "wb", buffering=0)  # type: ignore[union-attr]
+                os.close(master_fd)
+                master_fd = -1
+            except OSError:
+                self._emit("pty.unavailable", {"process_id": pid})
+        if master_fd >= 0:
+            os.close(master_fd)
 
         managed = ManagedProcess(
             process_id=pid, argv=argv, cwd=str(workdir), proc=proc,
@@ -350,24 +399,6 @@ class ProcessManager:
         if self.runtime is None:
             return None
         return Path(self.runtime) / "processes" / pid / f"{stream}.spill"
-
-    def _attach_pty(self, proc: subprocess.Popen) -> None:
-        """Give the child a terminal when it needs one.
-
-        The PTY is attached to the child's stdin side; output still streams through the
-        pipes so the bounded buffers apply. Deliberately best-effort: a program that needs a
-        real tty and does not get one reports that itself.
-        """
-        try:
-            import pty
-
-            if proc.stdin is not None:
-                primary, secondary = pty.openpty()
-                os.dup2(secondary, proc.stdin.fileno())
-                os.close(primary)
-                os.close(secondary)
-        except Exception:  # noqa: BLE001 — PTY is an enhancement, not a requirement
-            self._emit("pty.unavailable", {"process_id": proc.pid})
 
     def _pump(self, managed: ManagedProcess) -> None:
         """Drain the pipes continuously so a loud child cannot fill a pipe and block."""

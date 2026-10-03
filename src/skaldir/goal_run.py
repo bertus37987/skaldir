@@ -28,7 +28,8 @@ The loop, exactly:
 3. **turns** — every turn is a fresh :class:`skaldir.agent_loop.AgentLoop` over the
    workspace's own tools plus two adapters over existing engines: ``edit_apply``
    (:mod:`skaldir.edit_tx`, atomic + syntax-verified) and ``run_tests``
-   (:func:`skaldir.completion.execute_check`). A brand-new
+   (:func:`skaldir.completion.execute_check` — the project's own detected runner,
+   not a pytest hard-wire). A brand-new
    :class:`skaldir.context_manager.ContextManager` per turn is what "refreshed
    context" means here.
 4. **gate** — a turn that ends in an answer is a *completion request*, nothing more:
@@ -301,7 +302,7 @@ def turn_tools(
 
     ``edit_apply`` carries a transaction document straight into
     :func:`skaldir.edit_tx.run_transaction` (the engine behind ``skaldir edit apply``),
-    and ``run_tests`` executes the ``pytest`` check through
+    and ``run_tests`` solves the project's own detected test runner through
     :func:`skaldir.completion.execute_check` — the same producer the completion gate
     reads. Nothing is mocked; both are the product's own engines.
 
@@ -366,18 +367,33 @@ def turn_tools(
         )
         return payload
 
-    def run_tests() -> dict[str, Any]:
+    def run_tests(argv: Sequence[str] | None = None) -> dict[str, Any]:
+        """The suite check through the project's OWN runner (audit F05 fix).
+
+        Without ``argv`` the runner is DETECTED from the project's own files
+        (package.json test script → npm; pytest markers → pytest; Makefile;
+        scripts/run_tests.sh) — a Node project is no longer told "your pytest
+        suite failed", and an empty test project reports ``no_tests_found``
+        instead of a failure that never happened. With ``argv`` the declared
+        command vector runs exactly, like every other declared check.
+        """
+        vector = [str(part) for part in (argv or []) if str(part).strip()]
         evidence = execute_check(
-            "pytest",
+            "tests",
             workspace,
+            argv=vector or None,
             timeout=int(options.check_timeout),
             revision=int(bus.get("revision") or 0),
             workspace=str(workspace),
             session=session,
         )
+        status = str(getattr(evidence, "status", "unknown") or "unknown")
+        evidence_ok = bool(getattr(evidence, "passed", False))
         payload = {
-            "status": str(getattr(evidence, "status", "unknown")),
-            "check_id": str(getattr(evidence, "check_id", "pytest")),
+            "ok": evidence_ok,
+            "status": status,
+            "check_id": str(getattr(evidence, "check_id", "tests")),
+            "runner": str(getattr(evidence, "runner", "") or ""),
             "cmd": str(getattr(evidence, "cmd", "")),
             "exit": getattr(evidence, "exit_code", None),
             "source": str(getattr(evidence, "source", "")),
@@ -423,12 +439,28 @@ def turn_tools(
         AgentTool(
             name="run_tests",
             description=(
-                "Run the project's own test suite (the pytest check) and return its real "
-                "result. The completion gate reads the same producer."
+                "Run the project's OWN test runner and return the real result — the "
+                "runner is detected from the project's files (npm test for a Node "
+                "project, pytest for a pytest project, Makefile/run_tests.sh where "
+                "declared). Optional `argv` runs an explicit command vector instead. "
+                "Reports status, runner, real exit code and detail; an empty test "
+                "project is `no_tests_found`, a project with no runner is "
+                "`no_test_runner` — neither is a pass. The completion gate reads "
+                "the same producer."
             ),
             input_schema={
                 "type": "object",
-                "properties": {},
+                "properties": {
+                    "argv": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "optional: run exactly this command vector as the check "
+                            "instead of the detected runner (e.g. [\"npm\", \"run\", "
+                            "\"test:unit\"])"
+                        ),
+                    },
+                },
                 "additionalProperties": False,
             },
             handler=run_tests,

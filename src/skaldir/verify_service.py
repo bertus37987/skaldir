@@ -949,7 +949,12 @@ def _suite_result(criterion: Criterion, *, workspace: Path, timeout: float, revi
         "unknown": STATUS_UNKNOWN,
     }.get(status, STATUS_UNKNOWN)
     detail = str(getattr(evidence, "detail", "") or "")
-    return mapped, _exit_from_detail(detail), detail, str(getattr(evidence, "cmd", "") or "")
+    # F05: the suite evidence carries the exit as a fact now — detail parsing is only
+    # the fallback for older evidence without it.
+    exit_code = getattr(evidence, "exit_code", None)
+    if exit_code is None:
+        exit_code = _exit_from_detail(detail)
+    return mapped, exit_code, detail, str(getattr(evidence, "cmd", "") or "")
 
 
 def _result_record(

@@ -57,6 +57,28 @@ def test_terminal_reports_a_non_zero_exit_as_data_not_as_a_tool_failure(ctx):
     assert result.exit_code == 0  # so the CLI call did not fail
 
 
+def test_terminal_exit_7_is_reported_as_7_the_way_the_contract_says(ctx):
+    """VAL-HARNESS-003 names the case literally: transport ok=true must not mask exit 7."""
+    result = ctx["call"]("terminal", {"command": "exit 7"})
+    assert result.ok is True, "the transport succeeded — it observed a command"
+    assert result.data["exit_code"] == 7
+    assert result.data["timed_out"] is False
+    assert result.error_kind != "timeout"
+    assert result.exit_code == 0, "the CLI call itself must not fail for exit 7"
+
+
+def test_terminal_reports_stdout_and_stderr_as_separate_fields(ctx):
+    """VAL-HARNESS-003: stdout, stderr and the exit code travel separately."""
+    result = ctx["call"](
+        "terminal", {"command": "printf 'to-stdout\\n'; printf 'to-stderr\\n' >&2; exit 7"}
+    )
+    assert result.ok is True
+    assert result.data["stdout"] == "to-stdout\n"
+    assert result.data["stderr"] == "to-stderr\n", "stderr must stay its own stream"
+    assert result.data["exit_code"] == 7
+    assert not result.data["stdout_truncated"] and not result.data["stderr_truncated"]
+
+
 def test_terminal_reports_an_unknown_command_honestly(ctx):
     result = ctx["call"]("terminal", {"command": "definitely-not-a-command-xyz"})
     assert result.data["exit_code"] == 127
