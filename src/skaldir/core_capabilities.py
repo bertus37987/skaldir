@@ -380,7 +380,7 @@ def _browser_tool(ws: Path, rt: Path | None, run_id: str) -> Any | None:
     def handler(do: str = "read", url: str = "", kind: str = "", target: str = "",
                 value: str = "", session: str = "", **_ignored: Any) -> Any:
         try:
-            from .browser_layer import AgentBrowserBackend, BrowserLayer, SessionManager
+            from .browser_layer import AgentBrowserBackend, SessionManager
         except Exception as exc:  # noqa: BLE001
             return {"ok": False, "error": "browser_unavailable", "reason": str(exc)[:300]}
 
@@ -393,18 +393,27 @@ def _browser_tool(ws: Path, rt: Path | None, run_id: str) -> Any | None:
                 "reason": cap.reason,
                 "backend": "agent-browser",
             }
-        sessions = SessionManager()
-        layer = BrowserLayer(sessions, backend, run_id=run_id, session_id=session)
+        # BLOCK-M3-02: the session state (and the cross-process start lock inside it)
+        # belongs to THIS run — the same rule surface_cli.py applies for `skaldir desk
+        # browser`. Without a runtime the run's workspace scopes it.
+        sessions = SessionManager((rt or ws) / "browser")
         if str(do).lower() in ("read", "observe"):
-            result = layer.read(url=url)
+            # the transport's own signatures: read(url=...) renders, act(action) maps
+            # one typed verb — BrowserLayer's not-yet-wired operations would answer
+            # `unsupported` honestly, but drop the caller's url/tokens entirely.
+            result = backend.read(url=url, session=session)
         else:
             payload = {k: v for k, v in
                        {"kind": kind, "target": target, "value": value, "url": url}.items() if v}
-            result = layer.act(payload)
-        return result if isinstance(result, dict) else {
-            "ok": bool(getattr(result, "ok", False)),
-            "detail": str(getattr(result, "detail", ""))[:400],
-        }
+            result = backend.act(payload, session=session)
+        if not isinstance(result, dict):
+            result = {
+                "ok": bool(getattr(result, "ok", False)),
+                "detail": str(getattr(result, "detail", ""))[:400],
+            }
+        result.setdefault("run_id", run_id)
+        result.setdefault("session_state_dir", str(sessions.state_dir))
+        return result
 
     return AgentTool(
         name="browser",
