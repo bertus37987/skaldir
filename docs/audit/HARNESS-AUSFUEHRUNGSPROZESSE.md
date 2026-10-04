@@ -161,3 +161,34 @@ gestellte Grenze). Belege mit echten Werten:
 | `uv run python -m compileall -q src` | **exit 0** |
 | CLI-Laufbarkeit | `uv run skaldir --version` → 1.5.0; `uv run skaldir selftest` → 8 Layer, 26 Probes, 0 not reachable |
 | D-10-Regression | `tests/test_tool_search_integration.py` → 8 passed, exit 0 |
+
+### BLOCK-M3-01 — Schema-Typ-Mapping (2026-10-04, Feature fix-schema-type-mapping, Commit `edeacb9`)
+
+**Defekt (reproduziert, 6 Tests rot vor dem Fix):** `core_capabilities._bound_tool` leitete
+das Modell-Schema aus rohen `inspect.signature`-Annotationen ab; `tools_core/bridge.py`
+hat `from __future__ import annotations` (PEP 563), Annotationen kamen als Strings an —
+`ann in (int, "int")` griff nie, jeder Nicht-String landete auf `"string"`. Gemessen:
+`terminal.timeout_s`/`max_output_bytes` und `web_fetch.timeout_s`/`max_bytes` als string
+statt integer, `terminal.env`/`web_fetch.headers` als string statt object. Durch die echte
+Loop wurde `terminal(timeout_s=30)` vom Schema-Gate abgelehnt
+(`decision=invalid_arguments`, Meldung „argument 'timeout_s' has type int, but the schema
+expects string") und dann trip-refused; die String-Form passierte das Gate und scheiterte
+in der Registry. `tool_search` publizierte den korrekten Vertrag — die zwei
+Discovery-Flächen widersprachen sich, die korrekt gehorchende Form war nicht aufrufbar.
+
+**Fix:** `_bound_tool` löst die Annotationen mit `typing.get_type_hints(wrapper)` auf und
+mappt über den neuen Helfer `_json_kind` (Union-Mitglieder gestript, `bool` vor `int`
+geprüft, Generics via `get_origin`); nicht auflösbare Annotationen fallen ehrlich auf
+`"string"` zurück. Kein Schema verschmälert, nichts abgeschwächt: die String-Form
+(`timeout_s="30"`) wird jetzt korrekt vom Gate abgelehnt.
+
+**Belege (echte Werte):**
+
+| Prüfung | Ergebnis |
+|---|---|
+| Reproduktion vor dem Fix | `uv run pytest tests/test_core_schema_type_mapping.py -q` → **6 failed** (u. a. `terminal.timeout_s: schema says 'string', the wrapper's real annotation is 'integer'`; Loop: `invalid_arguments`) |
+| Nach dem Fix | dieselbe Datei → **18 passed, exit 0** |
+| Ziel-Regressionen | `test_tool_search_integration.py` + `test_harness_batching.py` + `test_docker_ensure.py` → **exit 0** (90 bestanden) |
+| Produktiver Nachweis | echte Loop-Kette, Provider gestubbt (einzige gestellte Grenze): `terminal(command="printenv SKALDIR_PROBE_MARKER", timeout_s=30, env={...})` → `decision=ALLOW, executed=True, ok=True`, Kind-Exit 0, `stdout='typed-ok'` — beide vormals nicht aufrufbaren Formen (integer + object) in EINEM echten Lauf (Rohlog `logs/logs/blockm301-schema-type-proof.log`) |
+| `uv run ruff check src tests` | **exit 0** (Vollmenge) |
+| `uv run python -m compileall -q src` | **exit 0** |
