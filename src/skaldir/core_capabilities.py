@@ -218,7 +218,15 @@ def _bound_tool(capability: str, wrapper: Any, ws: Path, rt: Path | None, *,
     return AgentTool(
         name=capability,
         description=f"{CAPABILITY_INDEX.get(capability, capability)} (core tool, run-bound)",
-        input_schema={"type": "object", "properties": properties, "required": required},
+        # BLOCK-M3-03: closed schema — an unknown argument is REFUSED at the gate
+        # (_argument_problem -> invalid_arguments) instead of being silently dropped
+        # by the kwargs filter below while the call reports ok=True.
+        input_schema={
+            "type": "object",
+            "properties": properties,
+            "required": required,
+            "additionalProperties": False,
+        },
         handler=handler,
         parallel_safe=capability in (
             "read_file", "list_dir", "search_files", "web_search", "web_fetch"
@@ -360,6 +368,9 @@ def _process_tool(ws: Path, rt: Path | None, run_id: str) -> Any | None:
                 "timeout_s": {"type": "number"},
             },
             "required": ["do"],
+            # BLOCK-M3-03: unknown arguments are refused at the gate, not swallowed
+            # by the handler's **_ignored filter.
+            "additionalProperties": False,
         },
         handler=handler,
         parallel_safe=False,
@@ -432,6 +443,9 @@ def _browser_tool(ws: Path, rt: Path | None, run_id: str) -> Any | None:
                 "session": {"type": "string"},
             },
             "required": ["do"],
+            # BLOCK-M3-03: unknown arguments are refused at the gate, not swallowed
+            # by the handler's **_ignored filter.
+            "additionalProperties": False,
         },
         handler=handler,
         parallel_safe=False,

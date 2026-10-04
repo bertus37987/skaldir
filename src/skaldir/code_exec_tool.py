@@ -64,6 +64,9 @@ CODE_INPUT_SCHEMA: dict[str, Any] = {
         },
     },
     "required": ["source"],
+    # BLOCK-M3-03: unknown arguments are refused at the gate with a named error
+    # instead of surfacing later as a raw TypeError from the typed handler.
+    "additionalProperties": False,
 }
 
 

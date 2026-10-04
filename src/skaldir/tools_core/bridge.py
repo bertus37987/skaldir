@@ -156,11 +156,24 @@ def read_file(
     offset: int = 1,
     limit: int = 200,
     max_bytes: int = 200000,
+    expected_revision: str = "",
 ) -> dict[str, Any]:
-    """Read a text file inside the workspace (paginated, hashed)."""
-    return _call(
-        "read_file", {"path": path, "offset": offset, "limit": limit, "max_bytes": max_bytes}
-    )
+    """Read a text file inside the workspace (paginated, hashed, revision-guarded).
+
+    ``expected_revision`` — when given — must equal the file's sha256; a mismatch
+    is reported as the named ``STALE_REFERENCE`` error with NO content (BLOCK-M3-03:
+    the registry contract advertises this parameter and a bound call may not
+    silently drop it into an unguarded read).
+    """
+    arguments: dict[str, Any] = {
+        "path": path,
+        "offset": offset,
+        "limit": limit,
+        "max_bytes": max_bytes,
+    }
+    if expected_revision:
+        arguments["expected_revision"] = expected_revision
+    return _call("read_file", arguments)
 
 
 def write_file(

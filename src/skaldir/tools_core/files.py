@@ -272,18 +272,30 @@ def read_file(args: dict, ctx: ToolContext) -> ToolResult:
         if resolved.is_file():
             actual = _sha256(resolved)
             if actual != expected:
-                return ToolResult.ok({
-                    "path": str(args["path"]),
-                    "abs_path": str(resolved),
-                    "exists": True,
-                    "shape": "stale",
-                    "content": "",
-                    "total_lines": 0,
-                    "truncated": False,
-                    "error": "STALE_REFERENCE",
-                    "sha256": actual,
-                    "message": f"expected {expected[:16]}…, found {actual[:16]}…",
-                })
+                # BLOCK-M3-03: the guard is a CONTRACT, not a hint — a mismatch is the
+                # named conflict error with NO content, never an unguarded read and
+                # never a raw crash (the old branch called ToolResult.ok as a method,
+                # which cannot exist: `ok` is a bool field, so a stale read crashed
+                # with TypeError: 'bool' object is not callable).
+                return failure(
+                    READ_NAME,
+                    "conflict",
+                    "STALE_REFERENCE: "
+                    f"expected {expected[:16]}…, found {actual[:16]}… "
+                    "(re-read the file first and pass the returned sha256)",
+                    data={
+                        "path": str(args["path"]),
+                        "abs_path": str(resolved),
+                        "exists": True,
+                        "shape": "stale",
+                        "content": "",
+                        "total_lines": 0,
+                        "truncated": False,
+                        "error": "STALE_REFERENCE",
+                        "sha256": actual,
+                        "message": f"expected {expected[:16]}…, found {actual[:16]}…",
+                    },
+                )
     spill = ctx.spill_dir()
     allow = (spill,) if spill is not None else ()
     return read_text_report(
