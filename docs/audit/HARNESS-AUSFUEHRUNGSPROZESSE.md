@@ -98,3 +98,61 @@ Frühere produktive CLI-Belege desselben Bereichs (Worker 7bace999, Rohlogs vorh
 - TUI-/Chat-Live-Läufe (tuistory) für VAL-HARNESS-003/004 = Live-Acceptance-Worker.
 - `run_code` wurde hier nicht erneut dispatcher-level aufgerufen (bereits CLI-belegt, Rohlog oben);
   nur die Zusammensetzung des Toolsets wurde erneut geprüft.
+
+## Nachtrag 2026-10-04 (2) — Batching/Streaming/Recovery: pro-Call-Streaming, Cancel-Gate, Exit-Code-States (VAL-HARNESS-005/006/007)
+
+Commit `8e7ee33` (+ Nachfix im selben Feature): `agent_loop._execute` streamt Ergebnisse
+**je Call in Fertigstellungsreihenfolge** (`as_completed`, neuer beobachtender
+`on_result`-Hook) statt am Batch-Ende gesammelt; **Abbruch mitten im Batch** beantwortet
+jeden nicht gestarteten Call mit `decision="cancelled"` (kein Neustart nach dem Stopp, kein
+Re-Run bereits ausgeführter Seiteneffekte; Gate zusätzlich in `_run_one` vor jedem Handler);
+`ToolOutcome.exit_code` trennt Permission (nie gelaufen → 3), Execution (gelaufen+fehlgeschlagen → 7)
+und den **vom Tool gemeldeten Exit-Code** — der tiefste gemessene Wert gewinnt, der synthetische
+Transport-`exit_code: 0` der Sandbox-Sandbox-Hülle benennt ein echtes `exit 7` nicht mehr in 0 um;
+`write_text` meldet `state: created|updated` (TOOL-03).
+
+### Neue Tests (`tests/test_harness_batching.py`, 13 Fälle, alle grün)
+- **006-Parallel:** 3 unabhängige Calls (0,3/0,2/0,1 s) überlappen — Timestamps
+  (`b0 < a1 ∧ c0 < a1 ∧ c0 < b1`), 3 verschiedene Worker-Threads, `parallel=true` im Verlauf.
+- **006-Abhängigkeit:** Write→Read-Paar in EINEM Batch läuft geordnet — der Read sieht den
+  geschriebenen Inhalt; Write `parallel=false`.
+- **007-Streaming:** Ergebnis des schnellen Calls erreicht den Aufrufer (on_result), **bevor**
+  der langsame Geschwister-Call endet; Reihenfolge = Fertigstellungsreihenfolge.
+- **Teilausfall:** 1 von 3 Calls wirft — die beiden anderen Ergebnisse bleiben erhalten und
+  werden dem Modell intakt zurückgemeldet; der Fehler ist mit Digest aufgezeichnet.
+- **Abbruch im Batch:** erster Call (echter Seiteneffekt + `cancel_event`), die beiden
+  nachfolgenden mutierenden Calls laufen **nie** (`decision=cancelled`, keine Dateien), der
+  Seiteneffekt geschah genau einmal (`effects == ["one"]`), Lauf endet
+  `incomplete/cancelled`, Exit 3.
+- **Argumentvalidierung vor Wirkung:** falscher Typ UND fehlendes Pflichtargument →
+  `invalid_arguments`, `executed=false`, **keine Datei** wurde je angelegt.
+- **Exit-Code-States:** Transport-`ok` und Exit-Code getrennt (7 bleibt 7, 2 bleibt 2,
+  Erfolg ohne Code = 0); Bridge-Hülle (nested `output.exit_code`) gewinnt über den
+  Transport-0-Envelope (Defekt aus dem Proof-Lauf, als Unit-Test gepinnt).
+- **Provider-Recovery (state-aware, begrenzt):** 429 → 1 begrenzter Retry in der geteilten
+  §43-Policy, dann Antwort (Recovery bewiesen); 429 erschöpft → `failed/provider_error`,
+  Status „429" benannt, genau 2 Requests (kein Endlosloop); 401 →
+  `needs_credentials`/Exit 4 (eigenen Zustand, nie retryiert); Stream-Abbruch →
+  `failed/provider_error` nach genau 1 Versuch.
+
+### Dispatcher-level produktiver Nachweis (2026-10-04, dieses Feature)
+Echte Kette: `tools_core.registry.register()` → `core_capability_tools(workspace, runtime)`
+(die goal-run-Toolkette) → echter `AgentLoop`; Provider als lokaler Socket-Stub (einzige
+gestellte Grenze). Belege mit echten Werten:
+
+| Run | Beobachtung (echte Werte) |
+|---|---|
+| A — Write→Read-Paar, EIN Batch | `status=answered`; Write `created=true, state=created`; Read sieht Inhalt; Reihenfolge write→read im Verlauf (`seq`) |
+| B — Abbruch im Batch mit echter Wirkung | Terminal-Subprozess legt `cancel.flag` wirklich an (sleep 2 && touch); der zweite Terminal-Call läuft **nie** (`decision=cancelled`), Ergebnis `incomplete/cancelled`, Exit 3 |
+| C — Exit-Codes über echtes Terminal | `/bin/sh -c 'exit 7'` → Transport `ok=true`, Aufzeichnung `exit_code=7`; `exit 2` → 2; `printf` → 0 (alle drei im `tool.call`-Ereignis) |
+
+- Rohbeleg: `logs/logs/harness-batching-dispatcher-proof.json`; Skript
+  `logs/harness-batching-productive-proof.py`, Exitcode 0.
+- Paralleles Overlap-Messen an dieser Kette: die Parallelität selbst ist mit Timestamps
+  auf Unit-Level bewiesen (siehe oben); der dispatcher-level Lauf belegt die Verdrahtung
+  (Toolset-Kette, Cancel-Pfad, Exit-Codes, Rückmeldung ans Modell), nicht noch einmal die
+  Overlap-Mikrometrie.
+
+### Stage-Gate (läuft als eigener voller Suite-Lauf, gemessen mit echtem Exitcode)
+Siehe `logs/logs/gate-batching-full.log` — Ergebnis wird beim Abschluss des Features im
+Handoff berichtet; dieser Abschnitt wird ergänzt, sobald der Lauf beendet ist.

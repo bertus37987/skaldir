@@ -528,6 +528,33 @@ def test_exit_code_is_a_field_of_the_result_not_a_renamed_ok(workspace: Path, st
     assert _named(calls, "status_plain")["exit_code"] == 0
 
 
+def test_a_nested_bridge_exit_code_is_not_renamed_to_zero(workspace: Path, state: Path):
+    """The sandbox bridge wraps facts under ``output``; the real exit code wins there.
+
+    Found by the dispatcher-level proof run: the bridge envelope carries a synthetic
+    ``exit_code: 0`` at transport level while the real child status lives in
+    ``result.output.exit_code`` — the deeper measured value must win.
+    """
+    bridged = ToolOutcome(
+        name="terminal",
+        executed=True,
+        ok=True,
+        result={
+            "tool": "terminal",
+            "ok": True,           # transport level — NOT the command's verdict
+            "exit_code": 0,       # the envelope's synthetic zero
+            "output": {"command": "exit 7", "exit_code": 7, "stderr": ""},
+        },
+    )
+    assert bridged.exit_code == 7
+    # a plain tool that reports its own code keeps it, even at the top level
+    plain = ToolOutcome(
+        name="status_report", executed=True, ok=True,
+        result={"ok": True, "exit_code": 7},
+    )
+    assert plain.exit_code == 7
+
+
 def test_write_text_reports_created_and_updated_state(workspace: Path, state: Path):
     """A write to an existing path is an update: created:false means updated."""
     steps = [

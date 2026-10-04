@@ -1037,17 +1037,28 @@ class ToolOutcome:
 
         TOOL-03: a completed call is not the same as a successful one. Never run
         (unknown tool, argument refusal, policy stop, cancel) is ``EXIT_BLOCKED``;
-        an executed failure without its own reported code is ``EXIT_INTERNAL``; a
-        tool that reports a numeric ``exit_code`` in its result *keeps* it (the
-        transport ``ok`` of the terminal path never masquerades an exit 7 as 0);
+        an executed failure without its own reported code is ``EXIT_INTERNAL``;
         an executed, succeeded call without one is ``EXIT_OK``.
+
+        A tool that reports a numeric ``exit_code`` *keeps* it, and the DEEPEST
+        reported one wins: a sandboxed bridge payload wraps its facts under
+        ``output``/``result``, where the executor measured the real child status —
+        the outer envelope's synthetic ``exit_code: 0`` (transport level) must
+        never rename a real ``exit 7`` to a zero.
         """
         if not self.executed:
             return EXIT_BLOCKED
         if isinstance(self.result, Mapping):
-            code = self.result.get("exit_code")
-            if isinstance(code, int) and not isinstance(code, bool):
-                return code
+            # the deepest measured code wins over the transport envelope
+            for key in ("output", "result", "exit_code"):
+                level: Any = self.result
+                if key != "exit_code":
+                    level = level.get(key)
+                    if not isinstance(level, Mapping):
+                        continue
+                code = level.get("exit_code")
+                if isinstance(code, int) and not isinstance(code, bool):
+                    return code
         if not self.ok:
             return EXIT_INTERNAL
         return EXIT_OK
