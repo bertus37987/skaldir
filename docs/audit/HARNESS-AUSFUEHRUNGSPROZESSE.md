@@ -192,3 +192,39 @@ geprüft, Generics via `get_origin`); nicht auflösbare Annotationen fallen ehrl
 | Produktiver Nachweis | echte Loop-Kette, Provider gestubbt (einzige gestellte Grenze): `terminal(command="printenv SKALDIR_PROBE_MARKER", timeout_s=30, env={...})` → `decision=ALLOW, executed=True, ok=True`, Kind-Exit 0, `stdout='typed-ok'` — beide vormals nicht aufrufbaren Formen (integer + object) in EINEM echten Lauf (Rohlog `logs/logs/blockm301-schema-type-proof.log`) |
 | `uv run ruff check src tests` | **exit 0** (Vollmenge) |
 | `uv run python -m compileall -q src` | **exit 0** |
+
+### BLOCK-M3-02 — Browser-Tool: SessionManager-Run-Scoping (2026-10-04, Feature fix-browser-sessionmanager-scoping, Commit `83115f7`)
+
+**Defekt (reproduziert, 5 Tests rot vor dem Fix):** `core_capabilities._browser_tool`
+baute `SessionManager()` ohne das verpflichtende Positionsargument `state_dir`
+(`browser_layer.py:321`, commit add4d67). Auf diesem Host meldet der echte Probe
+`available=True`, der bewachte `browser_unavailable`-Pfad wurde also nie genommen:
+DIREKTER Handler-Aufruf UND ein voller AgentLoop-Lauf hoben dasselbe rohe
+`TypeError: SessionManager.__init__() missing 1 required positional argument:
+'state_dir'` — und der Loop meldete den Crash als `decision='ALLOW', executed=True`
+mit der rohen TypeError-Ausgabe: ein Crash als Erfolg verpackt. `state_dir` ist
+zugleich das Zuhause des prozessübergreifenden Browser-Start-Locks (§6) — also eine
+Run-Scoping-Lücke, nicht nur ein Signature-Versprecher. Zusätzlich aufgemessen:
+die Handler-Aufrufe `layer.read(url=…)` / `layer.act(payload)` trafen auf KEINE reale
+Signatur (`BrowserLayer.read` nimmt `tab_id`; die Signatur, die diese Aufrufform
+wirklich hat, ist die Transport-Schicht `AgentBrowserBackend.read`/`act`).
+
+**Fix (Muster `surface_cli.py:713`):** `SessionManager((rt or ws) / "browser")` — der
+Session-State (inkl. Start-Lock) lebt unter dem Runtime-Verzeichnis DES Laufs; ohne
+Runtime skopiert der Run-Workspace. Der Handler spricht jetzt die Transport-Signaturen
+`backend.read(url=…, session=…)`/`backend.act(payload, session=…)` und meldet in jeder
+Antwort `run_id` + `session_state_dir`. Nichts abgeschwächt: die Probe-Verweigerung
+bleibt, wie auch die ehrliche Verben-Verweigerung im Transport.
+
+**Belege (echte Werte):**
+
+| Prüfung | Ergebnis |
+|---|---|
+| Reproduktion vor dem Fix | frische Wiederholung gegen das Vor-Fix-Modul: `uv run pytest tests/test_browser_tool_handler.py -q` → **5 failed**, alle am rohen `TypeError … missing 1 required positional argument: 'state_dir'` (Rohlog `logs/logs/blockm301-02-browser-scoping-repro.log`) |
+| Nach dem Fix | dieselbe Datei → **5 passed, exit 0** (Rohlog `logs/logs/blockm301-02-browser-scoping-green.log`) |
+| Backend-Stub-Regel | der Backend-Stub ist die einzige gestellte Grenze — im gesamten Regressionstest wird KEIN Browser gestartet, kein GUI, kein Netz |
+| Run-Scoping belegt | nach dem Handler-Aufruf existiert `<runtime>/browser` (Session-State + Lock-Ort); ohne Runtime `<workspace>/browser` |
+| Produktiver Nachweis | echte Loop-Kette über das zusammengebaute Chat/Run-Toolset, Provider gestubbt: `browser(do="read", url="https://example.invalid/page")` → `decision=ALLOW, executed=True, ok=True`, Nutzlast ist der ehrliche Zustand des Handlers selbst (`url`, `state=rendered`, `run_id`, `session_state_dir`) — KEIN Crash, KEIN Schein-ALLOW |
+| Ziel-Regressionen | `test_browser_layer.py` + `test_browser_backend.py` + `test_adversarial_browser.py` + `test_core_schema_type_mapping.py` → **exit 0** |
+| Stage-Gate | `uv run python -m pytest tests/ -o addopts=` → **8334 passed, 33 skipped, 0 failed** (1816 s); `uv run ruff check src tests` → **exit 0**; `uv run python -m compileall -q src` → **exit 0**; `uv run skaldir --version` → 1.5.0, `skaldir selftest` → 8 Layer, 26 Probes, 0 not reachable |
+
