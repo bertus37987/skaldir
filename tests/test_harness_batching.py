@@ -639,6 +639,26 @@ def test_an_auth_refusal_is_a_state_of_its_own_not_a_provider_voice(
     assert stub.request_count == 1  # an auth refusal is never retried (§43)
 
 
+def test_a_timeout_fails_bounded_and_state_aware(workspace: Path, state: Path):
+    """A provider that never answers in time → one bounded provider-error state."""
+    from skaldir.agent_loop import builtin_tools
+
+    slow = Step(body=answer("too late"), delay=1.0)
+    with StubProvider([slow]) as stub:
+        loop = AgentLoop(
+            _llm(stub, timeout_s=0.2, max_retries=0),
+            builtin_tools(workspace),
+            state_dir=state,
+            workspace=workspace,
+        )
+        result = loop.run("ask against a dead provider")
+    assert result.status == STATUS_FAILED
+    assert result.reason == REASON_PROVIDER_ERROR
+    assert "timeout" in result.message
+    assert stub.request_count == 1  # bounded: no retry storm
+    assert result.answer is None
+
+
 def test_a_stream_abort_fails_bounded_and_state_aware(workspace: Path, state: Path):
     """A truncated stream is one bounded provider error — no hang, no extra rounds."""
     calls = {"n": 0}
