@@ -153,6 +153,11 @@ gestellte Grenze). Belege mit echten Werten:
   (Toolset-Kette, Cancel-Pfad, Exit-Codes, Rückmeldung ans Modell), nicht noch einmal die
   Overlap-Mikrometrie.
 
-### Stage-Gate (läuft als eigener voller Suite-Lauf, gemessen mit echtem Exitcode)
-Siehe `logs/logs/gate-batching-full.log` — Ergebnis wird beim Abschluss des Features im
-Handoff berichtet; dieser Abschnitt wird ergänzt, sobald der Lauf beendet ist.
+### Stage-Gate (einmal je Etappengrenze, gemessen mit echtem Exitcode)
+| Prüfung | Ergebnis |
+|---|---|
+| `uv run python -m pytest tests/ -q` | **exit 0** — Fortschritt 100 % nur Punkte, 0 FAILED-/ERROR-Marker (Rohlog `logs/logs/gate-batching-full.log`) |
+| `uv run ruff check src tests` | **exit 0** — "All checks passed" |
+| `uv run python -m compileall -q src` | **exit 0** |
+| CLI-Laufbarkeit | `uv run skaldir --version` → 1.5.0; `uv run skaldir selftest` → 8 Layer, 26 Probes, 0 not reachable |
+| D-10-Regression | `tests/test_tool_search_integration.py` → 8 passed, exit 0 |
