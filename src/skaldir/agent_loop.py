@@ -55,7 +55,7 @@ import threading
 import time
 import uuid
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from functools import partial
@@ -634,10 +634,13 @@ def builtin_tools(workspace: str | Path) -> list[AgentTool]:
             parent.mkdir(parents=True, exist_ok=True)
         existed = target.exists()
         target.write_text(text, encoding="utf-8")
+        # TOOL-03: a write over an existing path is an *update* — say which one it was
+        # (`created: false` alone should not force the model to infer it)
         return {
             "path": _relative(target, root),
             "bytes": len(text.encode("utf-8")),
             "created": not existed,
+            "state": "created" if not existed else "updated",
         }
 
     tools: list[AgentTool] = [
@@ -1028,6 +1031,27 @@ class ToolOutcome:
             return text
         return text[: max(1, limit - 40)] + ' … [truncated; sha256 of the full result below]'
 
+    @property
+    def exit_code(self) -> int:
+        """The exit level of this outcome — permission/execution stay separated.
+
+        TOOL-03: a completed call is not the same as a successful one. Never run
+        (unknown tool, argument refusal, policy stop, cancel) is ``EXIT_BLOCKED``;
+        an executed failure without its own reported code is ``EXIT_INTERNAL``; a
+        tool that reports a numeric ``exit_code`` in its result *keeps* it (the
+        transport ``ok`` of the terminal path never masquerades an exit 7 as 0);
+        an executed, succeeded call without one is ``EXIT_OK``.
+        """
+        if not self.executed:
+            return EXIT_BLOCKED
+        if isinstance(self.result, Mapping):
+            code = self.result.get("exit_code")
+            if isinstance(code, int) and not isinstance(code, bool):
+                return code
+        if not self.ok:
+            return EXIT_INTERNAL
+        return EXIT_OK
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
@@ -1408,6 +1432,7 @@ class AgentLoop:
         on_delta: Callable[[str], None] | None = None,
         on_request: Callable[[], None] | None = None,
         on_answer: Callable[[], None] | None = None,
+        on_result: Callable[[ToolOutcome], None] | None = None,
         stream: bool | None = None,
         decisions: Any = None,
         history: Sequence[Mapping[str, Any]] = (),
@@ -1466,6 +1491,12 @@ class AgentLoop:
         #: writer can land inside a half-written line of the answer (a defect this hook was
         #: added to fix, measured on a pty — MVP/58-streaming.md §6). Observational.
         self.on_answer = on_answer if callable(on_answer) else None
+        #: Streaming per call: called **once per completed tool call, in *completion*
+        #: order**, while the batch runs (``progress`` carries the tool.start/tool.end
+        #: notes, this hook carries the result object itself). In a parallel group a
+        #: fast call's result reaches the caller while its slow sibling still runs —
+        #: results are never collected only at the end. Observational, like the rest.
+        self.on_result = on_result if callable(on_result) else None
         #: Whether to *ask* the client for a streamed answer (``chat(..., stream=...)``).
         #: ``None`` = whatever the provider config says; ``True`` = the caller has a content
         #: sink and wants tokens as they arrive. Never silently downgraded: the run result
@@ -1997,6 +2028,21 @@ class AgentLoop:
         except Exception:  # noqa: BLE001 — a broken renderer must not break a run
             return
 
+    def _note_result(self, outcome: ToolOutcome) -> None:
+        """Hand one completed call to the caller's result sink **as soon as it exists**.
+
+        Streaming per call, never collected at the end: the sink is notified in
+        *completion* order (``as_completed``), so in a parallel group a fast call's
+        result reaches the caller while its slow sibling is still running. Purely
+        observational — a broken sink is a fact, never a run failure.
+        """
+        if self.on_result is None:
+            return
+        try:
+            self.on_result(outcome)
+        except Exception:  # noqa: BLE001 — a broken sink must not break a run
+            return
+
     # -- the content stream (token by token) --------------------------------- #
 
     def _chat(
@@ -2367,6 +2413,19 @@ class AgentLoop:
                     if nxt is None or not nxt.parallel_safe:
                         break
                     group.append(index + len(group))
+            if self.cancelled():
+                # Cancellation mid-batch: everything not already in flight is answered
+                # as cancelled instead of being *started* after the stop. Executed side
+                # effects of earlier calls stay exactly what they were — nothing here
+                # re-runs anything.
+                for position in group:
+                    if outcomes[position] is None:
+                        outcomes[position] = self._cancelled_outcome(
+                            calls[position], transcript, step, position
+                        )
+                        self._note_result(outcomes[position])
+                index += len(group)
+                continue
             for position in group:
                 call = calls[position]
                 # CTX-03: serve identical reads from cache
@@ -2392,7 +2451,11 @@ class AgentLoop:
                         ): position
                         for position in group
                     }
-                    for future, position in futures.items():
+                    # completion order, never submission order: a fast call's result
+                    # is streamed to the caller while its slow sibling still runs
+                    # (BATCH-01) and nothing collects at the end of the batch.
+                    for future in as_completed(futures):
+                        position = futures[future]
                         try:
                             outcomes[position] = future.result()
                         except Exception as exc:  # noqa: BLE001 - a worker bug is reported
@@ -2403,9 +2466,11 @@ class AgentLoop:
                                 step,
                                 position,
                             )
+                        self._note_result(outcomes[position])
             else:
                 if outcomes[index] is None:
                     outcomes[index] = self._run_one(calls[index], transcript, step, False, index)
+                    self._note_result(outcomes[index])
             # CTX-03: populate cache from fresh results
             for position in group:
                 call = calls[position]
@@ -2444,6 +2509,44 @@ class AgentLoop:
             error=error,
             duration_ms=0,
             parallel=True,
+            exit_code=outcome.exit_code,
+            result_sha256=outcome.digest,
+            result_preview="",
+            result_truncated=False,
+        )
+        return outcome
+
+    def _cancelled_outcome(
+        self, call: ToolCall, transcript: Transcript, step: int, call_index: int = 0
+    ) -> ToolOutcome:
+        """A call that never *started* because the run was stopped: recorded.
+
+        Its own outcome state, not an error and not a success — ``executed`` stays
+        false, so the side effect simply did not happen, and the model is told why.
+        """
+        outcome = ToolOutcome(
+            name=call.name,
+            call_id=call.id,
+            arguments=dict(call.arguments or {}),
+            decision="cancelled",
+            error="the run was cancelled before this call ran",
+        )
+        outcome.digest = _digest({"ok": False, "executed": False, "error": outcome.error})
+        transcript.event(
+            "tool.call",
+            step=step,
+            call_index=call_index,
+            call_id=outcome.call_id,
+            name=outcome.name,
+            arguments=outcome.arguments,
+            decision=outcome.decision,
+            policy_reasons=[],
+            executed=False,
+            ok=False,
+            error=outcome.error,
+            duration_ms=0,
+            parallel=False,
+            exit_code=outcome.exit_code,
             result_sha256=outcome.digest,
             result_preview="",
             result_truncated=False,
@@ -2554,32 +2657,37 @@ class AgentLoop:
                                 )
                             )
                 if allowed:
-                    outcome.executed = True
-                    try:
-                        result = tool.handler(**outcome.arguments)
-                    except Exception as exc:  # noqa: BLE001 - a tool error is data
-                        outcome.ok = False
-                        outcome.error = f"{type(exc).__name__}: {exc}"
-                        outcome.result = None
+                    if self.cancelled():
+                        # This call never started — the stop wins over any side effect.
+                        outcome.decision = "cancelled"
+                        outcome.error = "the run was cancelled before this call ran"
                     else:
-                        outcome.result = result
-                        if isinstance(result, Mapping) and set(result) == {"error"}:
+                        outcome.executed = True
+                        try:
+                            result = tool.handler(**outcome.arguments)
+                        except Exception as exc:  # noqa: BLE001 - a tool error is data
                             outcome.ok = False
-                            outcome.error = str(result.get("error") or "the tool failed")
-                        elif isinstance(result, Mapping) and result.get("ok") is False:
-                            # a tool that reports ok:false failed in its own vocabulary
-                            # (skill_act verification_failed / usage / blocked) — never
-                            # `ok` just because the handler returned a dict
-                            outcome.ok = False
-                            outcome.error = str(
-                                result.get("reason")
-                                or result.get("error")
-                                or result.get("message")
-                                or result.get("status")
-                                or "the tool reported ok=false"
-                            )
+                            outcome.error = f"{type(exc).__name__}: {exc}"
+                            outcome.result = None
                         else:
-                            outcome.ok = True
+                            outcome.result = result
+                            if isinstance(result, Mapping) and set(result) == {"error"}:
+                                outcome.ok = False
+                                outcome.error = str(result.get("error") or "the tool failed")
+                            elif isinstance(result, Mapping) and result.get("ok") is False:
+                                # a tool that reports ok:false failed in its own vocabulary
+                                # (skill_act verification_failed / usage / blocked) — never
+                                # `ok` just because the handler returned a dict
+                                outcome.ok = False
+                                outcome.error = str(
+                                    result.get("reason")
+                                    or result.get("error")
+                                    or result.get("message")
+                                    or result.get("status")
+                                    or "the tool reported ok=false"
+                                )
+                            else:
+                                outcome.ok = True
         outcome.duration_ms = int((self._clock() - started) * 1000)
         outcome.digest = _digest(
             {
@@ -2679,6 +2787,7 @@ class AgentLoop:
             error=outcome.error,
             duration_ms=outcome.duration_ms,
             parallel=bool(parallel),
+            exit_code=outcome.exit_code,
             result_sha256=outcome.digest,
             result_preview=preview,
             result_truncated=truncated,
