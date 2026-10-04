@@ -1232,11 +1232,23 @@ def build_agent_toolset(
             Path(str(runtime)).expanduser() / "generated_tools" if runtime else None
         )
         if runtime_tools_dir is not None and runtime_tools_dir.is_dir():
-            tools.extend(
-                registry_tools(store, runtime=runtime, project_id=project_id, base_dir=directory)
+            registry_variant = registry_tools(
+                store, runtime=runtime, project_id=project_id, base_dir=directory
             )
         else:
-            tools.extend(registry_tools(store, runtime=None, base_dir=directory))
+            registry_variant = registry_tools(store, runtime=None, base_dir=directory)
+        # F03 class (measured 2026-10-04, feature harness-chat-standardtest): a runtime
+        # with the registered core toolset publishes specs under the names the shared
+        # chain above already bound, and `ToolSet.of` renamed the second copy to
+        # `read_file_2`/`terminal_2`/`patch_2`/`web_search_2` — duplicate wire names whose
+        # copy resolved its root away from the run binding. The already-bound
+        # (run-context) tool wins; genuinely new registry names still pass through.
+        bound = {getattr(t, "name", "") for t in tools}
+        tools.extend(
+            tool
+            for tool in registry_variant
+            if getattr(tool, "name", "") not in bound
+        )
     for layer_tool in (
         skill_expand_tool(runtime=runtime, store=store),
         skill_expand_build_tool(

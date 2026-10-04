@@ -3723,12 +3723,27 @@ def main(argv: list[str] | None = None) -> int:
     if func is None:
         if cli_contract.json_requested(args):
             return _emit_root_envelope(parser)
-        # A human at a terminal gets the shell (the first-run screen inside it); a pipe, a
-        # script or a redirect keeps the welcome text and gets its exit code immediately.
+        # A human at a terminal gets the shell (the first-run screen inside it); a pipe,
+        # a script or a redirect keeps the welcome text and gets its exit code immediately.
         from .repl import launch_from_bare_call
 
         return launch_from_bare_call(no_color=bool(getattr(args, "no_color", False)))
-    return cli_contract.run_command(args, func)
+    # Measured defect (2026-10-04, feature harness-chat-standardtest): the product CLI
+    # printed NOTHING for tools-core verbs — `skaldir --json tools-core list` wrote 0
+    # bytes and exited 0. Python's subparsers parse into a fresh namespace and copy their
+    # own flag defaults over the root-parsed values, so a `--json` placed BEFORE the
+    # subcommand (every command advertises `--json`) was lost on the way down: the verb
+    # ran in text mode, printed nothing (the typed envelope is the whole view) and looked
+    # dead. The parse-failure path already re-checks the argv; the dispatch path does the
+    # same now. An explicit `--format text` still wins.
+    json_mode = cli_contract.json_requested(args)
+    if (
+        not json_mode
+        and _json_requested_in_argv(argv)
+        and str(getattr(args, "format", "") or "").strip().lower() != "text"
+    ):
+        json_mode = True
+    return cli_contract.run_command(args, func, json_mode=json_mode)
 
 
 def _json_requested_in_argv(argv: list[str]) -> bool:

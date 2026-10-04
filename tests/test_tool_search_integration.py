@@ -137,6 +137,83 @@ def test_agent_toolset_contains_knowledge_and_search_tools(tmp_path):
     assert "knowledge_read" in names
 
 
+def test_tool_set_for_threads_the_run_binding_into_the_shared_chain(tmp_path):
+    """The chat/agent-run entry's run binding must reach the shared capability chain.
+
+    Measured defect (2026-10-04, feature harness-chat-standardtest): ``tool_set_for``
+    accepted ``runtime``/``project_id`` but called ``core_capability_tools`` without
+    them, so the chat entry silently fell back to ``default_runtime_dir`` — the run's
+    code-execution state landed in the global runtime instead of the run's own, while
+    ``turn_tools`` and ``build_agent_toolset`` bound the run's state dir explicitly.
+    The behavioral proof: the ``run_code`` tool the chat entry gets reports the run
+    binding it was built with.
+    """
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    tools = tool_set_for(
+        workspace=str(tmp_path), kind="builtin", runtime=str(runtime),
+        project_id="chat-run-1",
+    )
+    run_code = tools.get("run_code")
+    assert run_code is not None, sorted(t.name for t in tools.tools)
+    result = run_code.handler(source="print('hello')")
+    assert result.get("ok") is True, result
+    assert result.get("run_id") == "chat-run-1", result
+    assert result.get("workspace") == str(tmp_path.resolve()), result
+
+
+def test_a_registered_core_toolset_yields_no_duplicate_wire_names(tmp_path):
+    """F03 class: the registry copy of an already-bound capability is not re-offered.
+
+    Measured defect (2026-10-04, feature harness-chat-standardtest): a runtime with the
+    registered core toolset made ``build_agent_toolset(kind='both')`` offer duplicate
+    wire names — ``read_file_2``, ``terminal_2``, ``patch_2``, ``web_search_2`` —
+    because the registry variant was appended without deduping against the names the
+    shared chain already bound, and ``ToolSet.of`` renamed the collision instead of
+    dropping it. The run-bound (core) copy must win; genuinely new registry names still
+    pass through.
+    """
+    from skaldir.tools import ToolStore
+
+    runtime = _registered_runtime(tmp_path)
+    toolset = build_agent_toolset(
+        workspace=str(tmp_path), kind="both", runtime=str(runtime),
+        store=ToolStore(str(runtime / "tools.db")),
+    )
+    names = [t.name for t in toolset.tools]
+    dupes = sorted({n for n in names if names.count(n) > 1})
+    assert not dupes, f"duplicate wire names offered to the model: {dupes}"
+    renamed = [n for n in names if n.endswith(("_2", "_3"))]
+    assert not renamed, f"renamed duplicate copies still offered: {renamed}"
+    # the surviving copy of a shared capability is the run-bound core one, not the
+    # registry variant whose root resolved away from the run binding
+    terminal = toolset.get("terminal")
+    assert terminal is not None
+    assert getattr(terminal, "source", "") == "core", terminal.source
+    # and a registry tool with its OWN name is still offered
+    core_names = {"terminal", "patch", "search_files", "read_file", "list_dir",
+                  "web_search", "web_fetch", "run_code", "write_text", "read_text",
+                  "sha256", "tool_search", "knowledge_search", "knowledge_read"}
+    extra = [n for n in names if n not in core_names]
+    assert extra, f"the registry contributed nothing beyond the core set: {names}"
+
+
+def test_the_loop_surface_dedupes_the_registry_variant_too(tmp_path):
+    """`tool_set_for(kind='both')` holds the same one-capability-one-name rule."""
+    from skaldir.tools import ToolStore
+
+    runtime = _registered_runtime(tmp_path)
+    tools = tool_set_for(
+        workspace=str(tmp_path), kind="both", runtime=str(runtime),
+        store=ToolStore(str(runtime / "tools.db")),
+    )
+    names = [t.name for t in tools.tools]
+    dupes = sorted({n for n in names if names.count(n) > 1})
+    assert not dupes, f"duplicate wire names offered to the model: {dupes}"
+    renamed = [n for n in names if n.endswith(("_2", "_3"))]
+    assert not renamed, f"renamed duplicate copies still offered: {renamed}"
+
+
 def test_knowledge_search_tool_is_callable(tmp_path):
     """knowledge_search must return a result dict when called."""
     toolset = build_agent_toolset(workspace=str(tmp_path), kind="both", runtime=str(tmp_path))

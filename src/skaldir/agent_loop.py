@@ -819,8 +819,16 @@ def tool_set_for(
         from .core_capabilities import core_capability_tools
 
         already = {getattr(t, "name", "") for t in tools}
+        # The runtime/project binding must reach the shared chain: the chat/agent-run
+        # entry passes the run's state dir here, and a call that dropped it silently
+        # fell back to `default_runtime_dir` (measured 2026-10-04, feature
+        # harness-chat-standardtest) — the run's code-execution state landed in the
+        # global runtime instead of the run's own.
         tools.extend(core_capability_tools(
-            workspace=workspace, exclude=already,
+            workspace=workspace,
+            runtime=runtime,
+            run_id=str(project_id or ""),
+            exclude=already,
         ))
     if selection in ("registry", "both"):
         # Deliberate: the *loop* surface refuses to invent a store. `store=None` here is a
@@ -832,7 +840,17 @@ def tool_set_for(
         # `agent_toolset.build_agent_toolset`, whose signature advertises `store=None`.
         if store is None:
             raise AgentLoopError("the registry tool set needs a tool store (--db)")
-        tools.extend(registry_tools(store, runtime=runtime, project_id=project_id))
+        # One capability, one wire name (F03 class): a runtime with the registered core
+        # toolset publishes specs under the names the chain above already bound, and
+        # `ToolSet.of` used to rename the second copy to `terminal_2`/`patch_2` — a
+        # duplicate model tool whose copy was not the run-bound one. The already-bound
+        # (run-context) tool wins; genuinely new registry names still pass.
+        bound = {getattr(t, "name", "") for t in tools}
+        tools.extend(
+            tool
+            for tool in registry_tools(store, runtime=runtime, project_id=project_id)
+            if getattr(tool, "name", "") not in bound
+        )
     return ToolSet.of(tools)
 
 

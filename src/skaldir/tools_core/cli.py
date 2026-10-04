@@ -102,10 +102,24 @@ def _standalone() -> bool:
 
 
 def _human(args: argparse.Namespace) -> bool:
-    """Print human text? Standalone does unless ``--json``; otherwise ``--text``."""
+    """Print human text? Standalone does unless ``--json``; the product entry does too.
+
+    Measured defect (2026-10-04, feature harness-chat-standardtest): the product entry
+    printed NOTHING for bare verbs — human text demanded an explicit ``--format text``,
+    so `skaldir tools-core list` in a shell was 0 bytes at exit 0. Human text is the
+    default whenever the caller did not ask for JSON (``--json``/``--format json``/env);
+    the typed envelope stays the whole stdout under ``--json``.
+    """
     if _standalone():
         return not _JSON_REQUESTED
-    return text_mode(args) or _CONTRACT is None
+    if text_mode(args) or _CONTRACT is None:
+        return True
+    if not hasattr(_CONTRACT, "json_requested"):
+        return False
+    try:
+        return not _CONTRACT.json_requested(args)
+    except Exception:  # noqa: BLE001 — a flag problem must not silence the verb
+        return True
 
 
 # --------------------------------------------------------------- envelope glue

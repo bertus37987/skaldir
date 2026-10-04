@@ -161,6 +161,24 @@ def test_unregister_takes_the_toolset_back_out_and_retires_health(runtime, regis
 # -------------------------------------------------- the ordinary registry surface
 
 
+def test_bare_tools_core_list_prints_human_rows(runtime, registered, capsys, monkeypatch):
+    """Measured defect (2026-10-04, feature harness-chat-standardtest): the product entry
+    printed NOTHING for tools-core verbs in a shell — bare `skaldir tools-core list` was
+    0 bytes at exit 0 because human text demanded an explicit ``--format text``. The
+    human rows are the default whenever the caller did not ask for JSON.
+    """
+    monkeypatch.setenv("GODSV_HOME", str(runtime))
+    assert cli.main(["tools-core", "list", "--runtime", str(runtime)]) == 0
+    out = capsys.readouterr().out
+    assert out.strip(), "bare `skaldir tools-core list` printed nothing"
+    assert "terminal" in out
+    # and the JSON contract is unchanged
+    assert cli.main(["tools-core", "list", "--runtime", str(runtime), "--json"]) == 0
+    document = json.loads(capsys.readouterr().out)
+    assert document["exit_code"] == 0
+    assert document["data"]["count"] == 9
+
+
 def test_tools_list_really_shows_the_core_toolset(runtime, registered, capsys, monkeypatch):
     monkeypatch.setenv("GODSV_HOME", str(runtime))
     assert cli.main(["tools", "list", "--runtime", str(runtime), "--json"]) == 0
