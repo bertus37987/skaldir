@@ -281,3 +281,43 @@ Erst die Signatur-Erweiterung machte diese tote Verweigerung überhaupt erreichb
 | `uv run python -m compileall -q src` | **exit 0** |
 | CLI-Entry erhalten | `uv run skaldir --version` → 1.5.0 (Repo-Venv) |
 | Stage-Gate | `uv run python -m pytest tests/ -q` → **exit 0**, [100%], keine FAILED/ERROR-Zeichen (Rohlog `logs/dropped-args-repro/full-suite.log`, ~1816 s; -qq unterdrückt die Summary-Zeile, Exitcode + Fortschrittsmarker sind das Ergebnis) |
+
+### BLOCK-M3-03 Addendum — Stiller Unbound-Retry in `bridge._call` (2026-10-04, Feature fix-unbound-call-retry, Commit `89e6fd9`)
+
+**Defekt (reproduziert, Unit- UND echter-Loop-Ebene):** `tools_core.bridge._call`
+fing JEDES `TypeError` aus dem Registry-Nahtpunkt (`registry.call`) und führte
+den Aufruf ERNEUT ohne den gebundenen Root aus — kommentiert als „registry
+without a `root` parameter". Diese Begründung ist tot: `registry.call` nimmt
+`root`/`runtime` als explizite Keyword-Argumente (`tools_core/registry.py`),
+daher kann ein `TypeError` an dieser Stelle nur aus dem Code des Runners selbst
+stammen — ein Defekt, nie ein „Root-Argument nicht akzeptiert"-Signal. Der
+Unbound-Retry ließ `resolve_root(None)` → `Path.cwd()` den zweiten Aufruf an den
+Prozess-cwd binden: ein Runner-Defekt wurde still in einen Cwd-Fallback
+verwandelt und erweiterte den Workspace der gebundenen Run. Genau das war beim
+toten `read_file`-Revisionsguard (BLOCK-M3-03 oben) der Werkzeugweg, der aus der
+abgestürzten Verweigerung einen ungebundenen, unbewachten Read machte.
+
+**Analyse-Ergebnis:** Nichts an HEAD hängt vom Retry ab. Die enge
+Signatur-Nachprüfung wurde bewusst NICHT gebaut — es existiert kein
+legitimer Fall, der den Retry bräuchte; Entfernung ist die ehrlichere Fix.
+
+**Fix:** der `except TypeError`-Retry in `bridge._call` ist entfernt. Ein
+Runner-`TypeError` bricht jetzt IMMER als benannter Executor-Fehler durch
+(ein stiller zweiter, ungebundener Aufruf gibt es nicht mehr); die
+Workspace-Bindung der
+Run steht, `resolve_root(None)` wird nie als Fallback-Root benutzt.
+
+**Belege (echte Werte, Raw-Logs `logs/unbound-retry-*.log`):**
+
+| Prüfung | Ergebnis |
+|---|---|
+| Reproduktion (Unit-Ebene, vor dem Fix) | Probe-Runner (echter Handler-Shape: schreibt Effekt-Marker an `ctx.root`, dann `TypeError` „simulated runner defect: 'bool' object is not callable") am ECHTEN Runner-Seam; `bridge.read_file` mit gebundenem RunContext → Runner lief 2×, 2. Aufruf gebunden an `/home/willy/Agentic_Projects/Skaldir_Agent` (Prozess-cwd), Marker im Repo-Root (Rohlog `logs/unbound-retry-failing-first.log`) |
+| Failing-first (Unit) | `uv run pytest tests/test_unbound_call_retry.py -q` → **1 failed, exit 1** vor dem Fix (siehe Rohlog) |
+| Failing-first (echter Loop) | derselbe Probe-Runner am echten Executor-Seam + Stub-Provider (einzige gestellte Grenze, BLOCK-M3-01/02/03-Muster): echte Loop-Kette `read_file(path)` → vor dem Fix Runner 2× — 2. Aufruf an Prozess-cwd (Rohlog `logs/unbound-retry-loop-failing-first.log`, HEAD-Bridge temporär reproduziert und danach restauriert) |
+| Nach dem Fix | dieselbe Datei → **5 passed, exit 0**; Runner läuft genau 1×, gebunden an den Run-Workspace; `TypeError` bricht benannt durch (`executed=True, ok≠True, error enthält 'TypeError'`); Prozess-cwd wird nie als Fallback-Root benutzt (Marker-Nachweis auf Dateiebene, Eindeutige Namen, Strays sofort entfernt) |
+| Legitime Root-Nutzung unverändert | Seambindung-Probe: gebundener Call führt weiterhin `ctx.root == workspace`, `ctx.runtime == runtime`, `ok=True` durch; ungebundener Call behält Legacy-Verhalten (`SKALDIR_TOOL_WORKSPACE` > cwd); `except`-frei für ungebundene Caller ist das alte Propagieren — kein Verhalten für legitime Registry-Einträge geändert (keine existiert, die den Retry brauchte) |
+| Regressions-Nachbarn | `test_run_context` + `test_run_context_isolation` + `test_dropped_arguments_gate` + `test_tools_core_registry` + `test_core_schema_type_mapping` + `test_agent_loop` + `test_harness_batching` + `test_tool_search_integration` + `test_tools_core_contracts` + `test_browser_tool_handler`, alle **exit 0** |
+| `uv run ruff check src tests` | **exit 0** (Vollmenge; 1 Import-Ordnung im neuen Test, behoben) |
+| `uv run python -m compileall -q src` | **exit 0** |
+| CLI-Entry erhalten | `uv run skaldir --version` → 1.5.0 (Repo-Venv) |
+| Stage-Gate | `uv run python -m pytest tests/ -q` → **exit 0**, [100%], keine FAILED/ERROR-Zeichen (Rohlog `logs/unbound-retry-full-suite.log`) |
