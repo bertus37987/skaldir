@@ -228,3 +228,56 @@ bleibt, wie auch die ehrliche Verben-Verweigerung im Transport.
 | Ziel-Regressionen | `test_browser_layer.py` + `test_browser_backend.py` + `test_adversarial_browser.py` + `test_core_schema_type_mapping.py` → **exit 0** |
 | Stage-Gate | `uv run python -m pytest tests/ -o addopts=` → **8334 passed, 33 skipped, 0 failed** (1816 s); `uv run ruff check src tests` → **exit 0**; `uv run python -m compileall -q src` → **exit 0**; `uv run skaldir --version` → 1.5.0, `skaldir selftest` → 8 Layer, 26 Probes, 0 not reachable |
 
+### BLOCK-M3-03 — Stiller Argument-Drop an gebundenen Core-Tools (2026-10-04, Feature fix-silently-dropped-arguments, Commit `ba2d46a`)
+
+**Defekt (reproduziert, zuerst durch eigenen echten-Loop-Probe, 13 Tests rot vor dem
+Fix):** der Registry-Vertrag von `read_file` wirbt `expected_revision`
+(`tools_core/files.py`, `descriptor('read_file')`), aber die SIGNATUR von
+`bridge.read_file` kannte ihn nicht → das Modell-Schema des gebundenen Tools hatte den
+Parameter nicht, während die `_bound_tool`-Behandlung unbekannte kwargs still filterte
+(`{k: v for k, v in args.items() if k in sig.parameters}`). Bound Tools setzten kein
+`additionalProperties: False`, also akzeptierte `_argument_problem` JEDES unbekannte
+Argument → der Handler verwirfte es still und meldete `ok=True`. Gemessen am echten
+Loop: `read_file(path, expected_revision=<falsches sha>)` → `ALLOW/executed=True,
+ok=True`, volles::content, KEIN `STALE_REFERENCE` — der bewachte Read lief UNBEWACHT;
+`terminal(command=…, bogus_flag=True)` → `ALLOW/executed=True`, Argument still
+verschluckt (Rohlog `logs/dropped-args-repro/repro.py`, Pre-Fix-Ausgabe im
+Verlaufsprotokoll).
+
+**Zweite, beim Fix aufgedeckte Huselhärte:** die Registry-Guard-Verweigerung war seit
+`0b09a8a` selbst tot — der Mismatch-Zweig rief `ToolResult.ok({...})` als METHODE auf
+(`ok` ist ein BOOL-Feld), ein bewachter Read mit falschem sha crashte also mit
+`TypeError: 'bool' object is not callable`, und `_call`'s `except TypeError`-Retry
+verschluckte das und führte den Aufruf ERNEUT ohne Root-Bindung aus (cwd-Fallback).
+Erst die Signatur-Erweiterung machte diese tote Verweigerung überhaupt erreichbar.
+
+**Fix (drei Teile, Muster der Vorblöcke):**
+1. `bridge.read_file` nimmt `expected_revision` (Standard `""`) und reicht es durch —
+   der beworbene Vertrag ist übers Netz expressibel; die Registry-Verweigerung ist
+   jetzt ehrlich: `failure('read_file', 'conflict', 'STALE_REFERENCE: …')` mit leerem
+   `content` und dem gefundenen sha — benannter Fehler, nie still unbewachter Read.
+2. Gebundene Core-Tool-Schemas (7 Bridge-Wrapper plus `run_code`/`process`/`browser`)
+   deklarieren `additionalProperties: False` → unbekannte Argumente werden am Gate mit
+   `invalid_arguments` ABGEWIESEN (Meldung nennt das schuldige Argument und die
+   erlaubte Menge), statt still gedroppt zu werden mit `ok=True`.
+3. Neuer Regressionstest `tests/test_dropped_arguments_gate.py`: SET-Gleichheit zwischen
+   der Eigenschaftsmenge jedes bridge-gebundenen Tools und dessen Registry-Vertrag
+   (Required-Mengen ebenfalls), geschlossene Schemas für das ganze
+   `core_capability_tools`-Set, die erzwungene Stale-Verweigerung über den echten Loop
+   und der echte-Loop-Beweis für ein unbekanntes Argument. Keine bestehende Behauptung
+   geschwächt; `tool_search` (Registry-Kontrakte) und Loop-Fläche stimmen deren
+   Eigenschaftsmengen nun per Test überein.
+
+**Belege (echte Werte):**
+
+| Prüfung | Ergebnis |
+|---|---|
+| Reproduktion vor dem Fix | eigener Probe durch den echten Loop → Defekt 1 (unbewachter Read, `ok=True`) und Defekt 2 (unbekanntes Argument still gedroppt) beide reproduziert (Rohlog `logs/dropped-args-repro/`; Skript-Exit 0 = reproduziert) |
+| Failing-first | `uv run pytest tests/test_dropped_arguments_gate.py -q` → **13 failed, exit 1** (Rohlog `logs/dropped-args-repro/failing-first.log`) |
+| Nach dem Fix | dieselbe Datei → **21 passed, exit 0** |
+| Regressions-Nachbarn | `test_core_schema_type_mapping` + `test_agent_loop` + `test_harness_batching` + `test_tool_search_integration` + `test_tools_core_contracts` + `test_tools_core_registry` + `test_browser_tool_handler`, 130 passed, **exit 0** |
+| Produktiver Nachweis | echte Loop-Kette, Provider gestubbt (einzige gestellte Grenze, BLOCK-M3-01/02-Muster): `read_file(path, expected_revision=<falsches sha>)` → `ok=False`, benanntes `STALE_REFERENCE`, `content` leer; der korrekte sha liest normal; `terminal(command=…, bogus_flag=True)` → `decision=invalid_arguments, executed=False, ok≠True` mit benanntem `bogus_flag` (Rohlog `logs/logs/blockm303-dropped-args-proof.log`) |
+| `uv run ruff check src tests` | **exit 0** (Vollmenge) |
+| `uv run python -m compileall -q src` | **exit 0** |
+| CLI-Entry erhalten | `uv run skaldir --version` → 1.5.0 (Repo-Venv) |
+| Stage-Gate | `uv run python -m pytest tests/ -q` → **exit 0**, [100%], keine FAILED/ERROR-Zeichen (Rohlog `logs/dropped-args-repro/full-suite.log`, ~1816 s; -qq unterdrückt die Summary-Zeile, Exitcode + Fortschrittsmarker sind das Ergebnis) |
