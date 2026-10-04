@@ -143,9 +143,23 @@ class TestRunnerChecks:
         assert "pytest" in result.cmd
 
     def test_runner_does_not_certify_an_empty_repo(self, tmp_path):
-        # pytest exits 5 ("no tests ran") — an empty run is not a green run
+        # A repo with NO declared runner is an honest no_test_runner (audit F05),
+        # a repo whose runner finds no tests is no_tests_found — an empty run is
+        # never a green run in either shape.
         result = execute_check("pytest", tmp_path, timeout=120)
-        assert result is not None and result.status == "failed"
+        assert result is not None
+        assert result.ok is False
+        assert result.status != "passed"
+
+    def test_runner_does_not_certify_a_pytest_shell_without_tests(self, tmp_path):
+        # the pytest markers exist, the runner runs (real exit 5) and collects
+        # nothing — still not a green run
+        (tmp_path / "tests").mkdir()
+        result = execute_check("pytest", tmp_path, timeout=120)
+        assert result is not None
+        assert result.ok is False
+        assert result.status in ("no_tests_found", "failed")
+        assert result.exit_code != 0
 
     def test_unknown_check_has_no_runner(self, tmp_path):
         assert execute_check("ui_e2e_that_does_not_exist", tmp_path) is None
