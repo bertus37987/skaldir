@@ -153,30 +153,60 @@ def _registry_capabilities(ws: Path, rt: Path | None, *, store: Any, keep) -> li
     return out
 
 
+def _json_kind(ann: Any) -> str:
+    """One JSON-schema type name for one Python annotation.
+
+    PEP 563 (``from __future__ import annotations``) delivers annotations as strings
+    and PEP 604 writes optionals as ``int | None`` — a raw ``ann in (int, "int")``
+    probe never matches either, which once published every non-str argument as
+    ``"string"`` (BLOCK-M3-01). Union members are stripped (``None`` only means
+    "omittable"), then the base type decides. Unknown annotations stay ``"string"``
+    rather than guessing.
+    """
+    import types as _types
+    import typing as _typing
+
+    origin = _typing.get_origin(ann)
+    if origin is _typing.Union or origin is getattr(_types, "UnionType", None):
+        members = [a for a in _typing.get_args(ann) if a is not type(None)]
+        if members:
+            ann = members[0]
+            origin = _typing.get_origin(ann)
+    if ann is bool:  # before int: bool is an int subclass
+        return "boolean"
+    if ann is int:
+        return "integer"
+    if ann is float:
+        return "number"
+    if ann is str:
+        return "string"
+    if ann is dict or origin is dict:
+        return "object"
+    if ann in (list, tuple) or origin in (list, tuple, set, frozenset):
+        return "array"
+    return "string"
+
+
 def _bound_tool(capability: str, wrapper: Any, ws: Path, rt: Path | None, *,
                 run_id: str) -> Any:
     """One agent tool over one bridge wrapper, with the run context applied."""
     import inspect
+    import typing
 
     from .agent_loop import AgentTool
     from .tools_core import bridge as core_bridge
 
     sig = inspect.signature(wrapper)
+    try:
+        hints = typing.get_type_hints(wrapper)
+    except Exception:  # noqa: BLE001 — an unresolvable annotation falls back to raw text
+        hints = {}
     properties: dict[str, Any] = {}
     required: list[str] = []
     for pname, param in sig.parameters.items():
         if pname in ("self", "root", "runtime", "run_id"):
             continue
-        ann = param.annotation
-        kind = "string"
-        if ann in (int, "int"):
-            kind = "integer"
-        elif ann in (float, "float"):
-            kind = "number"
-        elif ann in (bool, "bool"):
-            kind = "boolean"
-        elif ann in (dict, "dict"):
-            kind = "object"
+        kind = _json_kind(hints.get(pname, param.annotation))
         properties[pname] = {"type": kind}
         if param.default is inspect.Parameter.empty:
             required.append(pname)
