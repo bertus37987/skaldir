@@ -106,6 +106,15 @@ def _call(tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
     When a run context is bound it is used. When nothing is bound the behaviour is the old
     one, so callers that never bind keep working — but a run that binds is never silently
     redirected to the process cwd.
+
+    A TypeError from the runner is NOT retried (BLOCK-M3-03 addendum): the seam takes
+    ``root``/``runtime`` as explicit keyword arguments (see :func:`registry.call`), so a
+    TypeError here can only originate in the runner's own code — a defect, never a "root
+    argument was not accepted" signal. The former ``except TypeError`` retry re-ran the
+    call WITHOUT the bound root, so ``resolve_root(None)`` bound the retry to the process
+    cwd: a runner defect silently widened the run's workspace (the historical case: the
+    dead ``read_file`` revision guard raised and the read then ran unbound, unguarded,
+    from the cwd). Such a defect now surfaces named, and the run's binding stands.
     """
     from ..registry import default_runtime_dir
 
@@ -114,13 +123,7 @@ def _call(tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
     kwargs: dict[str, Any] = {"runtime": runtime}
     if root is not None:
         kwargs["root"] = root
-    try:
-        return registry.call(tool, arguments, **kwargs).to_dict()
-    except TypeError:
-        # a registry without a `root` parameter: pass what it accepts
-        if "root" in kwargs:
-            return registry.call(tool, arguments, runtime=runtime).to_dict()
-        raise
+    return registry.call(tool, arguments, **kwargs).to_dict()
 
 
 def terminal(
