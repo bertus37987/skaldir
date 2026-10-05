@@ -137,6 +137,7 @@ def test_a_hint_that_the_backend_cannot_apply_is_named_not_faked(ctx):
 def test_rate_limiting_is_a_first_class_result_and_retried_exactly_once(ctx):
     transport = make_transport(
         {
+            "https://www.bing.com/": {"status": 429, "body": b"slow down"},
             "https://api.marginalia.nu/": {"status": 429, "body": b"slow down"},
             "https://api.duckduckgo.com/": {
                 "status": 200,
@@ -157,10 +158,12 @@ def test_rate_limiting_is_a_first_class_result_and_retried_exactly_once(ctx):
     first = result.data["attempts"][0]
     assert first["failure_class"] == "rate_limited" and first["rate_limited"] is True
     assert any("rate_limited" in w for w in result.warnings)
-    # fixed fallback order: marginalia → duckduckgo → duckduckgo-lite; the
+    # fixed fallback order: bing → marginalia → duckduckgo → duckduckgo-lite; the
     # instant-answer API answered, so the run carries its name
     assert result.data["backend"] == "duckduckgo"
     assert [record["backend"] for record in result.data["attempts"]] == [
+        "bing",
+        "bing",
         "marginalia",
         "marginalia",
         "duckduckgo",
@@ -171,6 +174,7 @@ def test_a_rate_limited_burst_yields_a_bounded_number_of_calls_then_honest_refus
     """The whole loop is bounded: exactly one retry per backend, then refusal."""
     transport = make_transport(
         {
+            "https://www.bing.com/": {"status": 429, "body": b""},
             "https://api.marginalia.nu/": {"status": 429, "body": b""},
             "https://api.duckduckgo.com/": {"status": 429, "body": b""},
             "https://lite.duckduckgo.com/lite/": {"status": 429, "body": b""},
@@ -193,6 +197,7 @@ def test_transport_defects_are_never_retried_within_one_call(ctx):
     """A dead endpoint stays dead inside one call: recovery = fall to the next backend."""
     transport = make_transport(
         {
+            "https://www.bing.com/": ConnectionRefusedError("refused"),
             "https://api.marginalia.nu/": ConnectionRefusedError("refused"),
             "https://api.duckduckgo.com/": ConnectionRefusedError("refused"),
             "https://lite.duckduckgo.com/lite/": ConnectionRefusedError("refused"),
@@ -213,6 +218,11 @@ def test_a_bad_query_never_fabricates_hidden_results(ctx):
     """No free endpoint has content → the answer is the honest refusal, not empty-ok."""
     transport = make_transport(
         {
+            "https://www.bing.com/": {
+                "status": 200,
+                "content_type": "text/html",
+                "body": b"<html></html>",
+            },
             "https://api.marginalia.nu/": {
                 "status": 200,
                 "content_type": "application/json",

@@ -7,17 +7,23 @@ queries **key-free** backends only and reports which one answered:
 ======================  =============================================  ====  ===========
 backend                 endpoint                                       key   lang/time
 ======================  =============================================  ====  ===========
+``bing``                ``https://www.bing.com/search?q=…`` (HTML)      none  not supported
 ``marginalia``          ``https://api.marginalia.nu/public/search/…``  none  not supported
 ``duckduckgo``          ``https://api.duckduckgo.com/?q=…&format=json`` none  not supported
 ``duckduckgo-lite``     ``https://lite.duckduckgo.com/`` (POST)         none  ``kl``/``df``
 ======================  =============================================  ====  ===========
 
-The **fallback order is fixed** and the same for every call: Marginalia →
-DuckDuckGo instant answers → DuckDuckGo Lite (the broadest general-web index).
-Language/time hints (``lang``, ``time`` arguments) are passed where the backend
-supports them — only DuckDuckGo Lite does — and every attempt record says
-truthfully whether a hint reached the provider (``hints.applied``), so a hit
-list is never presented as if it had been filtered when it was not.
+The **fallback order is fixed** and the same for every call: Bing → Marginalia
+→ DuckDuckGo instant answers → DuckDuckGo Lite. Bing leads because it is the
+broadest general-web index that actually answers key-free from this host
+(measured 2026-10-05: DDG lite/IA and most other free engines were in a
+CAPTCHA/quota window while Bing answered 4/4 probes with 10 organic results
+each); Marginalia's non-commercial index and the DuckDuckGo endpoints stay in
+the chain behind it as the honest fallbacks. Language/time hints (``lang``,
+``time`` arguments) are passed where the backend supports them — only DuckDuckGo
+Lite does — and every attempt record says truthfully whether a hint reached the
+provider (``hints.applied``), so a hit list is never presented as if it had been
+filtered when it was not.
 
 No paid and no key-based source is used, and no key is ever read. When no
 backend answers, the call **refuses** with ``blocked`` (CLI exit 3) and names
@@ -100,11 +106,26 @@ MAX_ATTEMPTS_PER_BACKEND = 2
 RETRY_BACKOFF_S = 0.5
 RETRYABLE_CLASSES: frozenset[str] = frozenset({"rate_limited", "server_error"})
 
-#: The key-free search backends, in fallback order.
+#: The key-free search backends, in fallback order. Bing first: it is the
+#: measured-working general-web engine on this host (2026-10-05); the others
+#: answered only intermittently or were challenge-walled at that measurement.
 #: ``hint_support`` says whether the endpoint can actually apply a language
 #: (``lang``/``kl``) or recency (``time``/``df``) hint; every attempt record
 #: repeats the truthful application status, so a hint is never silently lost.
 BACKENDS: dict[str, dict] = {
+    "bing": {
+        "url": "https://www.bing.com/search?q={query}&count=20",
+        "key_required": False,
+        "hint_support": {"lang": False, "time": False},
+        "hint_note": (
+            "the key-free Bing search endpoint has no language/date parameter on "
+            "this path — the hint stays with the query text only"
+        ),
+        "note": (
+            "Bing organic web results (HTML; the broadest general-web index that "
+            "answers key-free from this host — measured 2026-10-05)"
+        ),
+    },
     "marginalia": {
         "url": "https://api.marginalia.nu/public/search/{query}",
         "key_required": False,
@@ -614,7 +635,7 @@ SEARCH_INPUT_SCHEMA = {
         },
         "backend": {
             "type": "string",
-            "enum": ["auto", "marginalia", "duckduckgo", "duckduckgo-lite"],
+            "enum": ["auto", "bing", "marginalia", "duckduckgo", "duckduckgo-lite"],
             "description": "which key-free backend to use (default: try them in fallback order)",
         },
         "lang": {
@@ -668,12 +689,12 @@ SEARCH_CONTRACT = ToolContract(
     name=_SEARCH_NAME,
     title="Search the web (key-free backends only)",
     description=(
-        "Query the key-free backends in the fixed fallback order (Marginalia → DuckDuckGo "
-        "instant answers → DuckDuckGo Lite) with a bounded retry budget (at most one extra "
-        "try per backend, only for rate limiting or server errors — no loop); when none "
-        "answers, refuse and name each failure class instead of returning nothing. "
-        "Language/time hints are passed where a backend honors them and every attempt "
-        "record reports whether the hint really applied."
+        "Query the key-free backends in the fixed fallback order (Bing → Marginalia → "
+        "DuckDuckGo instant answers → DuckDuckGo Lite) with a bounded retry budget "
+        "(at most one extra try per backend, only for rate limiting or server errors "
+        "— no loop); when none answers, refuse and name each failure class instead of "
+        "returning nothing. Language/time hints are passed where a backend honors "
+        "them and every attempt record reports whether the hint really applied."
     ),
     module=MODULE,
     input_schema=SEARCH_INPUT_SCHEMA,
@@ -683,7 +704,9 @@ SEARCH_CONTRACT = ToolContract(
         network=NetworkPermission(
             mode="search",
             schemes=("https",),
-            hosts=("api.marginalia.nu", "api.duckduckgo.com", "lite.duckduckgo.com"),
+            hosts=(
+                "www.bing.com", "api.marginalia.nu", "api.duckduckgo.com", "lite.duckduckgo.com"
+            ),
             deny_hosts=DENY_HOSTS,
             requires_key=False,
             key_env="",
@@ -764,6 +787,79 @@ def _parse_duckduckgo(payload: bytes, limit: int) -> list[dict]:
 _PARSERS = {"marginalia": _parse_marginalia, "duckduckgo": _parse_duckduckgo}
 
 
+_BING_URL_CANDIDATE = re.compile(r"[a-z][a-z0-9+.-]*://[^\s<>]+", re.I)
+
+
+def _bing_cite_url(cite_text: str) -> str:
+    """Normalize a Bing ``<cite>`` text into a fetchable URL, or ``""``.
+
+    Bing citation paths use ``›`` (U+203A) as a breadcrumb separator, e.g.
+    ``https://www.w3schools.com›python`` — that is not a valid URL and
+    ``web_fetch`` would refuse it. The separators are normalized back to ``/``
+    so the listed hit is the page Bing meant; when the reconstruction is not a
+    parseable http(s) URL, the breadcrumb tail is dropped (scheme+host only).
+    """
+    candidate = re.sub(r"\s+", " ", cite_text).strip().replace("\u203a", "/")
+    match = _BING_URL_CANDIDATE.match(candidate)
+    if not match:
+        return ""
+    url = match.group(0)
+    while url and url[-1] in ".,;:!?)":
+        url = url[:-1]
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme in ("http", "https") and parsed.hostname:
+        return url
+    head = url.split("/", 3)[0:3]  # scheme://host fallback
+    trimmed = "/".join(head)
+    parsed = urllib.parse.urlparse(trimmed)
+    if parsed.scheme in ("http", "https") and parsed.hostname:
+        return trimmed
+    return ""
+
+
+def _parse_bing(payload: bytes, limit: int) -> list[dict]:
+    """Parse Bing organic results — the measured single-row shape below.
+
+    Measured 2026-10-05: each hit is an ``<li class="b_algo" …>`` and each li
+    begins with ~10 injected ``<link rel=stylesheet>`` elements — strip them
+    before searching, or the ``<cite>``/``<h2>`` scans find nothing. The REAL
+    page URL is NOT the anchor ``href`` (that is a ``bing.com/ck/a?…``
+    click-wrapper); it lives in ``<cite>``. ``<h2>`` may be absent on some rows;
+    the title then falls back to the first anchor's text.
+    """
+    document = re.sub(r"(?is)<link[^>]*>", "", payload.decode("utf-8", "replace"))
+    out: list[dict] = []
+    for chunk in document.split('<li class="b_algo"')[1:]:
+        chunk = chunk.split("</li>", 1)[0]
+        cite = re.search(r"<cite[^>]*>(.*?)</cite>", chunk, re.S)
+        url = _bing_cite_url(_strip_html(cite.group(1))) if cite else ""
+        title = ""
+        h2 = re.search(r"<h2[^>]*>(.*?)</h2>", chunk, re.S)
+        if h2 is not None:
+            anchor = re.search(r"<a[^>]*>(.*?)</a>", h2.group(1), re.S)
+            title = _strip_html((anchor or h2).group(1))[:300]
+        if not title or not url:
+            # anchor-text fallback: the first real anchor that is not the
+            # bing.com/ck/a click-wrapper (its href never leaves bing).
+            for anchor in re.finditer(r'<a[^>]*href="([^"]+)"[^>]*>(.*?)</a>', chunk, re.S):
+                if "bing.com/ck/" in anchor.group(1):
+                    continue
+                title = title or _strip_html(anchor.group(2))[:300]
+                url = url or _bing_cite_url(_strip_html(anchor.group(1)))
+                break
+        if not url:
+            continue  # no fetchable URL: the row is unusable, never fabricated
+        snippet_match = re.search(
+            r'class="b_caption"[^>]*>\s*<p[^>]*>(.*?)</p>', chunk, re.S
+        )
+        snippet = _strip_html(snippet_match.group(1))[:400] if snippet_match else ""
+        out.append({"title": title, "url": url, "snippet": snippet, "source": "bing"})
+    return out[:limit]
+
+
+_PARSERS["bing"] = _parse_bing
+
+
 def _parse_duckduckgo_lite(payload: bytes, limit: int) -> list[dict]:
     """Parse the DuckDuckGo Lite HTML table (one row per hit, snippets included).
 
@@ -832,6 +928,14 @@ def _duckduckgo_lite_anti_bot(body: bytes) -> bool:
     return b"anomaly" in body[:60000] and b"result-snippet" not in body
 
 
+def _bing_challenge(body: bytes) -> bool:
+    """A Bing anomaly/CAPTCHA page: challenge markers, zero organic result rows."""
+    if b"b_algo" in body:
+        return False  # organic rows present: a real result page, not a challenge
+    head = body[:60000].lower()
+    return any(marker in head for marker in (b"anomaly", b"captcha", b"unusual traffic"))
+
+
 def _try_once(
     backend: str,
     query: str,
@@ -875,6 +979,15 @@ def _try_once(
         # an error status — name it honestly as a rate limit instead of "no hits".
         record["error"] = (
             "anti-bot page (anomaly probe path) at HTTP 200 — handled as rate-limited"
+        )
+        record["failure_class"] = "rate_limited"
+        record["rate_limited"] = True
+        return record
+    if backend == "bing" and _bing_challenge(body):
+        # measured: a walled window answers HTTP 200 with a challenge/anomaly
+        # body and zero organic rows — rate-limited, never "answered, no hits".
+        record["error"] = (
+            f"challenge/CAPTCHA page at HTTP {record['status']} — handled as rate-limited"
         )
         record["failure_class"] = "rate_limited"
         record["rate_limited"] = True

@@ -715,6 +715,9 @@ def test_web_fetch_refuses_a_credential_looking_header(ctx):
 def test_web_search_parses_the_key_free_backends(ctx):
     transport = make_transport(
         {
+            # bing leads the chain (measured-working backend first); here it 502s
+            # so the fallback under test — marginalia — is the one that answers.
+            "https://www.bing.com/": {"status": 502, "body": b"bad gateway"},
             "https://api.marginalia.nu/": {
                 "status": 200,
                 "content_type": "application/json",
@@ -735,12 +738,13 @@ def test_web_search_parses_the_key_free_backends(ctx):
     assert result.data["count"] == 1 and result.data["truncated"] is True
     assert result.data["results"][0]["url"] == "https://a.test/"
     assert result.data["key_required"] is False
-    assert "api.marginalia.nu" in transport.calls[0]["url"]
+    assert "www.bing.com" in transport.calls[0]["url"], "bing is tried first"
 
 
 def test_web_search_falls_over_to_the_second_key_free_backend(ctx):
     transport = make_transport(
         {
+            "https://www.bing.com/": {"status": 502, "body": b"bad gateway"},
             "https://api.marginalia.nu/": {"status": 502, "body": b"bad gateway"},
             "https://api.duckduckgo.com/": {
                 "status": 200,
@@ -763,16 +767,20 @@ def test_web_search_falls_over_to_the_second_key_free_backend(ctx):
         "duckduckgo:abstract",
         "duckduckgo:related",
     ]
-    # one bounded retry for the 5xx-hit marginalia (server_error), then the
-    # fallback to duckduckgo answered on its first try
-    assert [attempt["answered"] for attempt in result.data["attempts"]] == [False, False, True]
+    # one bounded retry for each 5xx-hit backend (bing, then marginalia — both
+    # server_error), then the fallback to duckduckgo answered on its first try
+    assert [attempt["answered"] for attempt in result.data["attempts"]] == [
+        False, False, False, False, True
+    ]
     assert result.data["attempts"][0]["failure_class"] == "server_error"
-    assert result.warnings, "the failed marginalia tries must be named in the warnings"
+    assert result.data["attempts"][0]["backend"] == "bing"
+    assert result.warnings, "the failed bing/marginalia tries must be named in the warnings"
 
 
 def test_web_search_refuses_and_names_what_is_missing_when_no_backend_answers(ctx):
     transport = make_transport(
         {
+            "https://www.bing.com/": {"status": 503, "body": b""},
             "https://api.marginalia.nu/": {"status": 503, "body": b""},
             "https://api.duckduckgo.com/": TimeoutError("timed out"),
             "https://lite.duckduckgo.com/lite/": TimeoutError("timed out"),
@@ -781,12 +789,14 @@ def test_web_search_refuses_and_names_what_is_missing_when_no_backend_answers(ct
     result = ctx["call"]("web_search", {"query": "anything"}, transport=transport)
     assert result.ok is False and result.error_kind == "blocked"
     assert result.exit_code == C.EXIT_BLOCKED
-    # marginalia 503 = server_error → one bounded retry (2 tries); the timeouts are
-    # not retryable inside one call — the fallback (and then the refusal) is the recovery
-    assert result.data["missing"] and len(result.data["missing"]) == 4
-    assert "marginalia" in result.data["missing"][0]
+    # bing and marginalia 503 = server_error → one bounded retry each (2 tries
+    # per backend); the timeouts are not retryable inside one call — the
+    # fallback (and then the refusal) is the recovery
+    assert result.data["missing"] and len(result.data["missing"]) == 6
+    assert "bing" in result.data["missing"][0]
     assert "server_error" in result.data["missing"][0]
-    assert "timed out" in result.data["missing"][2]
+    assert "marginalia" in result.data["missing"][2]
+    assert "timed out" in result.data["missing"][4]
     assert set(result.data["failure_classes"]) == {"server_error", "transient_network"}
     assert result.data["key_required"] is False
 
