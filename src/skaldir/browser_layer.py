@@ -42,6 +42,7 @@ from pathlib import Path
 from typing import Any
 
 __all__ = [
+    "PRODUCT_SESSION_NAME",
     "BackendKind",
     "BrowserBackend",
     "BrowserCapability",
@@ -54,10 +55,34 @@ __all__ = [
     "SessionManager",
     "TabInfo",
     "agent_browser_probe",
+    "session_state_dir",
 ]
 
 #: The lock file that makes "one start at a time" true across processes (§6).
 SESSION_LOCK_NAME = "browser-session.lock"
+
+#: The agent-browser session the product drives (§6). A named session is what keeps the
+#: product's browser apart from whatever the *user* runs under agent-browser's
+#: ``default`` session — the user's tabs must never be reachable through this state.
+PRODUCT_SESSION_NAME = "skaldir"
+
+
+def session_state_dir(runtime: str | Path | None = None) -> Path:
+    """The ONE browser session state dir — the CLI's resolution, shared by every path.
+
+    Reuse lives in this directory (the session state file *and* the cross-process start
+    lock inside it, §6), so a per-run directory would give every run its own lock and its
+    own "session": two demands could not merge, and `skaldir desk browser` would read a
+    different inventory than the agent path writes — the divergence measured in scrutiny
+    m3 round 2. An explicit CLI ``--runtime`` still scopes it deliberately; the default is
+    the installation runtime that both entries resolve identically.
+    """
+    explicit = Path(str(runtime)).expanduser() if runtime else None
+    if explicit is not None:
+        return explicit / "browser"
+    from .registry import default_runtime_dir
+
+    return Path(default_runtime_dir()) / "browser"
 
 #: The operations §4 names. These are an **internal interface**; the plan is explicit that
 #: the names do not assert any existing CLI command.
@@ -323,7 +348,6 @@ class SessionManager:
         self._lock_path = self.state_dir / SESSION_LOCK_NAME
         self._backend = backend
         self._guard = threading.RLock()
-        self._starts = 0
         self._last_launch_attempt = 0.0
 
     # -- state ----------------------------------------------------------
@@ -390,7 +414,25 @@ class SessionManager:
             "user_tabs": [t for t in (state.get("tabs", []) or []) if t.get("owner") == "user"],
             "last_launch_attempt": state.get("last_launch_attempt", 0.0),
             "starts": int(state.get("starts", 0) or 0),
+            "unconfirmed_reason": str(state.get("unconfirmed_reason", "") or ""),
         }
+
+    def note_agent_tab(self, tab_id: str, *, url: str = "", title: str = "",
+                       run_id: str = "") -> None:
+        """Record a tab the agent itself created (§6).
+
+        Only tabs recorded with ``owner="agent"`` are ever closable by cleanup — a tab
+        this manager never recorded stays unowned, which is the conservative side of
+        BR-13: an unrecorded tab is treated as the user's.
+        """
+        with self._guard:
+            data = self._read()
+            tabs = [t for t in (data.get("tabs") or [])
+                    if str(t.get("tab_id") or "") != str(tab_id)]
+            tabs.append(TabInfo(tab_id=str(tab_id), url=url, title=title,
+                                owner="agent", run_id=run_id).to_dict())
+            data["tabs"] = tabs
+            self._write(data)
 
     def ensure(
         self,
@@ -414,18 +456,45 @@ class SessionManager:
                         "run_id": run_id}
             if current == "unconfirmed":
                 # §6: a start timeout leads to diagnosis and state reconciliation, never to
-                # the next identical launch.
-                return {
-                    "action": "unconfirmed",
-                    **self.discover(),
-                    "task": task,
-                    "run_id": run_id,
-                    "reason": (
-                        "the previous start left the state `unconfirmed`; diagnose it "
-                        "(`skaldir desk indicator` / `browser.discover`) instead of "
-                        "launching again"
-                    ),
-                }
+                # the next identical launch. The one honest reconciliation question is
+                # "is the recorded session actually alive?" — a positive answer lifts the
+                # state WITHOUT a launch; a negative answer has *diagnosed* the session
+                # dead, so clearing the stuck state (and creating a new one below) is a
+                # concluded reconciliation, not a blind retry of the unknown. When the
+                # backend cannot say (verdict None), the state stays `unconfirmed`.
+                session_id = str(state.get("session_id") or "")
+                verdict: bool | None = None
+                if self._backend is not None:
+                    try:
+                        verdict = self._backend.session_alive(session_id)
+                    except Exception:  # noqa: BLE001 — a broken probe is not a verdict
+                        verdict = None
+                if verdict is True:
+                    data = self._read()
+                    data["state"] = "ready"
+                    data.pop("unconfirmed_reason", None)
+                    self._write(data)
+                    return {"action": "reconciled", **self.discover(), "task": task,
+                            "run_id": run_id}
+                if verdict is False:
+                    data = self._read()
+                    data["state"] = "unknown"
+                    data["reconciled_dead_session"] = session_id
+                    self._write(data)
+                    state = data
+                    current = "unknown"
+                else:
+                    return {
+                        "action": "unconfirmed",
+                        **self.discover(),
+                        "task": task,
+                        "run_id": run_id,
+                        "reason": (
+                            "the previous start left the state `unconfirmed`; diagnose it "
+                            "(`skaldir desk indicator` / `browser.discover`) instead of "
+                            "launching again"
+                        ),
+                    }
             if not allow_create:
                 return {"action": "refused", **self.discover(), "task": task,
                         "run_id": run_id,
@@ -435,15 +504,20 @@ class SessionManager:
                         "run_id": run_id,
                         "reason": "no browser backend is configured in this session manager"}
 
-            started = self._backend.launch(task=task, run_id=run_id)
-            self._starts += 1
+            # One named agent-browser session per state dir (§6): concurrent "provide
+            # browser" demands merge into it, and it is never agent-browser's `default`
+            # session, which the user may be driving themselves.
+            session = str(state.get("session_id") or "") or PRODUCT_SESSION_NAME
+            started = self._backend.launch(task=task, run_id=run_id, session=session)
             self._last_launch_attempt = stamp
             data = {
                 "state": "ready" if started.get("ok") else "unconfirmed",
-                "session_id": str(started.get("session_id") or f"bs-{int(stamp)}"),
+                "session_id": str(started.get("session_id") or session),
                 "backend": str(started.get("backend") or BackendKind.AGENT_BROWSER.value),
                 "tabs": list(started.get("tabs") or []),
-                "starts": self._starts,
+                # the counter is read from the state file inside the lock, so it stays
+                # true across processes — an in-memory counter reported 1 per new process.
+                "starts": int(state.get("starts", 0) or 0) + 1,
                 "last_launch_attempt": stamp,
                 "task": task,
                 "run_id": run_id,
@@ -712,8 +786,16 @@ class BrowserBackend:
 
     kind: BackendKind = BackendKind.UNKNOWN
 
-    def launch(self, *, task: str = "", run_id: str = "") -> dict[str, Any]:
+    def launch(self, *, task: str = "", run_id: str = "", session: str = "") -> dict[str, Any]:
         raise NotImplementedError
+
+    def session_alive(self, session_id: str) -> bool | None:
+        """Reconciliation verdict for a recorded session (§5/BR-09).
+
+        ``True`` = the session answers, ``False`` = it is gone, ``None`` = this transport
+        cannot say (the manager then stays ``unconfirmed`` — never a launch on a guess).
+        """
+        return None
 
     def probe(self) -> BrowserCapability:
         return BrowserCapability(self.kind, available=False, reason="no probe implemented")
@@ -914,14 +996,48 @@ class AgentBrowserBackend(BrowserBackend):
         }
 
     def tabs(self, *, session: str = "") -> dict[str, Any]:
-        """List tabs. Read-only; it never closes anything (BR-13)."""
-        result = self.run(["tabs", *self._session_args(session), "--json"])
+        """List the tabs of ONE session. Read-only; it never closes anything (BR-13).
+
+        The real verb is ``tab list`` (measured 0.38.1: the bare ``tabs`` is refused as
+        ``Unknown command``); the envelope carries ``data.tabs`` with stable ``tabId``s.
+        """
+        result = self.run(["tab", "list", *self._session_args(session), "--json"])
+        envelope, _ = _unwrap_json(result.get("stdout") or "")
+        data = envelope.get("data") if isinstance(envelope.get("data"), dict) else {}
+        listed = [
+            {
+                "tab_id": str(t.get("tabId") or ""),
+                "url": str(t.get("url") or ""),
+                "title": str(t.get("title") or ""),
+                "active": bool(t.get("active", False)),
+            }
+            for t in (data.get("tabs") or []) if isinstance(t, dict)
+        ]
         return {"ok": bool(result.get("ok")), "backend": self.kind.value,
-                "tabs": [], "preview": (result.get("stdout") or "")[:800],
+                "tabs": listed, "preview": (result.get("stdout") or "")[:800],
                 "detail": result.get("stderr") or ""}
 
+    def session_alive(self, session_id: str) -> bool | None:
+        """`tab list` answers for the recorded session — the reconciliation probe.
+
+        ``None`` (cannot say) only when the binary itself is unusable; a failing
+        invocation for a named session is a verdict (the session is gone).
+        """
+        if not session_id:
+            return False
+        cap = self.probe()
+        if not cap.available:
+            return None
+        result = self.tabs(session=session_id)
+        return bool(result.get("ok"))
+
     def close_tab(self, *, tab: str = "", session: str = "") -> dict[str, Any]:
-        """Close ONE tab by name — never ``--all`` (BR-13: foreign tabs survive)."""
+        """Close ONE tab by name — never ``--all`` (BR-13: foreign tabs survive).
+
+        The real verb is ``tab close <id>`` (measured 0.38.1); the bare ``close`` closes
+        the whole session browser, and ``--all`` closes EVERY session — both are out of
+        bounds for a tab-scoped close.
+        """
         if not tab:
             return {"ok": False, "backend": self.kind.value,
                     "error_class": ErrorClass.UNSUPPORTED.value,
@@ -931,7 +1047,7 @@ class AgentBrowserBackend(BrowserBackend):
                     "error_class": ErrorClass.UNSUPPORTED.value,
                     "detail": ("refused: closing every tab would also close the user's own "
                                "tabs (BR-13)")}
-        result = self.run(["close", *self._session_args(session), "--json"])
+        result = self.run(["tab", "close", tab, *self._session_args(session), "--json"])
         return {"ok": bool(result.get("ok")), "backend": self.kind.value,
                 "detail": result.get("stderr") or ""}
 

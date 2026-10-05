@@ -46,10 +46,10 @@ class FakeBackend(BrowserBackend):
         return BrowserCapability(self.kind, available=True, version="test",
                                  supports=OPERATIONS)
 
-    def launch(self, *, task: str = "", run_id: str = "") -> dict:
+    def launch(self, *, task: str = "", run_id: str = "", session: str = "") -> dict:
         self.launches += 1
         return {"ok": self.ok, "backend": self.kind.value,
-                "session_id": f"bs-{self.launches}",
+                "session_id": session or f"bs-{self.launches}",
                 "tabs": [{"tab_id": "t1", "url": "about:blank", "owner": "agent",
                           "run_id": run_id}],
                 "detail": "fake launch"}

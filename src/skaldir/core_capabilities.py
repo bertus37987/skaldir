@@ -381,7 +381,7 @@ def _process_tool(ws: Path, rt: Path | None, run_id: str) -> Any | None:
 
 
 def _browser_tool(ws: Path, rt: Path | None, run_id: str) -> Any | None:
-    """The browser layer as an agent tool.
+    """The browser tool as ONE central session lifecycle (§4–§6 of the browser upgrade).
 
     A missing tool is refused by name with the exact reason rather than failing obscurely —
     and this never starts a browser it did not find.
@@ -389,9 +389,13 @@ def _browser_tool(ws: Path, rt: Path | None, run_id: str) -> Any | None:
     from .agent_loop import AgentTool
 
     def handler(do: str = "read", url: str = "", kind: str = "", target: str = "",
-                value: str = "", session: str = "", **_ignored: Any) -> Any:
+                value: str = "", **_ignored: Any) -> Any:
         try:
-            from .browser_layer import AgentBrowserBackend, SessionManager
+            from .browser_layer import (
+                AgentBrowserBackend,
+                SessionManager,
+                session_state_dir,
+            )
         except Exception as exc:  # noqa: BLE001
             return {"ok": False, "error": "browser_unavailable", "reason": str(exc)[:300]}
 
@@ -404,33 +408,94 @@ def _browser_tool(ws: Path, rt: Path | None, run_id: str) -> Any | None:
                 "reason": cap.reason,
                 "backend": "agent-browser",
             }
-        # BLOCK-M3-02: the session state (and the cross-process start lock inside it)
-        # belongs to THIS run — the same rule surface_cli.py applies for `skaldir desk
-        # browser`. Without a runtime the run's workspace scopes it.
-        sessions = SessionManager((rt or ws) / "browser")
+        # THE central lifecycle (§6): the same state dir, session file and cross-process
+        # start lock `skaldir desk browser` uses. The agent path deliberately does NOT
+        # scope this to its own run runtime — that divergence (scrutiny m3 round 2) is
+        # what made a run unable to reuse the CLI's session, its own earlier session, or
+        # another run's; the run only *names* its demand inside the shared state.
+        sessions = SessionManager(session_state_dir(), backend=backend)
+        provisioned = sessions.ensure(task=f"agent:{do}", run_id=run_id)
+        action = str(provisioned.get("action") or "")
+        if action not in ("reused", "launched", "reconciled"):
+            return {
+                "ok": False,
+                "error": "browser_session_not_ready",
+                "action": action,
+                "state": provisioned.get("state"),
+                "reason": str(provisioned.get("reason")
+                              or provisioned.get("unconfirmed_reason") or ""),
+                "diagnosis": (
+                    "this demand launched nothing; diagnose the session "
+                    "(`skaldir desk browser discover`) before the next ensure — an empty "
+                    "or unknown observation is never fixed by another launch"
+                    if action == "unconfirmed" else
+                    str(provisioned.get("reason") or "")
+                ),
+                "starts": provisioned.get("starts"),
+                "run_id": run_id,
+                "session_state_dir": str(sessions.state_dir),
+            }
+        session_id = str(provisioned.get("session_id") or "")
+        if action == "launched":
+            # the product just staged its OWN named session: what it lists now is
+            # agent-created, and only agent-created tabs are ever closable (§6/BR-13)
+            for tab in (backend.tabs(session=session_id).get("tabs") or []):
+                tab_id = str(tab.get("tab_id") or "")
+                if tab_id:
+                    sessions.note_agent_tab(tab_id, url=str(tab.get("url") or ""),
+                                            title=str(tab.get("title") or ""),
+                                            run_id=run_id)
+
         if str(do).lower() in ("read", "observe"):
             # the transport's own signatures: read(url=...) renders, act(action) maps
             # one typed verb — BrowserLayer's not-yet-wired operations would answer
             # `unsupported` honestly, but drop the caller's url/tokens entirely.
-            result = backend.read(url=url, session=session)
+            result = backend.read(url=url, session=session_id)
+            if result.get("ok") and not str(result.get("content") or "").strip():
+                # BR-02: an empty observation is a diagnosis, never a fresh launch. The
+                # state moves to `unconfirmed`, so the NEXT ensure refuses to start
+                # anything and asks the recorded session whether it is even alive.
+                diag = sessions.mark_unconfirmed(
+                    f"empty observation from {result.get('url') or 'the active tab'} — "
+                    "the session answers but rendered nothing; diagnose it instead of "
+                    "demanding another browser"
+                )
+                result["state"] = "unconfirmed"
+                result["diagnosis"] = str(diag.get("unconfirmed_reason") or "")
         else:
             payload = {k: v for k, v in
                        {"kind": kind, "target": target, "value": value, "url": url}.items() if v}
-            result = backend.act(payload, session=session)
+            result = backend.act(payload, session=session_id)
+            if result.get("ok"):
+                # tabs that appeared through this demand are agent-created; every tab
+                # already inventoried (either owner) stays as it is
+                inventory = sessions.discover()
+                known = {str(t.get("tab_id") or "")
+                         for t in inventory["agent_tabs"] + inventory["user_tabs"]}
+                for tab in (backend.tabs(session=session_id).get("tabs") or []):
+                    tab_id = str(tab.get("tab_id") or "")
+                    if tab_id and tab_id not in known:
+                        sessions.note_agent_tab(tab_id, url=str(tab.get("url") or ""),
+                                                title=str(tab.get("title") or ""),
+                                                run_id=run_id)
         if not isinstance(result, dict):
             result = {
                 "ok": bool(getattr(result, "ok", False)),
                 "detail": str(getattr(result, "detail", ""))[:400],
             }
         result.setdefault("run_id", run_id)
+        result.setdefault("session_id", session_id)
         result.setdefault("session_state_dir", str(sessions.state_dir))
+        result.setdefault("session_action", action)
         return result
 
     return AgentTool(
         name="browser",
         description=(
-            "Drive a browser session: {do: read|act, url, kind, target, value}. "
-            "Reuses the existing session and never closes the user's own tabs."
+            "Drive the agent's browser session: {do: read|act, url, kind, target, value}. "
+            "Sessions are reused through one central lifecycle (never one browser per "
+            "demand, never the user's own session), an empty observation is diagnosed "
+            "instead of relaunched, and only agent-created tabs are ever closed."
         ),
         input_schema={
             "type": "object",
@@ -440,7 +505,6 @@ def _browser_tool(ws: Path, rt: Path | None, run_id: str) -> Any | None:
                 "kind": {"type": "string"},
                 "target": {"type": "string"},
                 "value": {"type": "string"},
-                "session": {"type": "string"},
             },
             "required": ["do"],
             # BLOCK-M3-03: unknown arguments are refused at the gate, not swallowed

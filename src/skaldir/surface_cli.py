@@ -710,7 +710,19 @@ def _desk_payload(store: DL.DesktopLeaseStore) -> dict[str, Any]:
 
 
 def _browser_sessions(args: argparse.Namespace) -> BL.SessionManager:
-    return BL.SessionManager(runtime_dir(args) / "browser")
+    """The ONE browser session manager (§6) — the same lifecycle the agent path uses.
+
+    The backend is attached here too, so `skaldir desk browser ensure` is the real entry
+    point that may start a browser (refused by name when agent-browser is absent) and
+    `browser.discover` reads the same session file the agent path writes. The state dir is
+    the shared resolution in ``browser_layer.session_state_dir``: explicit ``--runtime``
+    scopes it, the default is the installation runtime both paths resolve identically.
+    """
+    from .browser_layer import AgentBrowserBackend
+
+    explicit = str(getattr(args, "runtime", "") or "") or None
+    backend = AgentBrowserBackend()
+    return BL.SessionManager(BL.session_state_dir(explicit), backend=backend)
 
 
 def _cmd_browser_probe(args: argparse.Namespace) -> int:

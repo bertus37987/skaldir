@@ -38,15 +38,32 @@ class _StubBrowserBackend:
     """The transport edge, stubbed: the probe answers available, reads answer state.
 
     The handler under test is the unit; the real agent-browser CLI edge is a process
-    boundary and may be stubbed (no browser, no GUI, no network anywhere below).
+    boundary and may be stubbed (no browser, no GUI, no network anywhere below). Since
+    the handler now drives the central ensure lifecycle (VAL-WEB-003), the stub carries
+    the whole transport edge the lifecycle talks to: probe, launch, liveness, tabs,
+    read and act.
     """
 
     kind = BackendKind.AGENT_BROWSER
+
+    def __init__(self) -> None:
+        self.launches: list[dict[str, str]] = []
 
     def probe(self) -> BrowserCapability:
         return BrowserCapability(
             self.kind, available=True, version="stub-1.2.3", binary="/stub/agent-browser"
         )
+
+    def launch(self, *, task: str = "", run_id: str = "", session: str = "") -> dict[str, Any]:
+        self.launches.append({"task": task, "run_id": run_id, "session": session})
+        return {"ok": True, "backend": self.kind.value, "session_id": session,
+                "tabs": [], "detail": "stub launch"}
+
+    def session_alive(self, session_id: str) -> bool | None:
+        return bool(session_id)
+
+    def tabs(self, *, session: str = "") -> dict[str, Any]:
+        return {"ok": True, "backend": self.kind.value, "tabs": [], "detail": ""}
 
     def read(self, *, url: str = "", session: str = "") -> dict[str, Any]:
         return {"ok": True, "backend": self.kind.value, "state": "rendered",
@@ -100,25 +117,55 @@ def test_browser_act_argument_reaches_the_transport(tmp_path: Path, stubbed_back
 
 
 # --------------------------------------------------------------------------- #
-# (b) run-scoping: the session state dir (and its start lock) live per run      #
+# (b) one state dir: the agent path shares the CLI's browser session state      #
+#                                                                              #
+#     Nachtrag (2026-10-05, feature browser-session-reuse): the run-scoped      #
+#     state dir THIS SECTION once pinned turned out to be the divergence —      #
+#     `skaldir desk browser` reads <CLI runtime>/browser while the agent wrote  #
+#     <run runtime>/browser, so the two could never reuse one session and the   #
+#     cross-process start lock was unexercised on the agent path. The handler   #
+#     now drives the central ensure lifecycle (browser_layer.session_state_dir) #
+#     and the run's own runtime dir is no longer the browser state dir.         #
 # --------------------------------------------------------------------------- #
 
 
-def test_browser_state_dir_is_scoped_under_the_runs_runtime(
-    tmp_path: Path, stubbed_backend
+@pytest.fixture()
+def isolated_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("SKALDIR_HOME", str(home))
+    return home
+
+
+def test_browser_state_dir_is_the_shared_central_resolution(
+    tmp_path: Path, stubbed_backend, isolated_home: Path
 ):
     rt = tmp_path / "runtime"
     tool = _browser_tool(tmp_path / "ws", rt)
     tool.handler(do="read", url="https://example.invalid/page")
-    assert (rt / "browser").is_dir(), "the run-scoped browser state dir was not created"
+    assert (isolated_home / "browser").is_dir(), (
+        "the shared browser session state dir was not created"
+    )
+    assert not (rt / "browser").exists(), (
+        "the browser session state must not diverge into the run's own runtime dir — "
+        "that divergence is the m3-round-2 gap (one state dir, one start lock, real reuse)"
+    )
 
 
-def test_browser_state_dir_falls_back_to_the_workspace_without_a_runtime(
-    tmp_path: Path, stubbed_backend
+def test_the_handler_shares_the_session_the_cli_resolution_reads(
+    tmp_path: Path, stubbed_backend, isolated_home: Path
 ):
-    tool = _browser_tool(tmp_path / "ws", None)
+    tool = _browser_tool(tmp_path / "ws", tmp_path / "runtime")
     tool.handler(do="read", url="https://example.invalid/page")
-    assert (tmp_path / "ws" / "browser").is_dir()
+    from skaldir.browser_layer import SessionManager, session_state_dir
+
+    inventory = SessionManager(session_state_dir()).discover()
+    assert inventory["state"] == "ready"
+    assert inventory["starts"] == 1, "one handler demand = one launch, counted in state"
+    # a second demand (another handler object, same state) reuses — never launches
+    tool2 = _browser_tool(tmp_path / "ws2", None)
+    result = tool2.handler(do="read", url="https://example.invalid/page2")
+    assert result["session_action"] == "reused", result
 
 
 # --------------------------------------------------------------------------- #
@@ -134,6 +181,9 @@ def test_browser_tool_call_through_the_real_loop_answers_honest_state(
     import skaldir.browser_layer as bl
 
     monkeypatch.setattr(bl, "AgentBrowserBackend", _StubBrowserBackend)
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("SKALDIR_HOME", str(home))
 
     from tests.test_agent_loop import answer, tool_step
     from tests.test_core_schema_type_mapping import _result_for
@@ -176,5 +226,7 @@ def test_browser_tool_call_through_the_real_loop_answers_honest_state(
     assert payload["ok"] is True, payload
     assert payload["url"] == "https://example.invalid/page"
     assert "TypeError" not in str(payload)
-    # run-scoping held on the productive path too: the state dir is the run's own
-    assert (runtime / "browser").is_dir()
+    # the central lifecycle held on the productive path too: one shared state dir with
+    # the CLI's resolution, one counted launch — and NOT the run's own runtime dir
+    assert (home / "browser" / "browser-session.json").is_file()
+    assert not (runtime / "browser").exists()
