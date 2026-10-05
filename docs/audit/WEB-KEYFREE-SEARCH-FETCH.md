@@ -90,3 +90,46 @@ Produktive Ebene: `skaldir tools-core call web_search|web_fetch` über die echte
   Marginalia liefert je nach Query Treffer; beide Wege tragen die ehrlichen,
   dokumentierten Verweigerungs-Gap-Notes. Ein späterer Live-Beweis der
   Lite-Hinweise braucht nur das Quota-Fenster abwarten — kein Codeänderungsbedarf.
+
+## Nachtrag (2026-10-05, feature web-backend-resilience): Bing als gemessen funktionierendes Backend vor der Kette
+
+Der Orchestrator maß (siehe `library/environment.md`, „Free general-web SEARCH
+backends"): DuckDuckGo Lite/IA waren im CAPTCHA-/Quota-Fenster, Marginalia war
+intermittierend — die damalige Kette hatte **kein** Backend, das von diesem Host
+tatsächlich antwortet. **Bing (`www.bing.com/search`) antwortet** (4/4 Probe-Queries
+× 10 echte organische Treffer). Feature-Commit: `f954a17`.
+
+- **Neue Fallback-Reihenfolge: Bing → Marginalia → DuckDuckGo → DuckDuckGo Lite**
+  (`BACKENDS`-Dict, Schema-Enum, Permission-Hosts, Kontrakt-Beschreibung und
+  Modul-Docstring in einem Zug aktualisiert; Drift wird durch
+  `tests/test_web_backend_table_schema.py::test_the_backend_enum_and_the_backend_table_are_in_lockstep`
+  gepinnt).
+- **Bing-Parser nach Gemessenem** (`_parse_bing`): Split an `<li class="b_algo"`,
+  injizierte `<link rel=stylesheet>`-Elemente werden VOR der Suche entfernt, echte
+  URL aus `<cite>` (das `href` ist ein `bing.com/ck/a`-Klick-Wrapper), Titel aus
+  `<h2>` mit Anchor-Text-Rückfall; Breadcrumb-Cites (Trennzeichen `›`, U+203A) werden
+  zu gültigen URLs normalisiert (`https://www.w3schools.com›python` →
+  `https://www.w3schools.com/python`), damit ein gelisteter Treffer tatsächlich
+  abrufbar ist — gepinnt durch Test.
+- **Challenge/CAPTCHA/Anomaly-Bodies** werden erstklassig als `rate_limited`
+  klassifiziert (nie als „beantwortet ohne Treffer"), mit demselben begrenzten
+  Retry-Budget (2 Versuche pro Backend, danach ehrliche Verweigerung).
+- **Live-Beweise über die produktive CLI** (installierter Launcher
+  `~/.local/bin/skaldir`, nach `uv tool install --force .` neu aufgespielt):
+  - Suche `web_search {"query": "rust programming language", "limit": 5}` → Exit 0,
+    Backend `bing`, 5 Treffer mit URL/Titel/Snippet/Quelle, darunter rust-lang.org
+    und Wikipedia. Rohbericht: `logs/web-bing/cli-search-proof.json`.
+  - Failure-Path: `web_search {"query": …, "backend": "duckduckgo-lite"}` (aktuell
+    verriegelt) → **Exit 3**, `error_kind=blocked`,
+    `failure_classes=['rate_limited']`, genau 2 begrenzte Versuche, kein Loop, keine
+    erfundenen Treffer. Rohbericht: `logs/web-bing/cli-failure-proof.json`.
+  - `probe_backends` live: bing 200/10 Treffer, marginalia Timeout
+    (`transient_network`), duckduckgo IA 202/8 Treffer, duckduckgo-lite Anomaly-Seite
+    (`rate_limited`) — die Tabelle von oben reproduziert sich taggleich.
+- **Failing-first-Regression**: die 9 neuen Bing-Tests
+  (`tests/test_web_bing_backend.py`) liefen vor der Umsetzung rot (Backend fehlt,
+  Enum lehnt `bing` ab, Kette klassifiziert Challenge-Body nicht) und nach dem
+  Commit grün; die 6 bestehenden Reihenfolge-/Budget-Tests
+  (`test_web_search_fetch_contract.py`, `test_tools_core_tools.py`) wurden auf die
+  neue 4-Backend-Kette migriert. Bereichs-Batterie (web + contracts + mcp +
+  registry) grün; `uv run ruff check src tests` grün (Exit 0).
