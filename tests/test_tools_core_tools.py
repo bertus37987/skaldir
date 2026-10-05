@@ -627,8 +627,8 @@ class _Transport:
         self.routes = routes
         self.calls: list[dict] = []
 
-    def __call__(self, *, url, timeout_s, max_bytes, headers):
-        self.calls.append({"url": url, "timeout_s": timeout_s, "max_bytes": max_bytes})
+    def __call__(self, *, url, timeout_s, max_bytes, headers, data=None):
+        self.calls.append({"url": url, "timeout_s": timeout_s, "max_bytes": max_bytes, "data": data})
         for prefix, response in self.routes.items():
             if url.startswith(prefix):
                 if isinstance(response, Exception):
@@ -761,7 +761,11 @@ def test_web_search_falls_over_to_the_second_key_free_backend(ctx):
         "duckduckgo:abstract",
         "duckduckgo:related",
     ]
-    assert [attempt["answered"] for attempt in result.data["attempts"]] == [False, True]
+    # one bounded retry for the 5xx-hit marginalia (server_error), then the
+    # fallback to duckduckgo answered on its first try
+    assert [attempt["answered"] for attempt in result.data["attempts"]] == [False, False, True]
+    assert result.data["attempts"][0]["failure_class"] == "server_error"
+    assert result.warnings, "the failed marginalia tries must be named in the warnings"
 
 
 def test_web_search_refuses_and_names_what_is_missing_when_no_backend_answers(ctx):
@@ -769,14 +773,19 @@ def test_web_search_refuses_and_names_what_is_missing_when_no_backend_answers(ct
         {
             "https://api.marginalia.nu/": {"status": 503, "body": b""},
             "https://api.duckduckgo.com/": TimeoutError("timed out"),
+            "https://lite.duckduckgo.com/lite/": TimeoutError("timed out"),
         }
     )
     result = ctx["call"]("web_search", {"query": "anything"}, transport=transport)
     assert result.ok is False and result.error_kind == "blocked"
     assert result.exit_code == C.EXIT_BLOCKED
-    assert result.data["missing"] and len(result.data["missing"]) == 2
-    assert "api.marginalia.nu" in result.data["missing"][0]
-    assert "timed out" in result.data["missing"][1]
+    # marginalia 503 = server_error → one bounded retry (2 tries); the timeouts are
+    # not retryable inside one call — the fallback (and then the refusal) is the recovery
+    assert result.data["missing"] and len(result.data["missing"]) == 4
+    assert "marginalia" in result.data["missing"][0]
+    assert "server_error" in result.data["missing"][0]
+    assert "timed out" in result.data["missing"][2]
+    assert set(result.data["failure_classes"]) == {"server_error", "transient_network"}
     assert result.data["key_required"] is False
 
 
