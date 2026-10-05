@@ -628,7 +628,9 @@ class _Transport:
         self.calls: list[dict] = []
 
     def __call__(self, *, url, timeout_s, max_bytes, headers, data=None):
-        self.calls.append({"url": url, "timeout_s": timeout_s, "max_bytes": max_bytes, "data": data})
+        self.calls.append(
+            {"url": url, "timeout_s": timeout_s, "max_bytes": max_bytes, "data": data}
+        )
         for prefix, response in self.routes.items():
             if url.startswith(prefix):
                 if isinstance(response, Exception):

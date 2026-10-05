@@ -130,8 +130,14 @@ BACKENDS: dict[str, dict] = {
         "method": "POST",  # measured 2026-10-05: GET serves the anti-bot page, POST answers
         "key_required": False,
         "hint_support": {"lang": True, "time": True},
-        "hint_note": "honoured as DuckDuckGo region ``kl=<lang[-country]>`` and recency ``df=<day|week|month|year>``",
-        "note": "DuckDuckGo Lite HTML endpoint (general web index; GET is bot-challenged, POST is not)",
+        "hint_note": (
+            "honoured as DuckDuckGo region ``kl=<lang[-country]>`` and "
+            "recency ``df=<day|week|month|year>``"
+        ),
+        "note": (
+            "DuckDuckGo Lite HTML endpoint (general web index; "
+            "GET is bot-challenged, POST is not)"
+        ),
     },
 }
 
@@ -173,7 +179,10 @@ def http_get(
     and passing a new kwarg to their fixed signatures would break them).
     """
     if data is not None:
-        extra_headers = {**(extra_headers or {}), "Content-Type": "application/x-www-form-urlencoded"}
+        extra_headers = {
+            **(extra_headers or {}),
+            "Content-Type": "application/x-www-form-urlencoded",
+        }
     if transport is not None:
         try:
             if data is None:
@@ -775,7 +784,9 @@ def _parse_duckduckgo_lite(payload: bytes, limit: int) -> list[dict]:
             url = html.unescape(urllib.parse.unquote(forwarder.group(1)))
         title = _strip_html(match.group(2))[:300]
         tail = document[match.end() : match.end() + 1200]
-        snippet_match = re.search(r'class="result-snippet"[^>]*>(.*?)(?:</td>|</table>)', tail, re.S)
+        snippet_match = re.search(
+            r'class="result-snippet"[^>]*>(.*?)(?:</td>|</table>)', tail, re.S
+        )
         snippet = _strip_html(snippet_match.group(1))[:400] if snippet_match else ""
         out.append({"title": title, "url": url, "snippet": snippet, "source": "duckduckgo-lite"})
     return out[:limit]
@@ -881,11 +892,15 @@ def _try_once(
         return record
     record["results"] = len(results)
     record["answered"] = bool(results)
-    record["failure_class"] = _classify_failure(record["status"], record["error"], record["answered"])
+    record["failure_class"] = _classify_failure(
+        record["status"], record["error"], record["answered"]
+    )
     record["rate_limited"] = False
     record["_parsed"] = results
     if not results:
-        record["error"] = record["error"] or "endpoint answered but carried no results for this query"
+        record["error"] = (
+            record["error"] or "endpoint answered but carried no results for this query"
+        )
     return record
 
 
@@ -1019,8 +1034,9 @@ def run_search(args: dict, ctx: ToolContext) -> ToolResult:
             },
         )
     warnings = [
-        f"backend {name} did not answer in class {record.get('failure_class')} "
-        f"(try {record.get('try', 1)}): {record.get('error') or ('HTTP ' + str(record.get('status')))}"
+        f"backend {name} did not answer in class {record.get('failure_class')}"
+        f" (try {record.get('try', 1)}): "
+        f"{record.get('error') or ('HTTP ' + str(record.get('status')))}"
         for record in attempts[:-1]
     ]
     hints = dict(hints_record or {}) or _hints_record(chosen, lang, time_frame)
