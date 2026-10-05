@@ -277,8 +277,14 @@ def web_fetch(
     timeout_s: int = 15,
     max_bytes: int = 100000,
     headers: dict[str, str] | None = None,
+    save_to: str = "",
 ) -> dict[str, Any]:
-    """Fetch one http(s) URL (capped, key-free, redirects reported)."""
+    """Fetch one http(s) URL (capped, key-free, redirects reported).
+
+    ``save_to`` downloads the raw body to an explicit absolute path (optional;
+    the loop surface mirrors the registry contract, so the model-facing schema
+    carries the same argument).
+    """
     arguments: dict[str, Any] = {
         "url": url,
         "extract": extract,
@@ -287,12 +293,23 @@ def web_fetch(
     }
     if headers:
         arguments["headers"] = headers
+    if save_to:
+        arguments["save_to"] = save_to
     return _call("web_fetch", arguments)
 
 
-def web_search(query: str, limit: int = 5, backend: str = "auto") -> dict[str, Any]:
-    """Search the web through key-free backends only (refuses when none answers)."""
-    return _call("web_search", {"query": query, "limit": limit, "backend": backend})
+def web_search(
+    query: str, limit: int = 5, backend: str = "auto", lang: str = "", time: str = "any"
+) -> dict[str, Any]:
+    """Search the web through key-free backends only (refuses when none answers).
+
+    ``lang``/``time`` are the language/recency hints; whether a backend honoured
+    them is reported per attempt (the fixed fallback order stays the same).
+    """
+    return _call(
+        "web_search",
+        {"query": query, "limit": limit, "backend": backend, "lang": lang, "time": time},
+    )
 
 
 # --------------------------------------------------------------------------- #
