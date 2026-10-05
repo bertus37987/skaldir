@@ -54,6 +54,37 @@ def _lite_answer(status: int = 200) -> dict:
 # ------------------------------------------------------------------- hints
 
 
+def test_the_bridge_wrapper_never_sends_default_hints_and_defaults_pass_the_gate(monkeypatch):
+    """m3 rule: the model-facing wrapper's built arguments must pass the registry gate.
+
+    The contract rejects an empty ``lang`` (minLength 2) — a defaulted call that
+    carried the key would be refused everywhere, so the wrapper omits defaults.
+    """
+    from skaldir.tools_core import bridge, web
+
+    sent: dict = {}
+
+    def fake_call(name, args):
+        sent.update(name=name, args=dict(args))
+        return None
+
+    monkeypatch.setattr(bridge, "_call", fake_call)
+    assert bridge.web_search("linux") is None
+    assert sent["name"] == "web_search"
+    assert sent["args"] == {"query": "linux", "limit": 5, "backend": "auto"}
+    assert web.enforce_input(web.SEARCH_CONTRACT, sent["args"]) is None
+    bridge.web_search("linux", lang="de-DE", time="week")
+    assert sent["args"]["lang"] == "de-DE" and sent["args"]["time"] == "week"
+    assert web.enforce_input(web.SEARCH_CONTRACT, sent["args"]) is None
+    bridge.web_search("linux", lang="", time="any")
+    assert "lang" not in sent["args"] and "time" not in sent["args"]
+    bridge.web_fetch("https://x.test/")
+    assert sent["args"].get("save_to") is None, "a defaulted fetch must not carry save_to"
+    bridge.web_fetch("https://x.test/", save_to="/tmp/here.bin")
+    assert sent["args"]["save_to"] == "/tmp/here.bin"
+    assert web.enforce_input(web.FETCH_CONTRACT, sent["args"]) is None
+
+
 def test_lang_and_time_hints_reach_the_backends_and_are_reported(ctx):
     """duckduckgo-lite honours the hints (kl/df); the record says so, never pretends."""
     transport = make_transport({"https://lite.duckduckgo.com/lite/": _lite_answer()})

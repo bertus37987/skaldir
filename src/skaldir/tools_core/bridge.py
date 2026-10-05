@@ -305,11 +305,15 @@ def web_search(
 
     ``lang``/``time`` are the language/recency hints; whether a backend honoured
     them is reported per attempt (the fixed fallback order stays the same).
+    Defaults are omitted from the arguments — the registry contract rejects an
+    empty ``lang`` (minLength 2), so a defaulted call must not carry the keys.
     """
-    return _call(
-        "web_search",
-        {"query": query, "limit": limit, "backend": backend, "lang": lang, "time": time},
-    )
+    arguments: dict[str, Any] = {"query": query, "limit": limit, "backend": backend}
+    if lang:
+        arguments["lang"] = lang
+    if time != "any":
+        arguments["time"] = time
+    return _call("web_search", arguments)
 
 
 # --------------------------------------------------------------------------- #
