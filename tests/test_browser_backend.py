@@ -126,6 +126,18 @@ def _real() -> AgentBrowserBackend:
     return AgentBrowserBackend()
 
 
+@pytest.fixture()
+def close_real_sessions():
+    """The real-transport tests below create their own NAMED agent-browser sessions;
+    leaving them running leaked one browser per suite run (measured 2026-10-06:
+    pytest-launch/pytest-read survived the run). The teardown closes ONLY these
+    recorded own-session names — never a foreign session, never `--all`."""
+    yield
+    backend = _real()
+    for name in ("pytest-launch", "pytest-read"):
+        backend.run(["--session", name, "close", "--json"])
+
+
 def test_the_real_binary_reports_a_version():
     cap = _real().probe()
     if not cap.available:
@@ -134,6 +146,7 @@ def test_the_real_binary_reports_a_version():
     assert "agent-browser" in cap.version
 
 
+@pytest.mark.usefixtures("close_real_sessions")
 def test_a_real_read_returns_the_page_content_not_the_json_envelope(read_probe_url):
     """BR-07: strukturierte selektive Seiteninhalte — measured against the real tool.
 
@@ -159,6 +172,7 @@ def test_a_real_read_returns_the_page_content_not_the_json_envelope(read_probe_u
     assert result["source"].startswith("agent-browser read")
 
 
+@pytest.mark.usefixtures("close_real_sessions")
 def test_a_real_launch_does_not_close_anything_and_reports_itself():
     b = _real()
     if not b.probe().available:
