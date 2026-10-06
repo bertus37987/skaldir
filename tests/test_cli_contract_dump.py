@@ -119,6 +119,53 @@ def test_contract_show_unknown_command_is_not_found(runtime, capsys):
     assert document["error"]["code"] == "not_found"
 
 
+def test_every_command_declares_evidence_as_ref_kind_note_objects():
+    """VAL-UI-003: envelope evidence is a list of ``{ref, kind, note}`` objects.
+
+    Measured defect (2026-10-06): 31 ``surface_cli.contract_entries()`` commands passed a
+    bare string where ``CommandSpec.evidence`` wants dicts, so ``run_command``'s
+    ``list(spec.evidence)`` char-split the JSON envelope's evidence into
+    ``["s", "r", "c", ...]`` — and ``contract dump``'s ``default_evidence`` the same way.
+    This invariant stays in the suite so a new command cannot ship with string evidence.
+    """
+    cli.build_parser()
+    bad = {}
+    for path, entry in cli_contract.COMMANDS.items():
+        evidence = list(entry.evidence)
+        broken = [
+            item for item in evidence
+            if not (
+                isinstance(item, dict)
+                and isinstance(item.get("ref"), str) and item["ref"]
+                and isinstance(item.get("kind"), str)
+                and isinstance(item.get("note"), str)
+            )
+        ]
+        if broken:
+            bad[path] = [repr(item) for item in broken]
+    assert bad == {}, (
+        "commands whose evidence items are not ref/kind/note objects (a bare string here "
+        "char-splits into single characters in the --json envelope and in the dump): "
+        + ", ".join(sorted(bad))
+    )
+
+
+def test_contract_dump_reports_object_evidence_for_every_command(runtime, capsys):
+    """The dump self-description carries the same rule for a GUI consumer."""
+    assert cli.main(["contract", "dump", "--json"]) == 0
+    document = json.loads(capsys.readouterr().out)
+    bad = {
+        item["command"]: item["default_evidence"]
+        for item in document["data"]["commands"]
+        if not all(
+            isinstance(evi, dict) and isinstance(evi.get("ref"), str) and evi["ref"]
+            and isinstance(evi.get("kind"), str)
+            for evi in item["default_evidence"]
+        )
+    }
+    assert bad == {}, "default_evidence with non-object items: " + ", ".join(sorted(bad))
+
+
 def test_compat_mirrors_are_declared_not_hidden():
     """Two legacy commands mirror their payload at top level for pre-contract consumers."""
     mirrored = sorted(

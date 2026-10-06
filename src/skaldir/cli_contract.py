@@ -1555,6 +1555,14 @@ def build_envelope(
     version: str = "",
 ) -> dict:
     """Build the one envelope shape. Never succeeds without evidence."""
+    if isinstance(evidence, str):
+        # VAL-UI-003: a bare string would be iterated and char-split into single
+        # characters ("s", "r", "c", ...) in the envelope — refuse it loudly instead.
+        raise ValueError(
+            f"evidence must be {{ref, kind, note}} dicts, not the bare string "
+            f"{evidence!r}: iterating a string would char-split it into single "
+            "characters in the envelope"
+        )
     error_record: dict | None
     if isinstance(error, CommandError):
         error_record = error.as_dict()
@@ -2017,6 +2025,37 @@ def run_command(args: argparse.Namespace, func: Callable, *, json_mode: bool | N
     if quiet is None:
         quiet = bool(getattr(args, "quiet", False))
     spec = spec_for(command)
+    if isinstance(spec.evidence, str):
+        # VAL-UI-003 defence in depth: a string in the evidence slot would be
+        # iterated and char-split into single characters ("s", "r", "c", ...) in
+        # the envelope. Refuse it BEFORE any handler runs (no side effects) instead
+        # of emitting a success envelope the evidence cannot back.
+        message = (
+            f"{command} declares evidence as a bare string ({spec.evidence!r}); "
+            "iterating that would char-split it into single characters in the "
+            "envelope — declare {ref, kind, note} dicts in the spec's evidence instead"
+        )
+        if not json_mode:
+            sys.stderr.write(f"skaldir: {message}\n")
+            return EXIT_INTERNAL
+        emit_json_line(build_envelope(
+            command=command,
+            exit_code=EXIT_INTERNAL,
+            error=CommandError(
+                EXIT_INTERNAL,
+                message,
+                hint="fix the command's contract entry (e.g. surface_cli's "
+                     "COMMAND_EVIDENCE / entry())",
+                details={"command": command},
+            ),
+            evidence=[{
+                "ref": "src/skaldir/cli_contract.py:run_command",
+                "kind": "code",
+                "note": "evidence-shape guard: a bare string in the evidence slot is "
+                        "refused before the handler runs",
+            }],
+        ))
+        return EXIT_INTERNAL
     ctx = Context(command=command, json_mode=json_mode, spec=spec)
 
     global _CURRENT

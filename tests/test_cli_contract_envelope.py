@@ -216,6 +216,47 @@ def test_handler_exceptions_become_internal_exit_codes(runtime, capsys):
     assert "RuntimeError" in document["error"]["message"]
 
 
+def test_a_bare_string_evidence_never_char_splits_into_the_envelope(monkeypatch, capsys):
+    """VAL-UI-003 defence in depth (measured defect 2026-10-06): a string in the
+    evidence slot must be refused with a clear internal error *before work runs*,
+    never iterated into single characters (``["s", "r", "c", ...]``) in the envelope.
+    """
+    import argparse
+
+    monkeypatch.setitem(
+        cli_contract.COMMANDS,
+        "guard.char-split",
+        cli_contract.CommandSpec(
+            layer="kernel", evidence="src/skaldir/guard.py:BrokenShape"
+        ),
+    )
+
+    def never_called(_args):  # the refusal happens before the handler runs
+        raise AssertionError("handler must not run when the spec's evidence is a string")
+
+    args = argparse.Namespace(command_path="guard.char-split", json=True, quiet=False)
+    code = cli_contract.run_command(args, never_called, json_mode=True)
+    assert code == cli_contract.EXIT_INTERNAL
+    document = json.loads(capsys.readouterr().out)
+    assert document["ok"] is False
+    assert document["error"]["code"] == "internal"
+    assert "bare string" in document["error"]["message"]
+    assert document["evidence"], "the refusal itself is evidenced"
+    for item in document["evidence"]:
+        assert set(item) == {"ref", "kind", "note"}
+
+
+def test_build_envelope_refuses_a_bare_string_evidence():
+    """The builder is the second wall: a string argument would char-split silently."""
+    with pytest.raises(ValueError, match="char-split"):
+        cli_contract.build_envelope(
+            command="contract.list",
+            exit_code=cli_contract.EXIT_OK,
+            data={"commands": []},
+            evidence="src/skaldir/cli_contract.py",
+        )
+
+
 def test_exit_code_set_is_complete_and_named():
     assert [
         cli_contract.EXIT_OK,

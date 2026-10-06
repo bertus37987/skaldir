@@ -50,6 +50,7 @@ from .cli_shared import (
     report_envelope,
     runtime_dir,
 )
+from .cli_shared import ev as shared_ev
 
 __all__ = [
     "COMMAND_EVIDENCE",
@@ -64,38 +65,44 @@ EXIT_NOT_FOUND = 5
 
 _CONTRACT = product_contract()
 
-COMMAND_EVIDENCE: dict[str, str] = {
-    "tui.preview": "src/skaldir/tui.py:TUI.render",
-    "tui.live": "src/skaldir/tui_live.py:LiveTui.step",
-    "tui.app": "src/skaldir/tui_app.py:TuiApp.run",
-    "tui.layout": "src/skaldir/tui.py:layout",
-    "tui.figure": "src/skaldir/tui.py:figure_frame",
-    "tui.approve": "src/skaldir/approval_modes.py:ApprovalModeStore",
-    "stop.report": "src/skaldir/stop_signal.py:write_report",
-    "stop.detect": "src/skaldir/stop_signal.py:DoubleEscapeDetector",
-    "desk.status": "src/skaldir/desktop_lease.py:DesktopLeaseStore",
-    "browser.probe": "src/skaldir/browser_layer.py:agent_browser_probe",
-    "schedule.define": "src/skaldir/scheduler.py:ScheduleStore.define",
-    "schedule.activate": "src/skaldir/scheduler.py:ScheduleStore.activate",
-    "schedule.pause": "src/skaldir/scheduler.py:ScheduleStore.pause",
-    "schedule.delete": "src/skaldir/scheduler.py:ScheduleStore.delete",
-    "schedule.list": "src/skaldir/scheduler.py:ScheduleStore.all",
-    "schedule.due": "src/skaldir/scheduler.py:ScheduleStore.due",
-    "schedule.run": "src/skaldir/scheduler_worker.py:SchedulerWorker.tick",
-    "sources.add": "src/skaldir/data_sources.py:SourceRegistry.attach",
-    "sources.report": "src/skaldir/data_sources.py:SourceRegistry.report",
-    "voice.rebrief": "src/skaldir/voice_rebrief.py:validate_rebrief",
-    "browser.discover": "src/skaldir/browser_layer.py:SessionManager.discover",
-    "browser.ensure": "src/skaldir/browser_layer.py:SessionManager.ensure",
-    "browser.tabs": "src/skaldir/browser_layer.py:BrowserLayer.tabs",
-    "browser.detach": "src/skaldir/browser_layer.py:BrowserLayer.detach",
-    "desk.indicator": "src/skaldir/desktop_indicator.py:HostIndicator",
-    "desk.indicator-show": "src/skaldir/desktop_indicator.py:HostIndicator.show",
-    "desk.indicator-hide": "src/skaldir/desktop_indicator.py:HostIndicator.hide",
-    "desk.acquire": "src/skaldir/desktop_lease.py:DesktopLeaseStore.acquire",
-    "desk.release": "src/skaldir/desktop_lease.py:DesktopLeaseStore.release",
-    "desk.stop": "src/skaldir/desktop_lease.py:DesktopLeaseStore.request_stop",
-    "desk.resume": "src/skaldir/desktop_lease.py:DesktopLeaseStore.resume",
+#: The dotted command paths this group owns, with the evidence each command reports —
+#: already in ``CommandSpec.evidence``'s shape (``{ref, kind, note}`` dicts, like
+#: act_cli/host_cli). VAL-UI-003: evidence that ships as a bare string here is iterated
+#: by ``run_command`` and char-splits into single characters in the --json envelope.
+COMMAND_EVIDENCE: dict[str, tuple[dict, ...]] = {
+    "tui.preview": (shared_ev("src/skaldir/tui.py:TUI.render"),),
+    "tui.live": (shared_ev("src/skaldir/tui_live.py:LiveTui.step"),),
+    "tui.app": (shared_ev("src/skaldir/tui_app.py:TuiApp.run"),),
+    "tui.layout": (shared_ev("src/skaldir/tui.py:layout"),),
+    "tui.figure": (shared_ev("src/skaldir/tui.py:figure_frame"),),
+    "tui.approve": (shared_ev("src/skaldir/approval_modes.py:ApprovalModeStore"),),
+    "stop.report": (shared_ev("src/skaldir/stop_signal.py:write_report"),),
+    "stop.detect": (shared_ev("src/skaldir/stop_signal.py:DoubleEscapeDetector"),),
+    "desk.status": (shared_ev("src/skaldir/desktop_lease.py:DesktopLeaseStore"),),
+    "browser.probe": (shared_ev("src/skaldir/browser_layer.py:agent_browser_probe",
+                                "code", "the measured capability"),),
+    "schedule.define": (shared_ev("src/skaldir/scheduler.py:ScheduleStore.define"),),
+    "schedule.activate": (shared_ev("src/skaldir/scheduler.py:ScheduleStore.activate"),),
+    "schedule.pause": (shared_ev("src/skaldir/scheduler.py:ScheduleStore.pause"),),
+    "schedule.delete": (shared_ev("src/skaldir/scheduler.py:ScheduleStore.delete"),),
+    "schedule.list": (shared_ev("src/skaldir/scheduler.py:ScheduleStore.all"),),
+    "schedule.due": (shared_ev("src/skaldir/scheduler.py:ScheduleStore.due"),),
+    "schedule.run": (shared_ev("src/skaldir/scheduler_worker.py:SchedulerWorker.tick"),),
+    "sources.add": (shared_ev("src/skaldir/data_sources.py:SourceRegistry.attach"),),
+    "sources.report": (shared_ev("src/skaldir/data_sources.py:SourceRegistry.report"),),
+    "voice.rebrief": (shared_ev("src/skaldir/voice_rebrief.py:validate_rebrief"),),
+    "browser.discover": (shared_ev("src/skaldir/browser_layer.py:SessionManager.discover"),),
+    "browser.ensure": (shared_ev("src/skaldir/browser_layer.py:SessionManager.ensure"),),
+    "browser.tabs": (shared_ev("src/skaldir/browser_layer.py:BrowserLayer.tabs"),),
+    "browser.detach": (shared_ev("src/skaldir/browser_layer.py:BrowserLayer.detach"),),
+    "desk.indicator": (shared_ev("src/skaldir/desktop_indicator.py:HostIndicator",
+                                 "code", "the measured host backend"),),
+    "desk.indicator-show": (shared_ev("src/skaldir/desktop_indicator.py:HostIndicator.show"),),
+    "desk.indicator-hide": (shared_ev("src/skaldir/desktop_indicator.py:HostIndicator.hide"),),
+    "desk.acquire": (shared_ev("src/skaldir/desktop_lease.py:DesktopLeaseStore.acquire"),),
+    "desk.release": (shared_ev("src/skaldir/desktop_lease.py:DesktopLeaseStore.release"),),
+    "desk.stop": (shared_ev("src/skaldir/desktop_lease.py:DesktopLeaseStore.request_stop"),),
+    "desk.resume": (shared_ev("src/skaldir/desktop_lease.py:DesktopLeaseStore.resume"),),
 }
 
 
@@ -136,8 +143,7 @@ def _cmd_tui_preview(args: argparse.Namespace) -> int:
         report_envelope({"transcript": transcript, "run_id": state.run_id,
                          "calls": len(state.calls), "chat": len(state.chat),
                          "cursor": state.cursor},
-                       [{"ref": COMMAND_EVIDENCE.get("tui.preview", ""),
-                         "kind": "code", "note": ""}])
+                        COMMAND_EVIDENCE.get("tui.preview", ()))
         for line in lines:
             print(line)
         return EXIT_OK
@@ -176,7 +182,7 @@ def _cmd_tui_preview(args: argparse.Namespace) -> int:
         "line_count": len(lines),
     }
     report_envelope(payload, [
-        {"ref": COMMAND_EVIDENCE["tui.preview"], "kind": "code",
+        {"ref": "src/skaldir/tui.py:TUI.render", "kind": "code",
          "note": "the renderer that produced these lines"},
         {"ref": "docs/masterplan/03-TUI-ENTSCHEIDUNGEN.md", "kind": "doc",
          "note": "the confirmed layout these lines implement"},
@@ -219,8 +225,7 @@ def _cmd_tui_app(args: argparse.Namespace) -> int:
         "approval_rule": ("Tab at an empty prompt with no completion menu cycles the "
                           "approval mode; active completion keeps its Tab behaviour"),
     }
-    report_envelope(payload, [{"ref": COMMAND_EVIDENCE.get("tui.live", ""),
-                               "kind": "code", "note": ""}])
+    report_envelope(payload, COMMAND_EVIDENCE.get("tui.live", ()))
     dump(payload)
     return EXIT_OK
 
@@ -276,8 +281,7 @@ def _cmd_tui_live(args: argparse.Namespace) -> int:
             len(line) == tui.config.width for line in frame
         ),
     }
-    report_envelope(payload, [{"ref": COMMAND_EVIDENCE.get("tui.preview", ""),
-                               "kind": "code", "note": ""}])
+    report_envelope(payload, COMMAND_EVIDENCE.get("tui.preview", ()))
     dump(payload)
     return EXIT_OK
 
@@ -300,7 +304,7 @@ def _cmd_tui_layout(args: argparse.Namespace) -> int:
         "chat_is_left": geom.chat[0] == 0 and geom.chat[2] >= geom.tools[2],
         "tools_above_goal": geom.tools[1] < geom.goal[1],
     }
-    report_envelope(payload, [{"ref": COMMAND_EVIDENCE["tui.layout"], "kind": "code", "note": ""}])
+    report_envelope(payload, COMMAND_EVIDENCE["tui.layout"])
     dump(payload)
     return EXIT_OK
 
@@ -317,7 +321,7 @@ def _cmd_tui_figure(args: argparse.Namespace) -> int:
         "humor": TUI.humor_at(at),
         "progress_percent_shown": False,
     }
-    report_envelope(payload, [{"ref": COMMAND_EVIDENCE["tui.figure"], "kind": "code", "note": ""}])
+    report_envelope(payload, COMMAND_EVIDENCE["tui.figure"])
     dump(payload)
     return EXIT_OK
 
@@ -347,7 +351,7 @@ def _cmd_tui_approve(args: argparse.Namespace) -> int:
         "policy": policy_for(mode),
         "default_for_new_runs": store.default().label,
     }
-    report_envelope(payload, [{"ref": COMMAND_EVIDENCE["tui.approve"], "kind": "code", "note": ""}])
+    report_envelope(payload, COMMAND_EVIDENCE["tui.approve"])
     dump(payload)
     return EXIT_OK
 
@@ -378,16 +382,14 @@ def _cmd_voice_rebrief(args: argparse.Namespace) -> int:
     except RebriefInvalid as exc:
         payload = {"ok": False, "reason": str(exc), "rebrief": rebrief.to_dict(),
                    "valid": False}
-        report_envelope(payload, [{"ref": COMMAND_EVIDENCE.get("voice.rebrief", ""),
-                                   "kind": "code", "note": ""}])
+        report_envelope(payload, COMMAND_EVIDENCE.get("voice.rebrief", ()))
         dump(payload)
         return EXIT_BLOCKED
     payload = {"ok": True, "valid": True, "rebrief": rebrief.to_dict(),
                "note": ("VOICE-03: finding, evidence, affected criteria and a concrete "
                         "next step — a rebrief never rewrites the goal and never widens "
                         "rights")}
-    report_envelope(payload, [{"ref": COMMAND_EVIDENCE.get("voice.rebrief", ""),
-                               "kind": "code", "note": ""}])
+    report_envelope(payload, COMMAND_EVIDENCE.get("voice.rebrief", ()))
     dump(payload)
     return EXIT_OK
 
@@ -456,15 +458,12 @@ def _cmd_sources_add(args: argparse.Namespace) -> int:
         # has to reach stdout regardless of which contract layer is installed
         payload = {"ok": False, "reason": str(exc), "source": source.to_dict(),
                    "paid_source_not_allowed": True}
-        report_envelope(payload, [{"ref": COMMAND_EVIDENCE.get("schedule.define", ""),
-                                   "kind": "code", "note": ""}])
+        report_envelope(payload, COMMAND_EVIDENCE.get("schedule.define", ()))
         dump(payload)
         return EXIT_BLOCKED
     _save_sources(path, store)
     payload = {"source": source.to_dict(), "tool": getattr(args, "tool", "")}
-    report_envelope(
-        payload, [{"ref": COMMAND_EVIDENCE.get("schedule.define", ""), "kind": "code", "note": ""}]
-    )
+    report_envelope(payload, COMMAND_EVIDENCE.get("schedule.define", ()))
     dump(payload)
     return EXIT_OK
 
@@ -487,9 +486,7 @@ def _cmd_sources_report(args: argparse.Namespace) -> int:
         "disclaimer": ("Online availability is not universal and is not claimed here. "
                        "Access rights, data availability and each provider's terms apply."),
     }
-    report_envelope(
-        payload, [{"ref": COMMAND_EVIDENCE.get("schedule.define", ""), "kind": "code", "note": ""}]
-    )
+    report_envelope(payload, COMMAND_EVIDENCE.get("schedule.define", ()))
     dump(payload)
     return EXIT_OK
 
@@ -523,9 +520,7 @@ def _cmd_schedule_define(args: argparse.Namespace) -> int:
     payload = {"schedule": saved.to_dict(), "active": False,
                "note": "SCHED-04: defined but NOT active"
                         " — run `skaldir schedule activate` to enable it"}
-    report_envelope(
-        payload, [{"ref": COMMAND_EVIDENCE.get("schedule.define", ""), "kind": "code", "note": ""}]
-    )
+    report_envelope(payload, COMMAND_EVIDENCE.get("schedule.define", ()))
     dump(payload)
     return EXIT_OK
 
@@ -549,9 +544,7 @@ def _cmd_schedule_lifecycle(args: argparse.Namespace) -> int:
     except KeyError as exc:
         return blocked(str(exc), reason="not_found")
     payload = {"action": action, "result": result}
-    report_envelope(
-        payload, [{"ref": COMMAND_EVIDENCE.get("schedule.define", ""), "kind": "code", "note": ""}]
-    )
+    report_envelope(payload, COMMAND_EVIDENCE.get("schedule.define", ()))
     dump(payload)
     return EXIT_OK
 
@@ -560,9 +553,7 @@ def _cmd_schedule_list(args: argparse.Namespace) -> int:
     store = _sched_store(args)
     payload = {"schedules": [s.to_dict() for s in store.all()],
                "executions": [c.to_dict() for c in store.executions()]}
-    report_envelope(
-        payload, [{"ref": COMMAND_EVIDENCE.get("schedule.define", ""), "kind": "code", "note": ""}]
-    )
+    report_envelope(payload, COMMAND_EVIDENCE.get("schedule.define", ()))
     dump(payload)
     return EXIT_OK
 
@@ -597,8 +588,7 @@ def _cmd_schedule_run(args: argparse.Namespace) -> int:
         "note": ("the worker executes only schedules that are already ACTIVE; starting "
                  "it never turns a paused schedule on, and a schedule never grants money"),
     }
-    report_envelope(payload, [{"ref": COMMAND_EVIDENCE.get("schedule.due", ""),
-                               "kind": "code", "note": ""}])
+    report_envelope(payload, COMMAND_EVIDENCE.get("schedule.due", ()))
     dump(payload)
     return EXIT_OK
 
@@ -618,9 +608,7 @@ def _cmd_schedule_due(args: argparse.Namespace) -> int:
         "blocked_by_overlap": [s.schedule_id for s in store.all()
                                if s.active and s.serialize and store.is_running(s.schedule_id)],
     }
-    report_envelope(
-        payload, [{"ref": COMMAND_EVIDENCE.get("schedule.define", ""), "kind": "code", "note": ""}]
-    )
+    report_envelope(payload, COMMAND_EVIDENCE.get("schedule.define", ()))
     dump(payload)
     return EXIT_OK
 
@@ -645,7 +633,7 @@ def _cmd_stop_report(args: argparse.Namespace) -> int:
                            reason="proof_unreadable")
     report = SS.write_report(out, proof=proof)
     report["report_path"] = str(out)
-    report_envelope(report, [{"ref": COMMAND_EVIDENCE["stop.report"], "kind": "code", "note": ""}])
+    report_envelope(report, COMMAND_EVIDENCE["stop.report"])
     dump(report)
     return EXIT_OK
 
@@ -685,7 +673,7 @@ def _cmd_stop_detect(args: argparse.Namespace) -> int:
         "stopped": fired is not None,
         "signal": fired.to_dict() if fired is not None else None,
     }
-    report_envelope(payload, [{"ref": COMMAND_EVIDENCE["stop.detect"], "kind": "code", "note": ""}])
+    report_envelope(payload, COMMAND_EVIDENCE["stop.detect"])
     dump(payload)
     return EXIT_OK
 
@@ -731,8 +719,7 @@ def _cmd_browser_probe(args: argparse.Namespace) -> int:
     payload["node"] = _node_version()
     payload["note"] = ("this probe never installs anything; it reports the exact pinned "
                        "install command when the tool is absent (§9.2)")
-    report_envelope(payload, [{"ref": COMMAND_EVIDENCE["browser.probe"], "kind": "code",
-                               "note": "the measured capability"}])
+    report_envelope(payload, COMMAND_EVIDENCE["browser.probe"])
     dump(payload)
     return EXIT_OK if payload["available"] else EXIT_BLOCKED
 
@@ -756,8 +743,7 @@ def _cmd_browser_discover(args: argparse.Namespace) -> int:
     """§6: what exists right now. Read-only; never creates anything."""
     payload = _browser_sessions(args).discover()
     payload["capability"] = BL.agent_browser_probe().to_dict()
-    report_envelope(payload, [{"ref": COMMAND_EVIDENCE["browser.discover"], "kind": "code",
-                               "note": ""}])
+    report_envelope(payload, COMMAND_EVIDENCE["browser.discover"])
     dump(payload)
     return EXIT_OK
 
@@ -767,8 +753,7 @@ def _cmd_browser_ensure(args: argparse.Namespace) -> int:
     result = _browser_sessions(args).ensure(
         task=str(getattr(args, "task", "") or ""), run_id=str(getattr(args, "run", "") or ""),
         allow_create=not bool(getattr(args, "no_create", False)))
-    report_envelope(result, [{"ref": COMMAND_EVIDENCE["browser.ensure"], "kind": "code",
-                              "note": ""}])
+    report_envelope(result, COMMAND_EVIDENCE["browser.ensure"])
     dump(result)
     return EXIT_OK if result.get("action") in ("reused", "launched") else EXIT_BLOCKED
 
@@ -780,8 +765,7 @@ def _cmd_browser_tabs(args: argparse.Namespace) -> int:
     payload = {"tabs": tabs, "agent_tabs": inventory["agent_tabs"],
                "user_tabs": inventory["user_tabs"],
                "rule": "only agent-created tabs may be closed; there is no close --all (§6)"}
-    report_envelope(payload, [{"ref": COMMAND_EVIDENCE["browser.tabs"], "kind": "code",
-                               "note": ""}])
+    report_envelope(payload, COMMAND_EVIDENCE["browser.tabs"])
     dump(payload)
     return EXIT_OK
 
@@ -798,8 +782,7 @@ def _cmd_browser_detach(args: argparse.Namespace) -> int:
         "left_open": inventory.get("tab_count", 0),
         "rule": "a foreign browser is never closed by a detach (BR-13)",
     }
-    report_envelope(payload, [{"ref": COMMAND_EVIDENCE["browser.detach"], "kind": "code",
-                               "note": ""}])
+    report_envelope(payload, COMMAND_EVIDENCE["browser.detach"])
     dump(payload)
     return EXIT_OK
 
@@ -807,8 +790,7 @@ def _cmd_browser_detach(args: argparse.Namespace) -> int:
 def _cmd_desk_indicator(args: argparse.Namespace) -> int:
     """What the corner indicator can do *here* — measured, never assumed (DESK-03)."""
     payload = DI.status()
-    report_envelope(payload, [{"ref": COMMAND_EVIDENCE["desk.indicator"], "kind": "code",
-                              "note": "the measured host backend"}])
+    report_envelope(payload, COMMAND_EVIDENCE["desk.indicator"])
     dump(payload)
     return EXIT_OK
 
@@ -842,8 +824,7 @@ def _cmd_desk_indicator_show(args: argparse.Namespace) -> int:
         "ending) takes it away"
     )
     payload["shown"] = shown
-    report_envelope(payload, [{"ref": COMMAND_EVIDENCE["desk.indicator-show"],
-                               "kind": "code", "note": ""}])
+    report_envelope(payload, COMMAND_EVIDENCE["desk.indicator-show"])
     dump(payload)
     # `shown` is the question this command answers: did the bar go on screen? A bar that
     # was visible for `--hold` and then taken away is a success, not a blocker.
@@ -855,15 +836,14 @@ def _cmd_desk_indicator_hide(args: argparse.Namespace) -> int:
     payload = result.to_dict()
     payload["note"] = ("a hide only reaches a window this process created; a bar left by a "
                        "previous run disappears when that process ends")
-    report_envelope(payload, [{"ref": COMMAND_EVIDENCE["desk.indicator-hide"],
-                               "kind": "code", "note": ""}])
+    report_envelope(payload, COMMAND_EVIDENCE["desk.indicator-hide"])
     dump(payload)
     return EXIT_OK
 
 
 def _cmd_desk_status(args: argparse.Namespace) -> int:
     payload = _desk_payload(_store(args))
-    report_envelope(payload, [{"ref": COMMAND_EVIDENCE["desk.status"], "kind": "code", "note": ""}])
+    report_envelope(payload, COMMAND_EVIDENCE["desk.status"])
     dump(payload)
     return EXIT_OK
 
@@ -884,9 +864,7 @@ def _cmd_desk_acquire(args: argparse.Namespace) -> int:
     payload = _desk_payload(store)
     payload["acquired"] = lease.to_dict()
     payload["fencing_token"] = lease.owner_token
-    report_envelope(
-        payload, [{"ref": COMMAND_EVIDENCE["desk.acquire"], "kind": "code", "note": ""}]
-    )
+    report_envelope(payload, COMMAND_EVIDENCE["desk.acquire"])
     dump(payload)
     return EXIT_OK
 
@@ -921,9 +899,7 @@ def _cmd_desk_release(args: argparse.Namespace) -> int:
         # has to reach the caller's stdout no matter which contract layer is installed
         payload["ok"] = False
         payload["reason"] = f"the desktop is not released: {decision.reason}"
-        report_envelope(
-            payload, [{"ref": COMMAND_EVIDENCE["desk.release"], "kind": "code", "note": ""}]
-        )
+        report_envelope(payload, COMMAND_EVIDENCE["desk.release"])
         dump(payload)
         return EXIT_BLOCKED
 
@@ -932,9 +908,7 @@ def _cmd_desk_release(args: argparse.Namespace) -> int:
     if not ok:
         return blocked(f"run {run_id!r} does not hold the desktop lease",
                        reason="not_lease_owner", details=payload)
-    report_envelope(
-        payload, [{"ref": COMMAND_EVIDENCE["desk.release"], "kind": "code", "note": ""}]
-    )
+    report_envelope(payload, COMMAND_EVIDENCE["desk.release"])
     dump(payload)
     return EXIT_OK
 
@@ -974,7 +948,7 @@ def _cmd_desk_stop(args: argparse.Namespace) -> int:
     payload = _desk_payload(store)
     payload["stop"] = receipt.to_dict()
     payload["status_trace"] = statuses
-    report_envelope(payload, [{"ref": COMMAND_EVIDENCE["desk.stop"], "kind": "code", "note": ""}])
+    report_envelope(payload, COMMAND_EVIDENCE["desk.stop"])
     dump(payload)
     return EXIT_OK if receipt.applied else EXIT_BLOCKED
 
@@ -989,7 +963,7 @@ def _cmd_desk_resume(args: argparse.Namespace) -> int:
     payload = _desk_payload(store)
     payload["resumed"] = lease.to_dict()
     payload["new_fencing_token"] = lease.owner_token
-    report_envelope(payload, [{"ref": COMMAND_EVIDENCE["desk.resume"], "kind": "code", "note": ""}])
+    report_envelope(payload, COMMAND_EVIDENCE["desk.resume"])
     dump(payload)
     return EXIT_OK
 
@@ -1007,6 +981,8 @@ def contract_entries() -> dict[str, Any]:
     reads = (EXIT_OK, EXIT_USAGE, EXIT_BLOCKED, EXIT_NOT_FOUND)
 
     def entry(path: str, group: str, what: str, schema: dict[str, Any], notes: str = "") -> Any:
+        # VAL-UI-003: the evidence goes into the spec in CommandSpec's shape ({ref, kind,
+        # note} dicts) — a bare string would char-split in the --json envelope.
         return spec(group, COMMAND_EVIDENCE[path], what, exit_codes=reads,
                     data_schema=schema, notes=notes)
 
