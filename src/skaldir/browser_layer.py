@@ -367,12 +367,18 @@ class SessionManager:
         tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         os.replace(tmp, self._state_file())
 
-    def _lock(self):
-        """Cross-process exclusive lock around a start (§6: "ein Lock parallele Starts")."""
+    def _lock(self, *, blocking: bool = True):
+        """Cross-process exclusive lock around a start (§6: "ein Lock parallele Starts").
+
+        ``blocking=False`` is for best-effort writes (state reconciliation while another
+        process's start may be in flight): if the lock is contended, the write is skipped
+        instead of blocking — and never deadlocks a caller that already holds the lock.
+        """
 
         class _Guard:
-            def __init__(self, path: Path) -> None:
+            def __init__(self, path: Path, blocking: bool) -> None:
                 self.path = path
+                self.blocking = blocking
                 self.handle: Any = None
 
             def __enter__(self):
@@ -381,9 +387,13 @@ class SessionManager:
                 try:
                     import fcntl
 
-                    fcntl.flock(self.handle.fileno(), fcntl.LOCK_EX)
+                    mode = fcntl.LOCK_EX if self.blocking \
+                        else fcntl.LOCK_EX | fcntl.LOCK_NB
+                    fcntl.flock(self.handle.fileno(), mode)
                 except Exception:  # noqa: BLE001 — no fcntl: the thread guard still holds
-                    pass
+                    if not self.blocking:
+                        self.handle.close()
+                        self.handle = None
                 return self.handle
 
             def __exit__(self, *exc: Any) -> bool:
@@ -397,17 +407,76 @@ class SessionManager:
                     pass
                 return False
 
-        return _Guard(self._lock_path)
+        return _Guard(self._lock_path, blocking)
 
     # -- the state sequence ---------------------------------------------
 
+    def _liveness_verdict(self, session_id: str) -> tuple[bool | None, str]:
+        """The cheap reconciliation question: is the recorded session's browser alive?
+
+        Returns ``(verdict, diagnosis)``. ``None`` means the transport cannot say —
+        that is never read as "alive" and never as "dead"; the state keeps its claim
+        only with the honest caveat attached.
+        """
+        if self._backend is None:
+            return None, "no backend in this session manager; liveness cannot be measured"
+        alive = getattr(self._backend, "session_alive", None)
+        if alive is None:
+            return None, ""
+        try:
+            verdict = alive(session_id)
+        except Exception as exc:  # noqa: BLE001 — a broken probe is not a verdict
+            return None, f"liveness probe failed: {type(exc).__name__}: {exc}"[:300]
+        if verdict is True:
+            return True, ""
+        if verdict is False:
+            return False, (
+                f"the recorded session '{session_id}' is not live: the backend reports "
+                "the browser is gone (session info: browserLaunched=false)")
+        return None, "the backend cannot say whether the recorded session is live"
+
+    def _reconcile_dead(self, session_id: str, diagnosis: str) -> dict[str, Any]:
+        """Record that a ``ready`` session's browser is actually gone (§6).
+
+        A concurrent ensure holds the start lock and owns the state file meanwhile, so
+        the write is best-effort (non-blocking lock): the REPORT is honest either way.
+        """
+        with self._guard:
+            data = self._read()
+            if data.get("state") == "ready":
+                data["state"] = "unknown"
+                data["reconciled_dead_session"] = session_id
+                data["reconciled_diagnosis"] = str(diagnosis)[:300]
+                data["reconciled_at"] = time.time()
+                with self._lock(blocking=False) as handle:
+                    if handle is not None:
+                        self._write(data)
+        return data
+
     def discover(self) -> dict[str, Any]:
-        """What exists right now. Read-only; never creates anything."""
+        """What exists right now. Read-only; never creates anything.
+
+        The help text promises "what browser state exists **right now**" — so a recorded
+        ``ready`` state that the liveness verdict cannot confirm is reported as it is:
+        reconciled to ``unknown`` with the diagnosis named, never a bare ready (measured
+        defect: the file kept saying ready after the browser was gone, and the next
+        transport call let agent-browser relaunch silently). A liveness check here asks
+        ``session info``, which launches nothing.
+        """
         with self._guard:
             state = self._read()
+        live: bool | None = None
+        diagnosis = ""
+        session_id = str(state.get("session_id") or "")
+        if state.get("state") == "ready" and session_id:
+            live, diagnosis = self._liveness_verdict(session_id)
+            if live is False:
+                state = self._reconcile_dead(session_id, diagnosis)
         return {
             "state": state.get("state", "unknown"),
-            "session_id": state.get("session_id", ""),
+            "live": live,
+            "diagnosis": diagnosis,
+            "session_id": session_id,
             "backend": state.get("backend", BackendKind.NONE.value),
             "tab_count": len(state.get("tabs", []) or []),
             "agent_tabs": [t for t in (state.get("tabs", []) or []) if t.get("owner") == "agent"],
@@ -416,6 +485,29 @@ class SessionManager:
             "starts": int(state.get("starts", 0) or 0),
             "unconfirmed_reason": str(state.get("unconfirmed_reason", "") or ""),
         }
+
+    def record_observed_relaunch(self, *, session_id: str, detail: str = "",
+                                 now: float | None = None) -> dict[str, Any]:
+        """Record a real launch the product OBSERVED agent-browser performing per-call.
+
+        Measured (0.38.1): every transport call auto-launches a dead session's browser
+        and says so in its envelope (``lifecycle.launched: true``, fresh targetId). The
+        old state file never heard of it, so ``starts`` — the measuring instrument of
+        VAL-WEB-003's "concurrent demands yield exactly ONE start" — silently missed
+        real launches. Recording them here keeps ``starts`` a truthful count.
+        """
+        stamp = time.time() if now is None else float(now)
+        with self._guard:
+            data = self._read()
+            data["starts"] = int(data.get("starts", 0) or 0) + 1
+            data["last_launch_attempt"] = stamp
+            data["last_relaunch_observed"] = {
+                "at": stamp,
+                "session_id": str(session_id),
+                "detail": str(detail or "")[:200],
+            }
+            self._write(data)
+        return self.discover()
 
     def note_agent_tab(self, tab_id: str, *, url: str = "", title: str = "",
                        run_id: str = "") -> None:
@@ -452,8 +544,34 @@ class SessionManager:
             state = self._read()
             current = state.get("state", "unknown")
             if current == "ready" and state.get("session_id"):
-                return {"action": "reused", **self.discover(), "task": task,
-                        "run_id": run_id}
+                # A `ready` state is a CLAIM; the browser can have died out-of-band
+                # since (measured defect). The cheap liveness verdict (session info —
+                # launches nothing) reconciles it: live → reuse; gone → the recorded
+                # state is corrected and the launch below is this product's OWN
+                # observed start, counted like any other; cannot-say → the conservative
+                # reuse stands, with the caveat named.
+                session_id = str(state.get("session_id") or "")
+                verdict, diagnosis = self._liveness_verdict(session_id)
+                if verdict is True:
+                    return {"action": "reused", "live": True, **self.discover(),
+                            "task": task, "run_id": run_id}
+                if verdict is None:
+                    return {"action": "reused", "live": None,
+                            "liveness_note": diagnosis
+                            or "liveness could not be measured",
+                            **self.discover(), "task": task, "run_id": run_id}
+                # verdict False: conclude the reconciliation under the lock we hold —
+                # the launch below is this product's OWN observed start (counted), not
+                # agent-browser's blind per-call relaunch.
+                data = self._read()
+                if data.get("state") == "ready":
+                    data["state"] = "unknown"
+                    data["reconciled_dead_session"] = session_id
+                    data["reconciled_diagnosis"] = str(diagnosis)[:300]
+                    data["reconciled_at"] = time.time()
+                    self._write(data)
+                state = data
+                current = "unknown"
             if current == "unconfirmed":
                 # §6: a start timeout leads to diagnosis and state reconciliation, never to
                 # the next identical launch. The one honest reconciliation question is
@@ -822,6 +940,19 @@ def _unwrap_json(text: str) -> tuple[dict[str, Any], str]:
     return envelope, stripped
 
 
+def _process_alive(pid: int) -> bool:
+    """Whether a process id answers — the last resort of the liveness verdict."""
+    try:
+        os.kill(int(pid), 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
 class AgentBrowserBackend(BrowserBackend):
     """agent-browser over its CLI, pinned and versioned (§9.2).
 
@@ -945,6 +1076,7 @@ class AgentBrowserBackend(BrowserBackend):
 
         argv += self._session_args(session) + ["--json"]
         result = self.run(argv)
+        envelope, _ = _unwrap_json(result.get("stdout") or "")
         return {
             "ok": bool(result.get("ok")),
             "backend": self.kind.value,
@@ -953,6 +1085,7 @@ class AgentBrowserBackend(BrowserBackend):
             "duration_ms": result.get("duration_ms"),
             "action": {"kind": kind, "verb": verb, "target": target},
             "preview": (result.get("stdout") or "")[:400],
+            "relaunched": self._relaunch_flag(envelope),
         }
 
     def read(self, *, url: str = "", session: str = "") -> dict[str, Any]:
@@ -992,6 +1125,7 @@ class AgentBrowserBackend(BrowserBackend):
             "content": content[:8000],
             "preview": content[:400],
             "duration_ms": result.get("duration_ms"),
+            "relaunched": self._relaunch_flag(envelope),
             "detail": result.get("stderr") or "",
         }
 
@@ -1015,21 +1149,75 @@ class AgentBrowserBackend(BrowserBackend):
         ]
         return {"ok": bool(result.get("ok")), "backend": self.kind.value,
                 "tabs": listed, "preview": (result.get("stdout") or "")[:800],
+                "relaunched": self._relaunch_flag(envelope),
                 "detail": result.get("stderr") or ""}
 
-    def session_alive(self, session_id: str) -> bool | None:
-        """`tab list` answers for the recorded session — the reconciliation probe.
+    def session_info(self, session: str = "") -> dict[str, Any]:
+        """`session info` for ONE session — the cheap, non-mutating liveness reading.
 
-        ``None`` (cannot say) only when the binary itself is unusable; a failing
-        invocation for a named session is a verdict (the session is gone).
+        Measured (0.38.1, live 2026-10-06): the envelope carries ``data.active``,
+        ``data.pid`` and ``data.runtime.browserLaunched``. After a graceful close AND
+        after an out-of-band SIGKILL of the browser, ``active`` (and ``session list``)
+        can stay stale for a moment while ``runtime.browserLaunched`` already says
+        ``false`` — so the verdict reads that field, not the stale flags. Asking for it
+        launches nothing.
+        """
+        result = self.run(["session", "info", *self._session_args(session), "--json"])
+        envelope, _ = _unwrap_json(result.get("stdout") or "")
+        data = envelope.get("data") if isinstance(envelope.get("data"), dict) else {}
+        return {
+            "ok": bool(result.get("ok")) and envelope.get("success") is not False,
+            "backend": self.kind.value,
+            "data": data,
+            "detail": result.get("stderr") or (envelope.get("error") or "") or "",
+        }
+
+    def session_alive(self, session_id: str) -> bool | None:
+        """The reconciliation verdict for a recorded session — measured, not assumed.
+
+        The old verdict ran ``tab list``, which agent-browser answers by AUTO-LAUNCHING
+        a dead session's browser (measured: ``lifecycle.launched: true`` with a fresh
+        targetId) — a "verdict" that silently launched the thing it was asked about.
+        Now the verdict reads ``session info`` (launches nothing):
+
+        * ``False`` — the session's browser is gone: a stale daemon entry
+          (``active: true``) with ``runtime.browserLaunched: false``, a session that
+          never existed, or a dead pid (out-of-band kill);
+        * ``True`` — the browser answers;
+        * ``None`` — only when this transport cannot say (binary unusable, call failed).
         """
         if not session_id:
             return False
         cap = self.probe()
         if not cap.available:
             return None
-        result = self.tabs(session=session_id)
-        return bool(result.get("ok"))
+        info = self.session_info(session=session_id)
+        if not info.get("ok"):
+            return None
+        data = info.get("data") or {}
+        if not data.get("active"):
+            return False
+        runtime = data.get("runtime") if isinstance(data.get("runtime"), dict) else None
+        if runtime is not None and runtime.get("browserLaunched") is False:
+            return False
+        pid = data.get("pid") or (runtime or {}).get("backgroundPid")
+        if pid and not _process_alive(int(pid)):
+            return False
+        return True
+
+    @staticmethod
+    def _relaunch_flag(envelope: Mapping[str, Any]) -> bool:
+        """Whether THIS call auto-launched the session's browser (§6 honesty).
+
+        Measured (0.38.1): every transport call — ``tab list``, ``open``, ``read`` —
+        carries ``data.lifecycle.launched: true`` exactly when it started the browser
+        itself; while the browser is already up the same envelope says
+        ``launched: false, reused: true``. Surfacing it lets the product RECORD a real
+        launch instead of letting the start counter miss it.
+        """
+        data = envelope.get("data") if isinstance(envelope.get("data"), dict) else {}
+        lifecycle = data.get("lifecycle") if isinstance(data.get("lifecycle"), dict) else {}
+        return bool(lifecycle.get("launched") or lifecycle.get("relaunchedBrowser"))
 
     def close_tab(self, *, tab: str = "", session: str = "") -> dict[str, Any]:
         """Close ONE tab by name — never ``--all`` (BR-13: foreign tabs survive).

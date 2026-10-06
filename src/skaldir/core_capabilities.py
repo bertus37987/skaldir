@@ -436,10 +436,24 @@ def _browser_tool(ws: Path, rt: Path | None, run_id: str) -> Any | None:
                 "session_state_dir": str(sessions.state_dir),
             }
         session_id = str(provisioned.get("session_id") or "")
+
+        def _record_relaunch(outcome: Any, where: str) -> None:
+            """A per-call relaunch agent-browser performed IS a real launch.
+
+            Measured (0.38.1): a transport call on a dead session auto-launches the
+            browser and says so (`lifecycle.launched: true`, fresh targetId). Recording
+            it keeps `starts` a truthful count instead of silently missing the launch.
+            """
+            if isinstance(outcome, dict) and outcome.get("relaunched"):
+                sessions.record_observed_relaunch(
+                    session_id=session_id, detail=f"{where} auto-launched the browser")
+
         if action == "launched":
             # the product just staged its OWN named session: what it lists now is
             # agent-created, and only agent-created tabs are ever closable (§6/BR-13)
-            for tab in (backend.tabs(session=session_id).get("tabs") or []):
+            tabs_seen = backend.tabs(session=session_id)
+            _record_relaunch(tabs_seen, "inventory-after-launch")
+            for tab in (tabs_seen.get("tabs") or []):
                 tab_id = str(tab.get("tab_id") or "")
                 if tab_id:
                     sessions.note_agent_tab(tab_id, url=str(tab.get("url") or ""),
@@ -451,6 +465,7 @@ def _browser_tool(ws: Path, rt: Path | None, run_id: str) -> Any | None:
             # one typed verb — BrowserLayer's not-yet-wired operations would answer
             # `unsupported` honestly, but drop the caller's url/tokens entirely.
             result = backend.read(url=url, session=session_id)
+            _record_relaunch(result, "read")
             if result.get("ok") and not str(result.get("content") or "").strip():
                 # BR-02: an empty observation is a diagnosis, never a fresh launch. The
                 # state moves to `unconfirmed`, so the NEXT ensure refuses to start
@@ -466,13 +481,16 @@ def _browser_tool(ws: Path, rt: Path | None, run_id: str) -> Any | None:
             payload = {k: v for k, v in
                        {"kind": kind, "target": target, "value": value, "url": url}.items() if v}
             result = backend.act(payload, session=session_id)
+            _record_relaunch(result, "act")
             if result.get("ok"):
                 # tabs that appeared through this demand are agent-created; every tab
                 # already inventoried (either owner) stays as it is
                 inventory = sessions.discover()
                 known = {str(t.get("tab_id") or "")
                          for t in inventory["agent_tabs"] + inventory["user_tabs"]}
-                for tab in (backend.tabs(session=session_id).get("tabs") or []):
+                tabs_seen = backend.tabs(session=session_id)
+                _record_relaunch(tabs_seen, "post-act inventory")
+                for tab in (tabs_seen.get("tabs") or []):
                     tab_id = str(tab.get("tab_id") or "")
                     if tab_id and tab_id not in known:
                         sessions.note_agent_tab(tab_id, url=str(tab.get("url") or ""),
