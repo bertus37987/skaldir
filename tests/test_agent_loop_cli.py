@@ -412,6 +412,59 @@ def test_a_human_run_prints_the_answer_and_writes_the_transcript(
 # --------------------------------------------------------------------------- #
 
 
+def test_agent_run_hands_the_runs_client_to_the_builder(
+    workspace: Path, runtime: Path, capsys
+):
+    """F07 (Paket 4): the builder's draft call goes through the RUN'S provider.
+
+    ``agent run --agent-tools`` used to assemble the layer toolset without the
+    run's own client, so a bare-need build reported "no model client is
+    configured" while the run was fully configured. The proof that the wiring
+    is real: the ToolBuilder's ``tool_spec_draft`` request lands on the SAME
+    stub endpoint the run talks to — it can only get there through the run's
+    own client.
+    """
+    draft_json = json.dumps({
+        "name": "needs_based_helper",
+        "kind": "python",
+        "title": "Needs-based helper",
+        "description": "drafted for the declared capability",
+        "tags": ["draft"],
+        "steps": [],
+        "rationale": "stub draft",
+    })
+    steps = [
+        tool_step(("c1", "skill_expand_build",
+                   {"request": {"capability": "market research snapshot"}})),
+        answer(draft_json),  # served to the BUILDER's complete() call
+        answer("the draft is a proposal — supply source+tests to build it"),
+    ]
+    argv = [
+        "run",
+        "build me a market research snapshot tool",
+        "--json",
+        "--agent-tools",
+        "--workspace",
+        str(workspace),
+        "--runtime",
+        str(runtime),
+    ]
+    with StubEndpoint(steps) as stub:
+        code, document, _err = _run(
+            capsys, [*argv, "--base-url", stub.base_url, "--model", "stub-model"]
+        )
+
+    assert code == 0, document
+    draft_calls = [
+        body for body in stub.bodies
+        if "tool_spec_draft" in json.dumps(body)
+    ]
+    assert draft_calls, (
+        "the ToolBuilder never reached the run's provider — the F07 wiring is "
+        f"still dropping the client (requests seen: {len(stub.bodies)})"
+    )
+
+
 def test_the_group_merges_into_a_sibling_agent_group(contracts_snapshot):
     """Two blocks may own the same group name: the verbs must coexist, not collide."""
     parser = argparse.ArgumentParser(prog="skaldir")

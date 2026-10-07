@@ -238,6 +238,51 @@ def test_expand_build_refuses_unknown_fields(tmp_path: Path):
     assert "not_a_field" in result["error"]
 
 
+class _StubDraftClient:
+    """A minimal model client: `complete()` answers with a valid draft JSON."""
+
+    def complete(self, *, prompt_id: str, prompt: str, tier: str) -> str:  # noqa: ARG002
+        return (
+            '{"name": "needs_based_helper", "kind": "python", '
+            '"title": "Needs-based helper", '
+            '"description": "drafted for the declared capability", '
+            '"tags": ["draft"], "steps": [], "rationale": "stub draft"}'
+        )
+
+
+def test_expand_build_hands_the_runs_model_client_to_the_builder(tmp_path: Path):
+    """F07 regression (audit Paket 4): the run's client must REACH the builder.
+
+    The tool handler used to capture the run's ``llm`` and drop it on the floor:
+    the build from a bare need reported "no model client is configured" while
+    the run itself was fully configured. The wiring is only real when the
+    stubbed client's answer comes back as the builder's draft.
+    """
+    import skaldir.agent_toolset as at
+
+    tool = at.skill_expand_build_tool(runtime=str(tmp_path), llm=_StubDraftClient())
+    result = tool.handler(request={"capability": "market research snapshot tool"})
+    assert result["llm_bound"] is True, result
+    draft = result.get("draft") or {}
+    assert draft.get("name") == "needs_based_helper", result
+    # the stub was actually consulted (a dropped llm never produces a draft)
+    assert result.get("blocked") != "no_source_no_client"
+
+
+def test_build_agent_toolset_binds_the_client_into_expand_build(tmp_path: Path):
+    """The toolset's skill_expand_build tool carries the run's client."""
+    import skaldir.agent_toolset as at
+
+    tools = {t.name: t for t in at.build_agent_toolset(
+        workspace=str(tmp_path), runtime=str(tmp_path), llm=_StubDraftClient(),
+    )}
+    result = tools["skill_expand_build"].handler(
+        request={"capability": "market research snapshot tool"},
+    )
+    assert result["llm_bound"] is True, result
+    assert (result.get("draft") or {}).get("name") == "needs_based_helper", result
+
+
 def test_compose_tool_blocks_bad_composite(tmp_path: Path):
     """A composite with a blocking problem is NOT registered (validated path only)."""
     import skaldir.agent_toolset as at

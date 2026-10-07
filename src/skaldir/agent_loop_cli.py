@@ -610,6 +610,10 @@ def cmd_run(args: argparse.Namespace) -> int:
                 store=store,
                 runtime=context.runtime_dir,
                 project_id=str(getattr(args, "project_id", "") or ""),
+                # F07 (Paket 4): the run's OWN provider client rides along — a
+                # bare-need build drafts through it instead of reporting "no
+                # model client configured" inside a configured run.
+                llm=client,
             )
         # The prompt is data-built from the toolset that was actually assembled this
         # run — capability text can never drift from the tools array. An explicit

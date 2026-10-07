@@ -172,6 +172,7 @@ class FakeManager:
             "name": config.name, "image": config.image, "image_digest": config.image_digest,
             "argv": list(config.entrypoint_argv), "labels": dict(config.labels),
             "readonly": bool(config.readonly_rootfs), "network": config.network,
+            "ports": dict(config.port_bindings),
         })
         self.running[cid] = True
         self.containers.append(cid)

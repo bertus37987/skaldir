@@ -178,8 +178,16 @@ def cli_template(
     output_protocol: str = "",
     timeout_seconds: int = 60,
     description: str = "",
+    service: Mapping[str, Any] | None = None,
 ) -> dict:
-    """A typed CLI template (argument-mapping shape) with a declared oracle."""
+    """A typed CLI template (argument-mapping shape) with a declared oracle.
+
+    ``service`` (optional) declares the capability's warm service: ``argv`` of
+    the long-running command plus, when the service must actually SERVE
+    (a dashboard), ``network`` (e.g. ``bridge``) and ``ports``
+    (``{"container_port": host_port}``). The service spec is data: the builder
+    validates the argv; the runtime turns the ports into one ``docker run``.
+    """
     entry: dict[str, Any] = {
         "id": id,
         "kind": kind,
@@ -192,6 +200,8 @@ def cli_template(
         "sample_input": dict(sample_input),
         "timeout_seconds": int(timeout_seconds),
     }
+    if service:
+        entry["service"] = dict(service)
     if verb_candidates:
         entry["verb_candidates"] = tuple(verb_candidates)
     if output_protocol:
@@ -216,6 +226,7 @@ def fixture_template(
     output_protocol: str = "",
     timeout_seconds: int = 60,
     description: str = "",
+    service: Mapping[str, Any] | None = None,
 ) -> dict:
     """A template whose oracle is a declared golden fixture (never a host twin)."""
     return cli_template(
@@ -232,6 +243,7 @@ def fixture_template(
         output_protocol=output_protocol,
         timeout_seconds=timeout_seconds,
         description=description,
+        service=service,
     )
 
 
@@ -291,6 +303,7 @@ def load_schema_template(path: str | Path, *, oracle: Callable[[dict], Any] | No
         output_protocol=str(data.get("output_protocol") or ""),
         timeout_seconds=int(data.get("timeout_seconds") or 60),
         description=str(data.get("description") or ""),
+        service=dict(data.get("service") or {}) or None,
     )
 
 

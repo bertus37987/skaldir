@@ -2694,15 +2694,24 @@ def _run_config(
     readonly_rootfs: bool = True,
     resource_limits: dict | None = None,
     network: str = "none",
+    port_bindings: dict | None = None,
     entrypoint: str | None = None,
 ) -> RunConfig:
-    """One RunConfig for a build/test container — always ours by label."""
+    """One RunConfig for a build/test container — always ours by label.
+
+    ``port_bindings`` is only meaningful together with a real network (the
+    config layer itself refuses ports under ``--network none`` — docker drops
+    the mapping silently there, measured on Server 29.6.1). A service that
+    SERVES (the dashboard of a mined research tool) declares both in its
+    adapter's service spec; everything else stays network-none.
+    """
     return RunConfig(
         image=image,
         image_digest=image_digest,
         name=name,
         entrypoint_argv=list(argv),
         network=network,
+        port_bindings={int(c): int(h) for c, h in dict(port_bindings or {}).items()},
         readonly_rootfs=readonly_rootfs,
         resource_limits=dict(resource_limits or CONTAINER_PERMISSIONS["resource_limits"]),
         labels=owned_labels(**(labels or {})),
@@ -3058,15 +3067,7 @@ def generate_container_adapter(
             "outputs": dict(chosen["outputs"]),
         },
         "permissions": dict(CONTAINER_PERMISSIONS),
-        "service": {
-            "mode": "warm-exec",
-            "purpose": (
-                "reuse ONE started container for repeated calls (skip the "
-                "container cold start); discovery.ensure_ready starts it, "
-                "rollback removes it by label"
-            ),
-            "argv": ["sh", "-c", "while true; do sleep 30; done"],
-        },
+        "service": _service_spec_of(chosen),
         "surface": {
             "inspected_at": float(surface.get("inspected_at") or time.time()),
             "os": dict(surface.get("os") or {}),
@@ -3097,6 +3098,43 @@ def generate_container_adapter(
         adapter["entrypoint"] = ""
         adapter["entrypoint_declared"] = list(surface.get("entrypoint") or [])
     return adapter
+
+
+def _service_spec_of(chosen: dict) -> dict:
+    """The warm-service spec of an adapter — declared by the template or default.
+
+    The default is the isolated keepalive (``--network none``, no ports). A
+    template MAY declare its own service: the long-running ``argv`` plus, when
+    the service must actually SERVE (a dashboard), a ``network`` and ``ports``
+    mapping (``{"container_port": host_port}``) — that is how a mined tool gets
+    its interactive localhost dashboard (VAL-TOOL-001, ports 3400-3499). A
+    declaration without an argv is refused (nothing invented).
+    """
+    service = {
+        "mode": "warm-exec",
+        "purpose": (
+            "reuse ONE started container for repeated calls (skip the "
+            "container cold start); discovery.ensure_ready starts it, "
+            "rollback removes it by label"
+        ),
+        "argv": ["sh", "-c", "while true; do sleep 30; done"],
+    }
+    declared = dict(chosen.get("service") or {})
+    if not declared:
+        return service
+    if not [str(item) for item in (declared.get("argv") or [])]:
+        raise AdapterRefusal(
+            "the template declares a service without an argv — the warm "
+            "container is started from its declared command, nothing is invented"
+        )
+    service.update(
+        {
+            str(key): value
+            for key, value in declared.items()
+            if value not in (None, "", [], {})
+        }
+    )
+    return service
 
 
 def render_container_argv(adapter: dict, payload: dict) -> list[str]:
@@ -4651,6 +4689,13 @@ def ensure_container_started(
         labels={PURPOSE_LABEL: purpose, CAPABILITY_LABEL: str(name)},
         readonly_rootfs=bool((adapter.get("permissions") or {}).get("read_only_rootfs", True)),
         resource_limits=dict((adapter.get("permissions") or {}).get("resource_limits") or {}),
+        # a serving service (the dashboard of a mined research tool) declares
+        # its network and published ports in the adapter's service spec — the
+        # ONLY way a warm container reaches its localhost port
+        network=str(service.get("network") or "none"),
+        port_bindings={
+            str(c): int(h) for c, h in dict(service.get("ports") or {}).items()
+        },
         # a warm container of an adapter that had to clear the image ENTRYPOINT
         # must clear it too, or the service argv would be handed to the tool
         entrypoint=adapter.get("entrypoint"),

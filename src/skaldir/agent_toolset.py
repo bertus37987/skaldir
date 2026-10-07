@@ -944,6 +944,14 @@ def skill_expand_build_tool(
             runtime=kw.get("runtime") or runtime,
             store=store,
             session_id=str(kw.get("session_id", "") or ""),
+            # F07 (Paket 4): the run's provider/budget must REACH the builder —
+            # a build from a bare need drafts through this client. The closure
+            # used to capture them and drop them, so the builder reported
+            # "no model client is configured" inside a fully configured run.
+            llm=llm,
+            budget=budget,
+            prompts=prompts,
+            events=events,
         ),
     )
 
