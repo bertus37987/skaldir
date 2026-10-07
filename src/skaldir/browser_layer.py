@@ -539,6 +539,36 @@ class SessionManager:
             data["tabs"] = tabs
             self._write(data)
 
+    def refresh_tab_metadata(self, tab_id: str, *, url: str = "",
+                             title: str = "") -> bool:
+        """Refresh the recorded url/title of an ALREADY inventoried tab — metadata
+        only, never ownership (§6/BR-13).
+
+        Measured staleness (2026-10-07): the post-act inventory refresh skipped known
+        tab ids, so a recorded tab's url/title stayed frozen at its first note even
+        after in-tab navigation — the same honesty class as the relaunch phantoms:
+        the state file asserting something that is no longer true. Metadata is not
+        ownership: this never changes an entry's ``owner``, so it can never make a
+        user tab closable, and an unknown id changes nothing.
+        """
+        with self._guard:
+            data = self._read()
+            tabs = list(data.get("tabs") or [])
+            updated = False
+            for tab in tabs:
+                if str(tab.get("tab_id") or "") != str(tab_id):
+                    continue
+                if url:
+                    tab["url"] = str(url)
+                    updated = True
+                if title:
+                    tab["title"] = str(title)
+                    updated = True
+            if updated:
+                data["tabs"] = tabs
+                self._write(data)
+            return updated
+
     def ensure(
         self,
         *,

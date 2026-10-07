@@ -484,7 +484,10 @@ def _browser_tool(ws: Path, rt: Path | None, run_id: str) -> Any | None:
             _record_relaunch(result, "act")
             if result.get("ok"):
                 # tabs that appeared through this demand are agent-created; every tab
-                # already inventoried (either owner) stays as it is
+                # already inventoried (either owner) keeps its owner but gets its
+                # url/title UPSERTED — measured staleness (2026-10-07): the old skip
+                # froze a recorded tab's metadata at its first note even after in-tab
+                # navigation, so the state file claimed a url the tab had left.
                 inventory = sessions.discover()
                 known = {str(t.get("tab_id") or "")
                          for t in inventory["agent_tabs"] + inventory["user_tabs"]}
@@ -492,10 +495,16 @@ def _browser_tool(ws: Path, rt: Path | None, run_id: str) -> Any | None:
                 _record_relaunch(tabs_seen, "post-act inventory")
                 for tab in (tabs_seen.get("tabs") or []):
                     tab_id = str(tab.get("tab_id") or "")
-                    if tab_id and tab_id not in known:
-                        sessions.note_agent_tab(tab_id, url=str(tab.get("url") or ""),
-                                                title=str(tab.get("title") or ""),
-                                                run_id=run_id)
+                    if not tab_id:
+                        continue
+                    if tab_id in known:
+                        sessions.refresh_tab_metadata(
+                            tab_id, url=str(tab.get("url") or ""),
+                            title=str(tab.get("title") or ""))
+                        continue
+                    sessions.note_agent_tab(tab_id, url=str(tab.get("url") or ""),
+                                            title=str(tab.get("title") or ""),
+                                            run_id=run_id)
         if not isinstance(result, dict):
             result = {
                 "ok": bool(getattr(result, "ok", False)),

@@ -512,3 +512,107 @@ def test_a_handler_read_that_observes_a_relaunch_supersedes_the_dead_tabs(
     assert data["tabs"] == [], (
         "a read that observed the relaunch must supersede the dead browser's tabs", data)
     assert data["last_relaunch_observed"]["superseded_tabs"] == 1
+
+
+# --------------------------------------------------------------------------- #
+# the post-act inventory refresh UPSERTS known ids (metadata staleness,         #
+# measured live 2026-10-07: in-tab navigation left url/title frozen)            #
+# --------------------------------------------------------------------------- #
+
+
+def _act_ok(*, action: Any = None, session: str = "") -> dict[str, Any]:
+    return {"ok": True, "backend": BackendKind.AGENT_BROWSER.value,
+            "action": {"kind": str((action or {}).get("kind") or "")},
+            "preview": "", "relaunched": False, "session_id": session}
+
+
+def test_a_post_act_inventory_refresh_upserts_a_known_tabs_metadata(
+    isolated_home, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+):
+    """Failing-first (measured live twice, orchestrator 2026-10-07): the handler's
+    post-act inventory refresh SKIPPED re-noting known tab ids, so a recorded tab's
+    url/title stayed frozen at its first note even after in-tab navigation. The tab
+    still exists — this is metadata staleness, the same honesty class as the relaunch
+    phantoms: the state file must not keep claiming a url the tab left."""
+    import skaldir.browser_layer as bl
+
+    backend = _LivenessBackend()
+    manager = SessionManager(session_state_dir(), backend=backend)
+    manager.ensure(task="t", run_id="r1")           # ready, one real launch
+    manager.note_agent_tab("t1", url="https://example.org/first",
+                           title="First", run_id="r1")
+
+    def _act(action: Any = None, *, session: str = "") -> dict[str, Any]:
+        return _act_ok(action=action, session=session)
+
+    def _tabs(*, session: str = "") -> dict[str, Any]:
+        # the SAME tab t1 after in-tab navigation: new url/title, same id
+        return {"ok": True, "backend": BackendKind.AGENT_BROWSER.value,
+                "relaunched": False,
+                "tabs": [{"tab_id": "t1", "url": "https://example.com/navigated",
+                          "title": "Navigated", "active": True}],
+                "detail": ""}
+
+    backend.act = _act  # type: ignore[method-assign]
+    backend.tabs = _tabs  # type: ignore[method-assign]
+
+    def _factory(*_args: Any, **_kw: Any) -> _LivenessBackend:
+        return backend
+
+    monkeypatch.setattr(bl, "AgentBrowserBackend", _factory)
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (tool,) = core_capability_tools(workspace=ws, runtime=tmp_path / "runtime",
+                                    run_id="run-live", include=("browser",))
+    result = tool.handler(do="act", kind="navigate", url="https://example.com/navigated")
+
+    assert result["ok"] is True, result
+    data = json.loads(
+        (session_state_dir() / "browser-session.json").read_text(encoding="utf-8"))
+    recorded = [t for t in data["tabs"] if str(t.get("tab_id") or "") == "t1"]
+    assert len(recorded) == 1, ("no duplicate notes for the same id", data["tabs"])
+    assert recorded[0]["url"] == "https://example.com/navigated", (
+        "the recorded url must be refreshed after in-tab navigation", recorded)
+    assert recorded[0]["title"] == "Navigated", (
+        "the recorded title must be refreshed after in-tab navigation", recorded)
+    assert recorded[0]["owner"] == "agent", (
+        "a metadata refresh must not touch ownership", recorded)
+
+
+def test_refresh_tab_metadata_updates_url_and_title_without_touching_ownership(
+    isolated_home,
+):
+    """The upsert is metadata, not ownership: a user tab's url/title may be refreshed
+    (truthful inventory) while it stays `owner=user` and is still refused at close."""
+    backend = _LivenessBackend()
+    manager = SessionManager(session_state_dir(), backend=backend)
+    manager.ensure(task="t", run_id="r1")
+    manager.record_tabs([
+        TabInfo(tab_id="t-user", url="https://user.example/", title="User tab",
+                owner="user"),
+    ])
+    manager.note_agent_tab("t-agent", url="https://agent.example/first",
+                           title="Agent first", run_id="r1")
+
+    changed_agent = manager.refresh_tab_metadata(
+        "t-agent", url="https://agent.example/navigated", title="Agent navigated")
+    changed_user = manager.refresh_tab_metadata(
+        "t-user", url="https://user.example/other", title="User tab moved")
+    unchanged = manager.refresh_tab_metadata("t-unknown", url="https://now.example/")
+
+    assert changed_agent is True
+    assert changed_user is True
+    assert unchanged is False, "an unknown id changes nothing (it is nobody's tab)"
+    data = json.loads(
+        (session_state_dir() / "browser-session.json").read_text(encoding="utf-8"))
+    by_id = {str(t.get("tab_id") or ""): t for t in data["tabs"]}
+    assert by_id["t-agent"]["url"] == "https://agent.example/navigated"
+    assert by_id["t-agent"]["title"] == "Agent navigated"
+    assert by_id["t-agent"]["owner"] == "agent"
+    assert by_id["t-user"]["url"] == "https://user.example/other"
+    assert by_id["t-user"]["title"] == "User tab moved"
+    assert by_id["t-user"]["owner"] == "user", (
+        "a metadata refresh must never make a user tab the agent's", by_id["t-user"])
+    report = manager.close_agent_tabs(["t-agent", "t-user"])
+    assert [t["tab_id"] for t in report["closed"]] == ["t-agent"]
+    assert [t["tab_id"] for t in report["refused_user_tabs"]] == ["t-user"]
