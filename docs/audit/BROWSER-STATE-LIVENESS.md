@@ -157,3 +157,75 @@ Feature: `browser-inventory-honesty-after-relaunch` (m4-web). Status:
   exit 0, ehrlicher Envelope (`state=unknown, live=null`, tab_count 0; State-Datei
   des Default-Homes ist nach der Abnahme ehrlich unknown). Bewiesener Eintrag:
   der NEU INSTALLIERTE uv-Tool-Launcher `~/.local/bin/skaldir`.
+
+## Nachtrag (2026-10-07): m4-honest-surface-fixes — Close fährt jetzt den Transport
+
+Feature `m4-honest-surface-fixes` (m4-web, Scrutiny Round 1, 7 bestätigte
+Non-Blocking-Funde). Status: **abgeschlossen (2026-10-07, diese Worker-Session,
+Fix-Commit `f156da0`)**. Alle Belege unten gemessen.
+
+- **(1) Close-Ehrlichkeit (der Kern):** `SessionManager.close_agent_tabs` meldete
+  `closed_agent_tabs`, hatte aber NIE den Transport gerufen (`AgentBrowserBackend.
+  close_tab` ohne Call-Site) — `skaldir browser detach --tab <id>` meldete Schließung,
+  während der Tab offen blieb. Failing-first: 4 neue Tests rot gegen den Defekt
+  (`logs/m4-honest-surface/prefix-failing-first.txt`, exit 1). Fix: close fährt jetzt
+  über `close_tab` (ein benannter Tab, NIE `--all`, weiter nur recorded
+  `owner=agent`-Ids); ein fehlgeschlagener Transport-Close lässt den Tab recorded und
+  meldet ihn unter `close_failed` (nie als „closed").
+- **Live-Nachweis über die echte CLI** (roh: `logs/m4-honest-surface/live-step*.json`,
+  Produkt-Session `skaldir`, agent-browser 0.38.1, Repo-venv-Eintrag):
+  - step06: `browser tabs` → recorded `t1 owner=agent` (via Handler geöffnet); fremder
+    Tab `t2` via rohem Transport NICHT recorded (Ownership-Registry-Nuance).
+  - step07/08: `browser detach --tab t1` → exit 0, `closed_agent_tabs=[t1]`,
+    `close_failed=[]`, `left_open=0`; Transport-`tab list` danach: **t1 weg** (live
+    bewiesen), nur t2 noch offen. Der Report ist jetzt WAHR.
+  - step11: `browser detach --tab t2` (fremd, nie recorded) → exit 0,
+    `refused_user_tabs=[t2]`, `left_open=1`, `inventory_source=transport` — der fremde
+    Tab bleibt offen und wird NAMENTLICH verweigert; kein `close --all`.
+  - step13/14: `browser detach --tab t2` (agent-owned, example.com; fremder Tab jetzt
+    t3) → exit 0, `closed_agent_tabs=[t2]`, `close_failed=[]`, `left_open=1`,
+    `inventory_source=transport`; Transport danach nur noch t3 — Payload stimmt mit dem
+    REAL-Post-Close-Inventar überein.
+  - Aufgeräumt: eigener Proof-Tab und Session geschlossen
+    (`agent-browser --session skaldir close` → 0); `browser discover` danach ehrlich
+    `unknown/live=false/tab_count=0`; keine fremden Ressourcen berührt.
+- **(Payload-Trutht):** neu `SessionManager.transport_truth()` — die DETACH-Payload
+  liest `left_open` aus dem TRANSPORT-Inventar, aber NUR wenn der Liveness-Verdict
+  „live" sagt (`tab list` auf toter Session würde auto-launchen — gemessen); sonst
+  recorded-Fallback mit benannter Quelle (`inventory_source`).
+- **(2) `desk browser`-Strings weg:** Diagnosis (core_capabilities) + Docstrings
+  (surface_cli, browser_layer) nennen jetzt `skaldir browser discover` / `browser
+  ensure`; `rg "desk browser" src/` → 0 Treffer; installierte CLI-Hilfe: 0 Treffer.
+- **(3)+(4) web.py:** Failure-Warnings nennen das backend, das WIRKLICH gefailt ist
+  (`record['backend']` statt des Outer-Loop-`name` — gemessen rot: „backend marginalia
+  did not answer" für einen Bing-429, Test
+  `test_a_failed_attempt_warning_names_the_backend_that_failed`); Modul-Docstring
+  „four backends × two tries" (Bing ist backend #1).
+- **(5) Evidence-Pointer:** `logs/browser-liveness/step02` existiert nicht (auch nie
+  überlebt) — Tests-Kommentar + dieser Doc zeigen jetzt auf step03/step04 (beide
+  existieren, nicht leer).
+- **(6) Envelope-Refs:** `sources.add`/`sources.report`/`schedule.list`/`schedule.due`/
+  `schedule.lifecycle` tragen JETZT ihre eigenen Refs statt `schedule.define`
+  (installierter Launcher, `contract dump --json`: 309 Commands, 0 char-split,
+  z. B. `schedule.list → ScheduleStore.all`).
+- **(7) Metadata-Staleness:** `refresh_tab_metadata` übernimmt jetzt die LETZTE
+  Beobachtung — ein leerer Transport-Wert LEERT den recorded url/title (alter `if
+  url:`-Guard hielt Stale fest); Ownership unberührt. Failing-first-Test
+  `test_refresh_tab_metadata_an_empty_observation_clears_the_recorded_value`.
+- **Gates:** Browser+Web-Bereich 112 grün + CLI-Contract/Scheduler/Data-Sources 160
+  grün; `ruff check src tests` exit 0; `compileall -q src` exit 0; Full-Suite
+  `uv run python -m pytest tests/ -q -o addopts=''` → 1 failed / 8428 passed / 33
+  skipped in 30:05 — der eine Failure
+  (`test_subagents.py::test_the_parallel_cap_queues_the_rest_and_is_never_exceeded`,
+  `queue_max` 3 statt 2) ist NICHT von diesem Feature berührt (subagents.py zuletzt in
+  m3 geändert) und PASST standalone (exit 0, zweimal gemessen); in
+  `library/environment.md` als timing-abhängig vermerkt. VAL-WEB-003-Sicherheit
+  unverändert: 10-concurrent-ensure-Merge-Tests grün, User-Tabs verweigert, kein
+  `close --all` (alle BR-13-Tests grün).
+- **Launcher-Refresh (letzte Aktion, gemessen):** Repo-Eintrag zuerst bewiesen
+  (`.venv/bin/skaldir browser discover --json` exit 0), Backup des alten Snapshots
+  unter `/home/willy/backups/skaldir-launcher/skaldir-agent-pre-m4fixes-20261007-155011/`,
+  `uv tool install --force …/Skaldir_Agent` exit 0; Gegenprobe über
+  `~/.local/bin/skaldir`: `--version` → 1.5.0, `browser discover --json` exit 0,
+  `sources report --json` → eigener Ref (`SourceRegistry.report`), `contract dump
+  --json` → 309 Commands / 0 char-split, keine `desk browser`-Strings in der Hilfe.
