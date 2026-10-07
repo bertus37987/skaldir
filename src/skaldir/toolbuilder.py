@@ -3068,6 +3068,9 @@ def generate_container_adapter(
         },
         "permissions": dict(CONTAINER_PERMISSIONS),
         "service": _service_spec_of(chosen),
+        "side_effect": _side_effect_class(
+            dict(CONTAINER_PERMISSIONS), dict(chosen.get("service") or {})
+        ),
         "surface": {
             "inspected_at": float(surface.get("inspected_at") or time.time()),
             "os": dict(surface.get("os") or {}),
@@ -3098,6 +3101,19 @@ def generate_container_adapter(
         adapter["entrypoint"] = ""
         adapter["entrypoint_declared"] = list(surface.get("entrypoint") or [])
     return adapter
+
+
+def _side_effect_class(permissions: dict, service: dict) -> str:
+    """The side-effect class of a container adapter, derived from its own data.
+
+    The one-shot call path is a self-removing (`--rm`) container: if it mounts
+    nothing, no host state survives a call — `read-only`. A declared mount
+    makes the writes honest: `writes-to-declared-mounts`. (The WARM service is
+    exempt here: it serves, it is not the call path.)
+    """
+    if not (permissions.get("mounts") or []):
+        return "read-only"
+    return "writes-to-declared-mounts"
 
 
 def _service_spec_of(chosen: dict) -> dict:

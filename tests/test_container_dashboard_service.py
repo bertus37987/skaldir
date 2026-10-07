@@ -158,6 +158,34 @@ class TestTheDeclaredServiceSpec:
         assert adapter["verb"] == "snapshot"
         assert adapter["operation"]["inputs"]["symbol"]["required"] is True
 
+    def test_the_adapter_declares_its_side_effect_class(self):
+        """The registry claim 'side-effect class' is data on the adapter, derived."""
+        surface = inspect_container_surface(
+            FakeManager(verbs="sh\nsnapshot\n"),
+            image="skaldir-tool-market-research:v1",
+            image_digest="sha256:" + "a" * 64,
+        )
+        adapter = generate_container_adapter(
+            "market research snapshot",
+            name="market_research_snapshot",
+            image="skaldir-tool-market-research:v1",
+            image_digest="sha256:" + "a" * 64,
+            surface=surface,
+            template=_schema(),
+        )
+        # no mounts, no credentials, no published call path: the one-shot call
+        # touches no host state at all
+        assert adapter["side_effect"] == "read-only"
+
+    def test_the_class_names_writes_when_mounts_exist(self):
+        """A container adapter that mounts SOMETHING does not claim read-only."""
+        assert toolbuilder._side_effect_class({"mounts": [{"host_path": "/w"}]}, {}) == (
+            "writes-to-declared-mounts"
+        )
+        assert toolbuilder._side_effect_class({"mounts": []}, {"ports": {"8080": 3400}}) == (
+            "read-only"
+        )
+
     def test_a_service_spec_without_an_argv_is_refused(self):
         """A service spec that declares nothing to run is refused, not defaulted."""
         surface = inspect_container_surface(
