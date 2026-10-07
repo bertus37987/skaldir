@@ -495,17 +495,30 @@ class SessionManager:
         old state file never heard of it, so ``starts`` — the measuring instrument of
         VAL-WEB-003's "concurrent demands yield exactly ONE start" — silently missed
         real launches. Recording them here keeps ``starts`` a truthful count.
+
+        The recorded tab inventory belonged to the PREVIOUS browser process; the
+        relaunched one starts with its own tabs. Keeping the old list made
+        ``skaldir browser tabs`` (BrowserLayer.tabs -> ``_read()['tabs']``) report
+        phantom tabs of a browser that no longer exists, so the supersession clears
+        it — the next real inventory read (post-launch/post-act) repopulates it.
+        Ownership is untouched: no entry changes owner, nothing becomes closable
+        that was not before (§6/BR-13).
         """
         stamp = time.time() if now is None else float(now)
         with self._guard:
             data = self._read()
+            superseded = [t for t in (data.get("tabs") or []) if isinstance(t, dict)]
             data["starts"] = int(data.get("starts", 0) or 0) + 1
             data["last_launch_attempt"] = stamp
             data["last_relaunch_observed"] = {
                 "at": stamp,
                 "session_id": str(session_id),
                 "detail": str(detail or "")[:200],
+                "superseded_tabs": len(superseded),
+                "superseded_tab_ids": [str(t.get("tab_id") or "")
+                                       for t in superseded][:20],
             }
+            data["tabs"] = []
             self._write(data)
         return self.discover()
 

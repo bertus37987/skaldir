@@ -34,7 +34,9 @@ from skaldir.browser_layer import (
     BackendKind,
     BrowserBackend,
     BrowserCapability,
+    BrowserLayer,
     SessionManager,
+    TabInfo,
     session_state_dir,
 )
 from skaldir.core_capabilities import core_capability_tools
@@ -378,3 +380,135 @@ def test_the_handler_records_a_relaunch_it_observed_in_a_transport_result(
     assert data["starts"] == 2, (
         "the transport reported a per-call relaunch; the product must count it", data)
     assert data["last_relaunch_observed"]["session_id"] == "skaldir"
+
+
+# --------------------------------------------------------------------------- #
+# the recorded inventory after a relaunch: no phantom tabs of the dead browser  #
+# (browser-inventory-honesty-after-relaunch)                                    #
+# --------------------------------------------------------------------------- #
+
+
+def _state_with_agent_tab_of_a_dead_browser() -> SessionManager:
+    """A ready state whose recorded tab belonged to the PREVIOUS browser process."""
+    backend = _LivenessBackend()
+    manager = SessionManager(session_state_dir(), backend=backend)
+    manager.ensure(task="t", run_id="r1")
+    manager.note_agent_tab("t-old", url="https://old.example/page",
+                           title="old browser's tab", run_id="r1")
+    return manager, backend
+
+
+def test_an_observed_relaunch_leaves_the_recorded_inventory_honest(isolated_home):
+    """Failing-first: after a recorded relaunch the state file must not keep claiming
+    tabs of the dead browser — the relaunched browser is a NEW process with new tabs."""
+    manager, _backend = _state_with_agent_tab_of_a_dead_browser()
+    assert manager.discover()["tab_count"] == 1
+
+    manager.record_observed_relaunch(session_id="skaldir",
+                                     detail="tab list auto-launched the browser")
+
+    data = json.loads(
+        (session_state_dir() / "browser-session.json").read_text(encoding="utf-8"))
+    assert data["tabs"] == [], (
+        "the recorded inventory must not claim tabs of the dead browser", data)
+    assert data["last_relaunch_observed"]["superseded_tabs"] == 1
+    assert data["last_relaunch_observed"]["superseded_tab_ids"] == ["t-old"]
+
+
+def test_tabs_and_discover_report_no_phantom_tabs_after_a_recorded_relaunch(
+    isolated_home,
+):
+    """`skaldir browser tabs` reads the recorded inventory directly (BrowserLayer.tabs
+    -> sessions._read()['tabs']) — after a relaunch it must not list the dead
+    browser's tabs, and discover's tab_count must agree."""
+    manager, backend = _state_with_agent_tab_of_a_dead_browser()
+    manager.record_observed_relaunch(session_id="skaldir", detail="auto-launch")
+
+    layer = BrowserLayer(manager, backend)
+    tabs_result = layer.tabs()
+    assert [str(t.get("tab_id") or "") for t in tabs_result.data["tabs"]] == []
+    assert tabs_result.data["agent_tabs"] == []
+    assert tabs_result.data["user_tabs"] == []
+    inventory = layer.discover()
+    assert inventory.data["tab_count"] == 0
+    assert inventory.preview.endswith("0 tab(s)"), inventory.preview
+
+
+def test_a_real_inventory_refresh_after_the_relaunch_repopulates(isolated_home):
+    """The supersession is not a hole in the inventory: the next real inventory read
+    (what the handler does after launch/act) repopulates the state file."""
+    manager, _backend = _state_with_agent_tab_of_a_dead_browser()
+    manager.record_observed_relaunch(session_id="skaldir", detail="auto-launch")
+    assert manager.discover()["tab_count"] == 0
+
+    manager.record_tabs([
+        TabInfo(tab_id="t-fresh", url="about:blank", title="", owner="agent",
+                run_id="r2"),
+        TabInfo(tab_id="t-user", url="https://user.example/", owner="user"),
+    ])
+
+    inventory = manager.discover()
+    assert inventory["tab_count"] == 2
+    assert [t["tab_id"] for t in inventory["agent_tabs"]] == ["t-fresh"]
+    assert [t["tab_id"] for t in inventory["user_tabs"]] == ["t-user"]
+
+
+def test_ownership_rules_survive_the_inventory_supersession(isolated_home):
+    """No new ownership semantics: after a relaunch-supersession and a repopulating
+    refresh, only agent-recorded tabs are closable and there is still no close --all."""
+    manager, _backend = _state_with_agent_tab_of_a_dead_browser()
+    manager.record_observed_relaunch(session_id="skaldir", detail="auto-launch")
+    manager.record_tabs([
+        TabInfo(tab_id="t-user", url="https://user.example/", owner="user"),
+        TabInfo(tab_id="t-fresh", url="about:blank", owner="agent", run_id="r2"),
+    ])
+
+    report = manager.close_agent_tabs(["t-user", "t-fresh"])
+
+    assert [t["tab_id"] for t in report["closed"]] == ["t-fresh"]
+    assert [t["tab_id"] for t in report["refused_user_tabs"]] == ["t-user"]
+    assert report["closed_all"] is False
+
+
+def test_a_handler_read_that_observes_a_relaunch_supersedes_the_dead_tabs(
+    isolated_home, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+):
+    """The agent path: a transport read that observed the per-call relaunch must leave
+    no tabs of the PREVIOUS browser in the state file the CLI's `tabs` verb reads."""
+    import skaldir.browser_layer as bl
+
+    kind = BackendKind.AGENT_BROWSER
+    backend = _LivenessBackend()
+
+    manager = SessionManager(session_state_dir(), backend=backend)
+    manager._write({
+        "state": "ready", "session_id": "skaldir", "starts": 1,
+        "last_launch_attempt": time.time(),
+        "tabs": [TabInfo(tab_id="t-old", url="https://old.example/page",
+                         title="dead browser's tab", owner="agent",
+                         run_id="r0").to_dict()],
+    })
+
+    def _read(*, url: str = "", session: str = "") -> dict[str, Any]:
+        return {"ok": True, "backend": kind.value, "url": url,
+                "content": "fresh browser body", "relaunched": True,
+                "session_id": session}
+
+    backend.read = _read  # type: ignore[method-assign]
+
+    def _factory(*_args: Any, **_kw: Any) -> _LivenessBackend:
+        return backend
+
+    monkeypatch.setattr(bl, "AgentBrowserBackend", _factory)
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (tool,) = core_capability_tools(workspace=ws, runtime=tmp_path / "runtime",
+                                    run_id="run-live", include=("browser",))
+    result = tool.handler(do="read", url="https://example.com/")
+
+    assert result["ok"] is True, result
+    data = json.loads(
+        (session_state_dir() / "browser-session.json").read_text(encoding="utf-8"))
+    assert data["tabs"] == [], (
+        "a read that observed the relaunch must supersede the dead browser's tabs", data)
+    assert data["last_relaunch_observed"]["superseded_tabs"] == 1
