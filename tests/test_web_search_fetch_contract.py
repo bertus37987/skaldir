@@ -242,6 +242,33 @@ def test_a_bad_query_never_fabricates_hidden_results(ctx):
     assert not any(r["answered"] for r in result.data["attempts"])
 
 
+def test_a_failed_attempt_warning_names_the_backend_that_failed(ctx):
+    """m4 scrutiny round 1: the warning names the backend that ACTUALLY failed.
+
+    The old line interpolated the outer loop's `name` (the backend that finally
+    answered), so a failed bing try was labelled "marginalia did not answer" even
+    though marginalia was the backend that answered.
+    """
+    transport = make_transport(
+        {
+            "https://www.bing.com/": {"status": 429, "body": b"slow down"},
+            "https://api.marginalia.nu/": {
+                "status": 200,
+                "content_type": "application/json",
+                "body": json.dumps({"results": [
+                    {"title": "Rust", "url": "https://rust.example/",
+                     "description": "systems language"},
+                ]}).encode(),
+            },
+        }
+    )
+    result = ctx["call"]("web_search", {"query": "rust"}, transport=transport)
+    assert result.ok is True
+    failed = [w for w in result.warnings if "did not answer" in w]
+    assert failed, result.warnings
+    assert all(w.startswith("backend bing ") for w in failed), failed
+
+
 # ------------------------------------------------------------- fetch contract
 
 

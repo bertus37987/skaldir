@@ -409,7 +409,7 @@ def _browser_tool(ws: Path, rt: Path | None, run_id: str) -> Any | None:
                 "backend": "agent-browser",
             }
         # THE central lifecycle (§6): the same state dir, session file and cross-process
-        # start lock `skaldir desk browser` uses. The agent path deliberately does NOT
+        # start lock `skaldir browser ensure` uses. The agent path deliberately does NOT
         # scope this to its own run runtime — that divergence (scrutiny m3 round 2) is
         # what made a run unable to reuse the CLI's session, its own earlier session, or
         # another run's; the run only *names* its demand inside the shared state.
@@ -426,7 +426,7 @@ def _browser_tool(ws: Path, rt: Path | None, run_id: str) -> Any | None:
                               or provisioned.get("unconfirmed_reason") or ""),
                 "diagnosis": (
                     "this demand launched nothing; diagnose the session "
-                    "(`skaldir desk browser discover`) before the next ensure — an empty "
+                    "(`skaldir browser discover`) before the next ensure — an empty "
                     "or unknown observation is never fixed by another launch"
                     if action == "unconfirmed" else
                     str(provisioned.get("reason") or "")

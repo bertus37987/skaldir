@@ -37,7 +37,8 @@ it never reports an empty result as a search that ran.
 only for the classes where a retry plausibly helps (:data:`RETRYABLE_CLASSES`:
 rate limiting and 5xx responses, after :data:`RETRY_BACKOFF_S`), and a transport
 defect is *not* retried — recovery there is the fallback to the next backend.
-The whole worst case is three backends × two tries + two short backoffs — one
+The whole worst case is four backends × two tries + the short backoffs between
+them — one
 pass, never a loop. Registration probes the same way (see
 :func:`probe_backends`, one try per backend), so ``tools-core register`` states
 the measured availability instead of assuming a network.
@@ -1147,7 +1148,10 @@ def run_search(args: dict, ctx: ToolContext) -> ToolResult:
             },
         )
     warnings = [
-        f"backend {name} did not answer in class {record.get('failure_class')}"
+        # the backend that ACTUALLY failed this try (m4 scrutiny round 1: the old line
+        # interpolated the outer loop's `name` — the backend that finally answered —
+        # so a failed bing try was labelled "duckduckgo did not answer")
+        f"backend {record['backend']} did not answer in class {record.get('failure_class')}"
         f" (try {record.get('try', 1)}): "
         f"{record.get('error') or ('HTTP ' + str(record.get('status')))}"
         for record in attempts[:-1]

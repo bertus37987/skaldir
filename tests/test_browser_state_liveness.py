@@ -46,7 +46,7 @@ OPERATIONS = {
     "browser.act", "browser.read", "browser.batch", "browser.verify", "browser.detach",
 }
 
-# -- measured envelopes (logs/browser-liveness/step02+step03) ------------------ #
+# -- measured envelopes (logs/browser-liveness/step03, step01) ----------------- #
 
 INFO_ALIVE = {
     "success": True, "error": None,
@@ -105,6 +105,7 @@ class _LivenessBackend(BrowserBackend):
     def __init__(self, *, alive: bool | None = True) -> None:
         self.launch_calls: list[dict[str, str]] = []
         self.alive_calls: list[str] = []
+        self.close_calls: list[dict[str, str]] = []
         self._alive = alive
 
     def probe(self) -> BrowserCapability:
@@ -123,6 +124,10 @@ class _LivenessBackend(BrowserBackend):
     def session_alive(self, session_id: str) -> bool | None:
         self.alive_calls.append(session_id)
         return self._alive
+    def close_tab(self, *, tab: str = "", session: str = "") -> dict[str, Any]:
+        """Counted transport close — the close must reach the transport (m4 honesty)."""
+        self.close_calls.append({"tab": tab, "session": session})
+        return {"ok": True, "backend": self.kind.value, "detail": ""}
 
 
 # --------------------------------------------------------------------------- #
@@ -616,3 +621,30 @@ def test_refresh_tab_metadata_updates_url_and_title_without_touching_ownership(
     report = manager.close_agent_tabs(["t-agent", "t-user"])
     assert [t["tab_id"] for t in report["closed"]] == ["t-agent"]
     assert [t["tab_id"] for t in report["refused_user_tabs"]] == ["t-user"]
+
+
+def test_refresh_tab_metadata_an_empty_observation_clears_the_recorded_value(
+    isolated_home,
+):
+    """m4 scrutiny round 1: the recorded value must reflect the LATEST observation.
+
+    The old guards (`if url:` / `if title:`) kept a stale recorded value when the
+    transport reported an empty url/title — the state file then asserted something the
+    browser no longer says. Empty means "the transport sees nothing there": it clears.
+    Ownership stays untouched, as everywhere in the metadata path.
+    """
+    backend = _LivenessBackend()
+    manager = SessionManager(session_state_dir(), backend=backend)
+    manager.ensure(task="t", run_id="r1")
+    manager.note_agent_tab("t-agent", url="https://agent.example/first",
+                           title="Agent first", run_id="r1")
+    cleared = manager.refresh_tab_metadata("t-agent", url="", title="")
+    assert cleared is True, "a change (to empty) is a change"
+    data = json.loads(
+        (session_state_dir() / "browser-session.json").read_text(encoding="utf-8"))
+    by_id = {str(t.get("tab_id") or ""): t for t in data["tabs"]}
+    assert by_id["t-agent"]["url"] == "", (
+        "an empty observed url must clear the stale recorded one", by_id["t-agent"])
+    assert by_id["t-agent"]["title"] == "", (
+        "an empty observed title must clear the stale recorded one", by_id["t-agent"])
+    assert by_id["t-agent"]["owner"] == "agent"

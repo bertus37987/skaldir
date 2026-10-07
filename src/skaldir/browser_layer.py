@@ -72,9 +72,9 @@ def session_state_dir(runtime: str | Path | None = None) -> Path:
 
     Reuse lives in this directory (the session state file *and* the cross-process start
     lock inside it, §6), so a per-run directory would give every run its own lock and its
-    own "session": two demands could not merge, and `skaldir desk browser` would read a
-    different inventory than the agent path writes — the divergence measured in scrutiny
-    m3 round 2. An explicit CLI ``--runtime`` still scopes it deliberately; the default is
+    own "session": two demands could not merge, and `skaldir browser discover` would
+    read a different inventory than the agent path writes — the divergence measured in
+    scrutiny m3 round 2. An explicit CLI ``--runtime`` still scopes it deliberately; the default is
     the installation runtime that both entries resolve identically.
     """
     explicit = Path(str(runtime)).expanduser() if runtime else None
@@ -338,7 +338,8 @@ class SessionManager:
       both launch;
     * a start that times out leaves the state as ``unconfirmed`` and reports it — it never
       launches again to "fix" the unknown;
-    * tabs carry ``owner``; ``close_agent_tabs`` never touches a user tab and there is no
+    * tabs carry ``owner``; ``close_agent_tabs`` never touches a user tab, closes
+      through the transport (never a report-only close), and there is no
       ``close --all``.
     """
 
@@ -550,6 +551,11 @@ class SessionManager:
         the state file asserting something that is no longer true. Metadata is not
         ownership: this never changes an entry's ``owner``, so it can never make a
         user tab closable, and an unknown id changes nothing.
+
+        The recorded value always reflects the LATEST observation (m4 scrutiny
+        round 1): an empty observed url/title clears the recorded one — the old
+        ``if url:``/``if title:`` guards kept a stale value the transport no longer
+        reports. Callers pass what the transport actually returned.
         """
         with self._guard:
             data = self._read()
@@ -558,11 +564,12 @@ class SessionManager:
             for tab in tabs:
                 if str(tab.get("tab_id") or "") != str(tab_id):
                     continue
-                if url:
-                    tab["url"] = str(url)
+                new_url, new_title = str(url), str(title)
+                if new_url != str(tab.get("url") or ""):
+                    tab["url"] = new_url
                     updated = True
-                if title:
-                    tab["title"] = str(title)
+                if new_title != str(tab.get("title") or ""):
+                    tab["title"] = new_title
                     updated = True
             if updated:
                 data["tabs"] = tabs
@@ -696,31 +703,93 @@ class SessionManager:
             self._write(data)
 
     def close_agent_tabs(self, tab_ids: list[str]) -> dict[str, Any]:
-        """Close only agent-created tabs, by id.
+        """Close only agent-created tabs, by id — through the transport, not on paper.
 
-        There is deliberately no ``close --all`` (§6). A tab that is not in the inventory
-        or is owned by the user is left alone and reported as such.
+        Measured honesty defect (m4 scrutiny round 1): the previous version removed
+        agent-owned ids from the recorded inventory and reported them under ``closed``,
+        but never called the transport (:meth:`AgentBrowserBackend.close_tab` had no
+        call site) — `skaldir browser detach --tab <id>` reported closure while the
+        browser tab stayed open. The close now goes through the transport, one named
+        tab per call, still ownership-gated (§6/BR-13): only recorded ``owner=agent``
+        ids are sent, a user tab is refused, an unknown id is kept, a transport that
+        cannot close leaves the tab recorded and reports it under ``close_failed`` —
+        the report is only true when the transport actually closed the tab.
         """
+        wanted = {str(t) for t in tab_ids}
         with self._guard:
             data = self._read()
-            tabs = list(data.get("tabs", []) or [])
-        kept, closed, refused = [], [], []
-        for tab in tabs:
+            tabs = [t for t in (data.get("tabs") or []) if isinstance(t, dict)]
+            # The product drives ONE named session per state dir (§6) — never the
+            # user's unnamed `default` agent-browser session.
+            session_id = str(data.get("session_id") or "") or PRODUCT_SESSION_NAME
+        refused = [
+            dict(t) for t in tabs
+            if str(t.get("tab_id") or "") in wanted
+            and str(t.get("owner") or "") != "agent"
+        ]
+        to_close = [t for t in tabs
+                    if str(t.get("tab_id") or "") in wanted
+                    and str(t.get("owner") or "") == "agent"]
+        closer = getattr(self._backend, "close_tab", None) \
+            if self._backend is not None else None
+        closed, close_failed = [], []
+        for tab in to_close:
             tid = str(tab.get("tab_id") or "")
-            if tid not in tab_ids:
-                kept.append(tab)
+            if closer is None:
+                close_failed.append({
+                    "tab_id": tid,
+                    "detail": ("no transport close in this session manager — the tab "
+                               "stays recorded and open"),
+                })
                 continue
-            if str(tab.get("owner") or "") != "agent":
-                refused.append(tab)          # a user tab is never ours to close
-                kept.append(tab)
-                continue
-            closed.append(tab)
+            result = closer(tab=tid, session=session_id) or {}
+            if result.get("ok"):
+                closed.append(tab)
+            else:
+                close_failed.append({
+                    "tab_id": tid,
+                    "detail": str(result.get("detail") or result.get("error")
+                                  or "the transport did not close the tab")[:300],
+                })
+        closed_ids = {str(t.get("tab_id") or "") for t in closed}
+        kept = [t for t in tabs if str(t.get("tab_id") or "") not in closed_ids]
         with self._guard:
             data = self._read()
             data["tabs"] = kept
             self._write(data)
         return {"closed": closed, "kept": kept, "refused_user_tabs": refused,
-                "closed_all": False}
+                "close_failed": close_failed, "closed_all": False}
+
+    def transport_truth(self, session_id: str = "") -> dict[str, Any]:
+        """The transport's REAL current tab inventory — only when reading it cannot
+        mutate anything (§6).
+
+        Measured (0.38.1): `tab list` on a dead session AUTO-LAUNCHES the browser, so
+        the transport is only asked when the liveness verdict says the session is
+        live; otherwise the recorded inventory is the honest fallback and ``source``
+        names which one backed the answer (m4 scrutiny round 1: a detach payload's
+        ``left_open`` must agree with what is really open, never with a stale count).
+        """
+        with self._guard:
+            sid = str(session_id or "") or str(self._read().get("session_id") or "")
+            recorded = [t for t in (self._read().get("tabs") or []) if isinstance(t, dict)]
+        verdict: bool | None = None
+        if sid:
+            verdict, _diagnosis = self._liveness_verdict(sid)
+        if verdict is not True or self._backend is None:
+            return {"live": verdict, "source": "recorded",
+                    "tab_ids": [str(t.get("tab_id") or "") for t in recorded],
+                    "tab_count": len(recorded)}
+        tabs_fn = getattr(self._backend, "tabs", None)
+        if tabs_fn is None:
+            return {"live": True, "source": "recorded",
+                    "tab_ids": [str(t.get("tab_id") or "") for t in recorded],
+                    "tab_count": len(recorded)}
+        result = tabs_fn(session=sid) or {}
+        ids = [str(t.get("tab_id") or t.get("tabId") or "") for t in (result.get("tabs") or [])]
+        ids = [i for i in ids if i]
+        return {"live": True, "source": "transport",
+                "tab_ids": ids, "tab_count": len(ids)}
 
     def mark_unconfirmed(self, reason: str) -> dict[str, Any]:
         """After an unknown outcome: reconcile, never blind-retry (§5, BR-09)."""

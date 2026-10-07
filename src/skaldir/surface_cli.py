@@ -458,12 +458,12 @@ def _cmd_sources_add(args: argparse.Namespace) -> int:
         # has to reach stdout regardless of which contract layer is installed
         payload = {"ok": False, "reason": str(exc), "source": source.to_dict(),
                    "paid_source_not_allowed": True}
-        report_envelope(payload, COMMAND_EVIDENCE.get("schedule.define", ()))
+        report_envelope(payload, COMMAND_EVIDENCE["sources.add"])
         dump(payload)
         return EXIT_BLOCKED
     _save_sources(path, store)
     payload = {"source": source.to_dict(), "tool": getattr(args, "tool", "")}
-    report_envelope(payload, COMMAND_EVIDENCE.get("schedule.define", ()))
+    report_envelope(payload, COMMAND_EVIDENCE["sources.add"])
     dump(payload)
     return EXIT_OK
 
@@ -486,7 +486,7 @@ def _cmd_sources_report(args: argparse.Namespace) -> int:
         "disclaimer": ("Online availability is not universal and is not claimed here. "
                        "Access rights, data availability and each provider's terms apply."),
     }
-    report_envelope(payload, COMMAND_EVIDENCE.get("schedule.define", ()))
+    report_envelope(payload, COMMAND_EVIDENCE["sources.report"])
     dump(payload)
     return EXIT_OK
 
@@ -544,7 +544,7 @@ def _cmd_schedule_lifecycle(args: argparse.Namespace) -> int:
     except KeyError as exc:
         return blocked(str(exc), reason="not_found")
     payload = {"action": action, "result": result}
-    report_envelope(payload, COMMAND_EVIDENCE.get("schedule.define", ()))
+    report_envelope(payload, COMMAND_EVIDENCE[f"schedule.{action}"])
     dump(payload)
     return EXIT_OK
 
@@ -553,7 +553,7 @@ def _cmd_schedule_list(args: argparse.Namespace) -> int:
     store = _sched_store(args)
     payload = {"schedules": [s.to_dict() for s in store.all()],
                "executions": [c.to_dict() for c in store.executions()]}
-    report_envelope(payload, COMMAND_EVIDENCE.get("schedule.define", ()))
+    report_envelope(payload, COMMAND_EVIDENCE["schedule.list"])
     dump(payload)
     return EXIT_OK
 
@@ -608,7 +608,7 @@ def _cmd_schedule_due(args: argparse.Namespace) -> int:
         "blocked_by_overlap": [s.schedule_id for s in store.all()
                                if s.active and s.serialize and store.is_running(s.schedule_id)],
     }
-    report_envelope(payload, COMMAND_EVIDENCE.get("schedule.define", ()))
+    report_envelope(payload, COMMAND_EVIDENCE["schedule.due"])
     dump(payload)
     return EXIT_OK
 
@@ -700,7 +700,7 @@ def _desk_payload(store: DL.DesktopLeaseStore) -> dict[str, Any]:
 def _browser_sessions(args: argparse.Namespace) -> BL.SessionManager:
     """The ONE browser session manager (§6) — the same lifecycle the agent path uses.
 
-    The backend is attached here too, so `skaldir desk browser ensure` is the real entry
+    The backend is attached here too, so `skaldir browser ensure` is the real entry
     point that may start a browser (refused by name when agent-browser is absent) and
     `browser.discover` reads the same session file the agent path writes. The state dir is
     the shared resolution in ``browser_layer.session_state_dir``: explicit ``--runtime``
@@ -772,19 +772,41 @@ def _cmd_browser_tabs(args: argparse.Namespace) -> int:
 
 def _cmd_browser_detach(args: argparse.Namespace) -> int:
     sessions = _browser_sessions(args)
-    inventory = sessions.discover()
-    report = sessions.close_agent_tabs([str(t) for t in (getattr(args, "tab", []) or [])])
+    requested = [str(t) for t in (getattr(args, "tab", []) or [])]
+    report = sessions.close_agent_tabs(requested)
+    truth = sessions.transport_truth()
+    post = sessions.discover()
+    closed_ids = [t["tab_id"] for t in report["closed"]]
+    closed_set = set(closed_ids)
+    failed = [
+        {"tab_id": str(t.get("tab_id") or ""), "detail": str(t.get("detail") or "")}
+        for t in report["close_failed"]
+    ]
+    failed_ids = {item["tab_id"] for item in failed}
+    refused = [t["tab_id"] for t in report["refused_user_tabs"]]
+    # a requested id that is not agent-recorded is not ours to close — name it as
+    # refused instead of silently ignoring it (m4 honesty fix)
+    for tid in requested:
+        if tid in closed_set or tid in failed_ids or tid in refused:
+            continue
+        if tid not in truth["tab_ids"]:
+            continue   # not open at the transport either: nothing to refuse
+        refused.append(tid)
+    user_ids = {t["tab_id"] for t in post.get("user_tabs", [])}
     payload = {
         "detached": True,
         "foreign_browsers_closed": False,
-        "closed_agent_tabs": [t["tab_id"] for t in report["closed"]],
-        "refused_user_tabs": [t["tab_id"] for t in report["refused_user_tabs"]],
-        "left_open": inventory.get("tab_count", 0),
+        "closed_agent_tabs": closed_ids,
+        "close_failed": failed,
+        "refused_user_tabs": refused,
+        "left_open": truth["tab_count"],
+        "inventory_source": truth["source"],
+        "user_tabs_left_open": [i for i in truth["tab_ids"] if i in user_ids],
         "rule": "a foreign browser is never closed by a detach (BR-13)",
     }
     report_envelope(payload, COMMAND_EVIDENCE["browser.detach"])
     dump(payload)
-    return EXIT_OK
+    return EXIT_BLOCKED if failed else EXIT_OK
 
 
 def _cmd_desk_indicator(args: argparse.Namespace) -> int:

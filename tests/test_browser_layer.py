@@ -19,6 +19,7 @@ import pytest
 
 from skaldir.browser_layer import (
     OPERATIONS,
+    PRODUCT_SESSION_NAME,
     AgentBrowserBackend,
     BackendKind,
     BrowserBackend,
@@ -41,10 +42,19 @@ class FakeBackend(BrowserBackend):
     def __init__(self, *, ok: bool = True) -> None:
         self.launches = 0
         self.ok = ok
+        self.close_calls: list[dict[str, str]] = []
+        self.close_ok = True
 
     def probe(self) -> BrowserCapability:
         return BrowserCapability(self.kind, available=True, version="test",
                                  supports=OPERATIONS)
+
+    def close_tab(self, *, tab: str = "", session: str = "") -> dict:
+        """Counted transport close — lets the test see whether close_agent_tabs
+        really drives the transport instead of only editing the recorded inventory."""
+        self.close_calls.append({"tab": tab, "session": session})
+        return {"ok": self.close_ok, "backend": self.kind.value,
+                "detail": "" if self.close_ok else "stub close refused"}
 
     def launch(self, *, task: str = "", run_id: str = "", session: str = "") -> dict:
         self.launches += 1
@@ -143,6 +153,41 @@ def test_closing_agent_tabs_leaves_user_tabs_alone(manager):
     assert [t["tab_id"] for t in report["closed"]] == ["t-agent"]
     assert [t["tab_id"] for t in report["refused_user_tabs"]] == ["t-user"]
     assert report["closed_all"] is False
+
+
+def test_close_agent_tabs_really_closes_through_the_transport(manager):
+    """m4 scrutiny round 1 (honesty defect): the close must go THROUGH the transport.
+
+    Measured defect: the old close_agent_tabs removed agent-owned ids from the recorded
+    inventory and reported them under `closed`, but never called
+    AgentBrowserBackend.close_tab (no call site at all) — `skaldir browser detach --tab
+    <id>` reported closure while the browser tab stayed open. The report is only true
+    when the transport saw the close.
+    """
+    manager.record_tabs([
+        TabInfo("t-agent", url="about:blank", owner="agent", run_id="run-1"),
+    ])
+    report = manager.close_agent_tabs(["t-agent"])
+    assert manager._backend.close_calls == [
+        {"tab": "t-agent", "session": PRODUCT_SESSION_NAME}
+    ], "the transport must see the close, not just the state file"
+    assert [t["tab_id"] for t in report["closed"]] == ["t-agent"]
+    assert report["close_failed"] == []
+    assert manager.discover()["tab_count"] == 0
+
+
+def test_a_failed_transport_close_keeps_the_tab_recorded_and_open(manager):
+    """A transport that cannot close must NOT be reported as closed — the recorded
+    inventory keeps the tab, the report names the failure."""
+    manager.record_tabs([
+        TabInfo("t-agent", url="about:blank", owner="agent", run_id="run-1"),
+    ])
+    manager._backend.close_ok = False
+    report = manager.close_agent_tabs(["t-agent"])
+    assert report["closed"] == [], "a failed transport close must not be reported closed"
+    assert [t["tab_id"] for t in report["close_failed"]] == ["t-agent"]
+    assert report["close_failed"][0]["detail"], "the failure is named, not swallowed"
+    assert manager.discover()["tab_count"] == 1, "the tab stays recorded and open"
 
 
 def test_close_agent_tabs_never_offers_close_all(manager):

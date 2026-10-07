@@ -25,7 +25,7 @@ uv run skaldir browser discover   → exit 0
 
 Ein nacktes `ready`, das logisch falsch war — exakt der gemeldete Defekt.
 
-## 2. Gemessene Liveness-Signale (0.38.1, live, `step02/step03`)
+## 2. Gemessene Liveness-Signale (0.38.1, live, `step03/step04`)
 
 Experimente mit dem projektlokalen Binary (`node_modules/.bin/agent-browser` 0.38.1):
 
@@ -41,7 +41,9 @@ Liveness-Signal — unmittelbar nach Close UND nach Out-of-Band-Kill korrekt, w�
 `active`/`session list` kurz stale bleiben können. Und: jeder Transport-Aufruf
 (`tab list`, `open`, `read`) trägt `data.lifecycle.launched:true` GENAU dann, wenn er
 den Browser selbst neu gestartet hat; bei laufendem Browser `launched:false,
-reused:true`. Roh-Envelopes in `step02/step03`.
+reused:true`. Roh-Envelopes in `step03/step04` (Pointer am 2026-10-07 korrigiert:
+der genannte `step02` existiert nicht und hat offenbar nie überlebt — siehe Nachtrag
+unten).
 
 ## 3. Der Fix (Commit 5f25ab5)
 

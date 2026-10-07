@@ -60,9 +60,12 @@ class _CountingBackend:
         self.read_calls: list[dict[str, str]] = []
         self.act_calls: list[dict[str, Any]] = []
         self.tab_list_calls = 0
+        self.close_calls: list[dict[str, str]] = []
+        self._tab_list: list[dict[str, Any]] = []
         self._ok = ok
         self._alive = alive
         self._content = content
+        self._close_ok = True
 
     def probe(self) -> BrowserCapability:
         return BrowserCapability(self.kind, available=True, version="stub-0.38.1",
@@ -79,7 +82,13 @@ class _CountingBackend:
 
     def tabs(self, *, session: str = "") -> dict[str, Any]:
         self.tab_list_calls += 1
-        return {"ok": True, "backend": self.kind.value, "tabs": [], "detail": ""}
+        return {"ok": True, "backend": self.kind.value, "tabs": list(self._tab_list),
+                "detail": ""}
+    def close_tab(self, *, tab: str = "", session: str = "") -> dict[str, Any]:
+        """Counted transport close — the close must reach the transport (m4 honesty)."""
+        self.close_calls.append({"tab": tab, "session": session})
+        return {"ok": self._close_ok, "backend": self.kind.value,
+                "detail": "" if self._close_ok else "stub close refused"}
 
     def read(self, *, url: str = "", session: str = "") -> dict[str, Any]:
         self.read_calls.append({"url": url, "session": session})
@@ -257,6 +266,77 @@ def test_a_user_tab_is_refused_not_closed(isolated_home):
     assert report["refused_user_tabs"], report
     assert report["closed"] == []
     assert manager.discover()["tab_count"] == 1, "the user's tab survived"
+
+
+def test_cli_detach_payload_agrees_with_the_post_close_inventory(
+    isolated_home, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+):
+    """m4 scrutiny round 1: `skaldir browser detach --tab <id>` payload honesty.
+
+    closed_agent_tabs and left_open must describe the state AFTER the transport closed
+    the tab — the old payload took left_open from the PRE-close inventory (2), which
+    overcounted what stayed open and, together with the missing transport call, reported
+    closure the browser never saw.
+    """
+    import argparse
+    import json
+
+    import skaldir.browser_layer as bl
+    from skaldir import surface_cli
+
+    backend = _CountingBackend()
+    monkeypatch.setattr(bl, "AgentBrowserBackend", lambda *a, **kw: backend)
+    manager = bl.SessionManager(session_state_dir(), backend=backend)
+    manager.ensure(task="t", run_id="r1")
+    manager.record_tabs([
+        bl.TabInfo(tab_id="t-agent", url="https://example.invalid/agent",
+                   owner="agent", run_id="r1"),
+        bl.TabInfo(tab_id="t-user", url="https://example.invalid/user", owner="user"),
+    ])
+    args = argparse.Namespace(runtime="", tab=["t-agent"])
+    # the transport's REAL post-close state: only the user's tab survives there
+    backend._tab_list = [{"tabId": "t-user", "url": "https://example.invalid/user"}]
+    rc = surface_cli._cmd_browser_detach(args)
+    out = capsys.readouterr().out
+    payload = json.loads(out[out.index("{"):])  # skip the evidence line before the JSON
+    assert rc == surface_cli.EXIT_OK
+    assert backend.close_calls == [{"tab": "t-agent", "session": PRODUCT_SESSION_NAME}]
+    assert payload["closed_agent_tabs"] == ["t-agent"]
+    assert payload["inventory_source"] == "transport"
+    assert payload["left_open"] == 1, (
+        "left_open must agree with the transport's real post-close inventory", payload)
+    assert payload["user_tabs_left_open"] == ["t-user"]
+    inventory = bl.SessionManager(session_state_dir(), backend=backend).discover()
+    assert inventory["tab_count"] == 1
+    assert [t["tab_id"] for t in inventory["user_tabs"]] == ["t-user"]
+
+
+def test_cli_detach_names_an_unrecorded_requested_tab_as_refused(
+    isolated_home, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+):
+    """A requested id the agent never recorded is not ours to close — it is refused
+    by name (and stays open), never silently ignored (m4 honesty fix, live-measured
+    with a foreign agent-browser tab)."""
+    import argparse
+    import json
+
+    import skaldir.browser_layer as bl
+    from skaldir import surface_cli
+
+    backend = _CountingBackend()
+    monkeypatch.setattr(bl, "AgentBrowserBackend", lambda *a, **kw: backend)
+    manager = bl.SessionManager(session_state_dir(), backend=backend)
+    manager.ensure(task="t", run_id="r1")
+    args = argparse.Namespace(runtime="", tab=["t-foreign"])
+    backend._tab_list = [{"tabId": "t-foreign", "url": "https://example.invalid/x"}]
+    rc = surface_cli._cmd_browser_detach(args)
+    out = capsys.readouterr().out
+    payload = json.loads(out[out.index("{"):])
+    assert rc == surface_cli.EXIT_OK
+    assert backend.close_calls == [], "a foreign tab is never sent to the transport"
+    assert payload["closed_agent_tabs"] == []
+    assert payload["refused_user_tabs"] == ["t-foreign"]
+    assert payload["left_open"] == 1
 
 
 def test_detach_reports_what_stayed_open(isolated_home):
