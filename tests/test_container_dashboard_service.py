@@ -15,6 +15,7 @@ Pinned here:
 * a service spec with an empty argv is refused (nothing invented).
 """
 
+import json
 from pathlib import Path
 
 import pytest
@@ -180,7 +181,7 @@ class TestTheDeclaredServiceSpec:
 
 class TestTheWarmDashboardContainer:
     def test_the_warm_container_publishes_the_declared_port(self, runtime, manager):
-        """ONE warm container, started with the declared network + port binding."""
+        """ONE warm container, started through the sanctioned port-publication route."""
         builder = ContainerToolBuilder(runtime, manager=manager)
         _mined(builder, manager)
         builder.register_container_tool("market_research_snapshot")
@@ -195,10 +196,39 @@ class TestTheWarmDashboardContainer:
         assert record["argv"] == [
             "python3", "/srv/service.py", "serve", "--port", "8080",
         ]
-        assert record["network"] == "bridge"
+        # the sanctioned route (RunConfig.validate): ports are declared and the
+        # network is left at none so the config layer PROMOTES it to bridge —
+        # an explicit network next to -p is refused (policy)
+        assert record["network"] == "none"
         # the config layer's declared shape: keys are the CONTAINER ports (int)
         assert record["ports"] == {8080: 3400}
         assert record["image_digest"].startswith("sha256:")
+        # and the same config DOES promote to bridge with published ports
+        # (the real start path runs validate() before docker_argv)
+        config = toolbuilder._run_config(
+            image=record["image"], image_digest=record["image_digest"],
+            argv=record["argv"], port_bindings=record["ports"], network="none",
+        )
+        assert config.validate() == []
+        assert config.network == "bridge"
+
+    def test_a_serving_service_on_a_foreign_network_is_refused(self, runtime, manager):
+        """Ports under a non-bridge network (e.g. host) are refused before the run."""
+        builder = ContainerToolBuilder(runtime, manager=manager)
+        _mined(builder, manager)
+        # forge the declaration the way an adapter would carry it
+        adapter_path = runtime / "generated_tools" / "market_research_snapshot" / "adapter.json"
+        adapter = json.loads(adapter_path.read_text(encoding="utf-8"))
+        adapter["service"]["network"] = "host"
+        adapter_path.write_text(json.dumps(adapter), encoding="utf-8")
+
+        started = ensure_container_started(
+            runtime, "market_research_snapshot", manager=manager
+        )
+
+        assert started["started"] is False
+        assert "host" in started["reason"]
+        assert manager.starts == []
 
     def test_an_undeclared_service_stays_network_none(self, runtime):
         """The keepalive default is unchanged: warm, isolated, no ports."""

@@ -4682,6 +4682,30 @@ def ensure_container_started(
             # ids from the LABEL-filtered listing: a stale leftover of ours is
             # cleaned before a new one is started, so the name cannot collide
             runtime_manager.stop_and_remove(cid)
+    # a serving service (the dashboard of a mined research tool) declares its
+    # published ports in the adapter's service spec. RunConfig.validate is the
+    # one gate for port publication: an EXPLICITLY declared network next to
+    # ports is refused — the sanctioned route declares the ports and lets the
+    # config layer promote the network (none → bridge, because docker drops
+    # `-p` under `--network none`, measured live on Server 29.6.1). A foreign
+    # network (host, container:…) with ports is refused here, before the run.
+    ports = {str(c): int(h) for c, h in dict(service.get("ports") or {}).items()}
+    declared_network = str(service.get("network") or "").strip()
+    if ports:
+        if declared_network not in ("", "none", "bridge"):
+            return {
+                "capability": str(name), "started": False, "startable": True,
+                "reused": False,
+                "reason": (
+                    f"the service declares network {declared_network!r} together "
+                    "with published ports — only the config layer's promotion "
+                    "(none → bridge) may publish a port"
+                ),
+                "failure_class": "policy_violation", "hook": "ensure_ready",
+            }
+        network = "none"
+    else:
+        network = declared_network or "none"
     config = _run_config(
         image=adapter.get("image", ""), image_digest=str(adapter.get("image_digest") or ""),
         argv=list(service["argv"]),
@@ -4689,13 +4713,8 @@ def ensure_container_started(
         labels={PURPOSE_LABEL: purpose, CAPABILITY_LABEL: str(name)},
         readonly_rootfs=bool((adapter.get("permissions") or {}).get("read_only_rootfs", True)),
         resource_limits=dict((adapter.get("permissions") or {}).get("resource_limits") or {}),
-        # a serving service (the dashboard of a mined research tool) declares
-        # its network and published ports in the adapter's service spec — the
-        # ONLY way a warm container reaches its localhost port
-        network=str(service.get("network") or "none"),
-        port_bindings={
-            str(c): int(h) for c, h in dict(service.get("ports") or {}).items()
-        },
+        network=network,
+        port_bindings=ports,
         # a warm container of an adapter that had to clear the image ENTRYPOINT
         # must clear it too, or the service argv would be handed to the tool
         entrypoint=adapter.get("entrypoint"),
@@ -4722,6 +4741,7 @@ def ensure_container_started(
     return {
         "capability": str(name), "started": True, "startable": True, "reused": False,
         "cid": started.cid, "cid_file": str(paths["cid_file"]),
+        "published_ports": {str(c): int(h) for c, h in ports.items()},
         "reason": f"started one warm container for '{name}' (by label, teardown by label)",
         "hook": "ensure_ready",
     }
