@@ -107,3 +107,51 @@ Alle Envelopes roh in `logs/browser-liveness/step03…step07` (echte Exitcodes,
   `agent-browser session list` → `{"sessions":[]}` (19:20).
 - Real-State-Datei am Ende: `state=unknown, live=false` — ehrlich (kein Browser lebt),
   kein nacktes ready mehr.
+
+## Nachtrag (2026-10-07): Inventar-Ehrlichkeit nach einem beobachteten Relaunch
+
+Feature: `browser-inventory-honesty-after-relaunch` (m4-web). Status:
+**abgeschlossen (2026-10-07, diese Worker-Session)** — alle Belege unten gemessen.
+
+- Gemeldeter Restdefekt (Suggestion aus der vorigen Runde, bewusst an den Orchestrator
+  übergeben): nach `record_observed_relaunch` behielt die State-Datei die Tabs des
+  VORHERIGEN Browser-Prozesses; `skaldir browser tabs`
+  (BrowserLayer.tabs → `sessions._read()['tabs']`) meldete Phantoms.
+- failing-first: `logs/browser-inventory/prefix-failing-first.txt` (4 neue Tests rot
+  gegen den Defekt; gemessen exit 1).
+- Fix-Commit: `9c7ee8b` — `record_observed_relaunch` leert das Inventar und vermerkt
+  `superseded_tabs`/`superseded_tab_ids` in `last_relaunch_observed`; Ownership bleibt
+  unverändert (nur agent-recorded Tabs closable, kein `close --all`).
+- Orchestrator-Erweiterung (2026-10-07, live zweimal gemessen): der Post-Act-Inventar-
+  Refresh übersprang bekannte Tab-Ids — recorded url/title froren nach In-Tab-Navigation
+  ein. failing-first: `logs/browser-inventory/prefix-failing-first-upsert.txt` (2 neue
+  Tests rot, exit 1). Fix-Commit: `dbc35d9` — `SessionManager.refresh_tab_metadata()`
+  (url/title Upsert OHNE Ownership-Änderung; User-Tab bleibt owner=user und wird am
+  Close weiter verweigert; unbekannte Id ändert nichts) + der Handler upsertet bekannte
+  Ids statt sie zu überspringen.
+- Live-Nachweis (gemessen, 2026-10-07): `tools/browser_inventory_honesty_proof.py`
+  gegen die echte agent-browser 0.38.1-Transport mit isoliertem
+  `SKALDIR_HOME=/tmp/skaldir-browser-inventory/home-after2` — exit 0, ALLE 21 Checks
+  PASS (roh: `logs/browser-inventory/after-proof.json`): In-Tab-Navigation upsertet die
+  recorded url (t1: proof-before → proof-navigated), `browser tabs` (CLI, liest das
+  recorded Inventory direkt) zeigt die ERFRISCHTE url, nach Out-of-Band-Close +
+  beobachtetem Relaunch keine Phantoms, tab_count in discover stimmt mit dem Transport,
+  Repopulation nach dem Relaunch agent-owned, VAL-WEB-003 live (10 concurrent
+  `browser ensure` → alle `reused`, kein Extra-Start), `browser detach` schließt nichts.
+  Session im finally geschlossen; `agent-browser session list` → `{"sessions":[]}`.
+- Vorher-Envelopes (Defekt-Stand): `logs/browser-inventory/step01…step13*`
+  (before_proof.py, Session der ersten Messung).
+- Tests: Browser-Area 91 passed
+  (`logs/browser-inventory/browser-area-green.txt`), Full-Suite `uv run python
+  -m pytest tests/ -q` exit 0, 0 FAILED/ERROR-Marker
+  (`logs/browser-inventory/full-suite.txt`), `uv run ruff check src tests` exit 0
+  (`logs/browser-inventory/ruff-src-tests.txt`).
+- Launcher-Refresh (gemessen, letzte Aktion): Repo-Eintrag zuerst bewiesen
+  (`.venv/bin/skaldir --version` → 1.5.0; die Proof-CLI-Subprozesse liefen über
+  `.venv/bin/skaldir`), Backup des alten Snapshots unter
+  `/home/willy/backups/skaldir-launcher/skaldir-agent-pre-m4c-20261007-141118/`,
+  `uv tool install --force /home/willy/Agentic_Projects/Skaldir_Agent` → exit 0,
+  Gegenprobe über den installierten Launcher: `skaldir browser discover --json` →
+  exit 0, ehrlicher Envelope (`state=unknown, live=null`, tab_count 0; State-Datei
+  des Default-Homes ist nach der Abnahme ehrlich unknown). Bewiesener Eintrag:
+  der NEU INSTALLIERTE uv-Tool-Launcher `~/.local/bin/skaldir`.
