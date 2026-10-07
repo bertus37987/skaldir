@@ -437,10 +437,23 @@ def build_index(entries: Sequence[Mapping[str, Any]]) -> list[CapabilityEntry]:
 def metadata_index(
     runtime: str | Path, *, include_legacy: bool = True
 ) -> list[CapabilityEntry]:
-    """The contract index of one runtime (manifest + spec facts, read-only)."""
+    """The contract index of one runtime (manifest + spec facts, read-only).
+
+    The GUI sub-tools of the same runtime home (``act_subtools/*.json`` plus the
+    stored built-ins) are indexed next to the registry tools — SKILL-03: a GUI
+    flow saved as a sub-tool is discovered by the same search the model already
+    uses. An unreadable sub-tool store contributes nothing (read-only, never fatal).
+    """
     from .capability_mining import capability_metadata
 
-    return build_index(capability_metadata(runtime, include_legacy=include_legacy))
+    entries = build_index(capability_metadata(runtime, include_legacy=include_legacy))
+    try:
+        from .act_service import subtool_metadata
+
+        entries.extend(build_index(subtool_metadata(state=runtime)))
+    except Exception:  # noqa: BLE001 — the sub-tool surface is additive
+        pass
+    return entries
 
 
 # --------------------------------------------------------------------------- #
@@ -1023,6 +1036,12 @@ def _searched_surfaces(runtime: str | Path | None) -> list[str]:
     if runtime is not None:
         surfaces.append("health_ledger")
         surfaces.append("registry_revision")
+        try:
+            from .act_service import subtool_dir
+        except Exception:  # noqa: BLE001 — surface naming stays non-fatal
+            subtool_dir = None  # type: ignore[assignment]
+        if subtool_dir is not None and Path(runtime).is_dir():
+            surfaces.append("act_subtools")
     return surfaces
 
 
@@ -1064,6 +1083,8 @@ def _public_row(row: dict, *, executable: bool) -> dict:
            if isinstance(meta.get("input_schema"), dict) else {}),
         **({"output_schema": meta["output_schema"]}
            if isinstance(meta.get("output_schema"), dict) else {}),
+        **({"call": str(meta["call"])}
+           if str(meta.get("call") or "").strip() else {}),
     }
 
 

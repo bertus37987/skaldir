@@ -309,12 +309,15 @@ def contract_entries() -> dict[str, Any]:
                     "runner": {"type": "object"},
                     "missing_capability": {"type": "string"},
                     "missing_anchors": {"type": "array"},
+                    "params_used": {"type": "array"},
                 },
                 "required": ["subtool", "status", "verified", "reason"],
             },
             notes="exit 3 when a declared check has no channel on this host (the missing "
             "capability is named); exit 2 when the channel works but the anchor is not "
-            "observed — nothing is executed then; `--runner live-desktop` needs the "
+            "observed — nothing is executed then; `--params` takes the record's declared "
+            "parameters as a JSON object and is refused before acting when a name or type "
+            "does not match the record; `--runner live-desktop` needs the "
             "opt-in (`act live-setup --target <window> --write` or "
             "`--allow-live-desktop --live-target <window>`)",
         ),
@@ -895,8 +898,30 @@ def cmd_subtool_learn(args: argparse.Namespace) -> int:
     )
 
 
+def _params_object(raw: str) -> tuple[dict | None, str]:
+    """Parse ``--params`` JSON. ``None``/reason on anything that is not an object."""
+    text = str(raw or "").strip()
+    if not text:
+        return {}, ""
+    try:
+        params = json.loads(text)
+    except (json.JSONDecodeError, ValueError) as exc:
+        return None, f"--params is not valid JSON: {exc}"
+    if not isinstance(params, dict):
+        return None, f"--params must be a JSON object, got {type(params).__name__}"
+    return params, ""
+
+
 def cmd_subtool_run(args: argparse.Namespace) -> int:
     """`act subtool run NAME` — observe, check preconditions/anchors, act, check end state."""
+    params, params_problem = _params_object(getattr(args, "params", "") or "")
+    if params is None:
+        return _fail(
+            {"command": "act.subtool.run", "subtool": args.name},
+            EXIT_USAGE,
+            params_problem,
+            hint="pass the record's declared parameters as a JSON object",
+        )
     record = S.run_subtool(
         args.name,
         state=getattr(args, "state", "") or None,
@@ -906,6 +931,7 @@ def cmd_subtool_run(args: argparse.Namespace) -> int:
         locale=str(getattr(args, "locale", "") or "en"),
         runtime=getattr(args, "state", "") or None,
         timeout=float(getattr(args, "timeout", 90.0) or 90.0),
+        params=params or None,
         allow_live_desktop=bool(getattr(args, "allow_live_desktop", False)),
         live_target=str(getattr(args, "live_target", "") or ""),
     )
@@ -1127,6 +1153,15 @@ def _add_act_verbs(sub: Any) -> Any:
             "dry-run",
         ],
         help="which bridge to run on (auto = strongest real one; never the fixture)",
+    )
+    p_subrun.add_argument(
+        "--params",
+        default="",
+        dest="params",
+        help=(
+            "JSON object with the sub-tool's declared parameters "
+            "(refused before acting when a name/type does not match the record)"
+        ),
     )
     p_subrun.add_argument("--workdir", default="", help="working directory of the sandbox runner")
     p_subrun.add_argument(

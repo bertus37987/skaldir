@@ -2126,6 +2126,26 @@ SUBTOOL_KEYS: tuple[str, ...] = (
     "verification_contract",
 )
 
+#: Optional record fields (VAL-TOOL-002). A reusable GUI sub-tool carries what a
+#: caller needs to CALL it: parameters (typed, with the slot each one fills), the
+#: output schema its result honours, a timeout, the evidence it was derived from,
+#: and the target resources it acts on. All optional — the stored built-ins keep
+#: their exact declared shape without them.
+SUBTOOL_OPTIONAL_KEYS: tuple[str, ...] = (
+    "parameters",
+    "output_schema",
+    "timeout",
+    "evidence",
+    "target",
+)
+
+#: The JSON types a declared parameter may name. A call form that cannot be
+#: type-checked is refused, never guessed (measured m3: a schema the handler
+#: does not match ships a broken tool).
+PARAMETER_TYPES: tuple[str, ...] = ("string", "path", "number", "integer", "boolean")
+
+_PLACEHOLDER_RE = re.compile(r"\{\{([A-Za-z_][A-Za-z0-9_]*)\}\}")
+
 #: Where an anchor/precondition is read from. ``window_title`` is observable today;
 #: ``host`` reads a named host fact; ``app_state`` reads the app's own state through
 #: :func:`read_app_state` (declared probe → state file → window metadata).
@@ -2476,6 +2496,200 @@ def _safe_name(name: str) -> str:
     return text
 
 
+def _parameter_type_ok(declared: str, value: Any) -> bool:
+    """Does one call value match the parameter type the record declared?"""
+    if declared == "boolean":
+        return isinstance(value, bool)
+    if declared == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if declared == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    return isinstance(value, str)
+
+
+def _declared_parameters(spec: Mapping) -> dict:
+    parameters = spec.get("parameters")
+    return parameters if isinstance(parameters, Mapping) else {}
+
+
+def _walk_strings(value: Any):
+    """Yield every string inside declarations/anchors/actions/end_state."""
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, Mapping):
+        for item in value.values():
+            yield from _walk_strings(item)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            yield from _walk_strings(item)
+
+
+def _apply_parameters(spec: Mapping, params: Mapping) -> dict:
+    """Return a copy with every ``{{name}}`` placeholder replaced by its value.
+
+    Only the four run-bearing sections are substituted (actions, preconditions,
+    anchors, end_state) — the declaration itself, the evidence and the output
+    schema are documentation, not behaviour.
+    """
+    def substitute(value: Any) -> Any:
+        if isinstance(value, str):
+            def _replacement(match: re.Match[str]) -> str:
+                return str(params[match.group(1)])
+
+            return _PLACEHOLDER_RE.sub(_replacement, value)
+        if isinstance(value, Mapping):
+            return {key: substitute(item) for key, item in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [substitute(item) for item in value]
+        return value
+
+    out = dict(spec)
+    for key in ("actions", "preconditions", "anchors", "end_state", "description"):
+        if key in spec:
+            out[key] = substitute(spec[key])
+    return out
+
+
+def parameter_errors(spec: Mapping, params: Mapping | None) -> list[str]:
+    """Why this call's parameters cannot run (empty list ⇒ the call may proceed).
+
+    A declared parameter is honoured: unknown names refused, a required one
+    missing refused, a wrong-typed one refused, a default filled in. The
+    refusal happens BEFORE the first action — a call the record never declared
+    is a usage error, never a partial run.
+    """
+    problems: list[str] = []
+    parameters = _declared_parameters(spec)
+    params = dict(params or {})
+    declared_required: list[str] = []
+    for name, declaration in parameters.items():
+        if not isinstance(declaration, Mapping):
+            continue
+        if bool(declaration.get("required")) and name not in params:
+            default = declaration.get("default")
+            if default is None or isinstance(default, (Mapping, list)):
+                declared_required.append(str(name))
+            else:
+                params[str(name)] = default
+    for name in declared_required:
+        problems.append(
+            f"missing required parameter '{name}' (declared in 'parameters': "
+            f"{', '.join(parameters) or '(none)'})"
+        )
+    for name in params:
+        if name not in parameters:
+            problems.append(
+                f"unknown parameter {name!r} — declared: "
+                f"{', '.join(parameters) or '(none)'}"
+            )
+    for name, value in params.items():
+        declaration = parameters.get(name)
+        if not isinstance(declaration, Mapping):
+            continue
+        declared = str(declaration.get("type", "string"))
+        if not _parameter_type_ok(declared, value):
+            problems.append(
+                f"parameter '{name}': type mismatch — must be a {declared}, "
+                f"got {type(value).__name__}"
+            )
+    return problems
+
+
+def _declaration_problems(spec: Mapping) -> list[str]:
+    """Validation for the optional record fields + the placeholder/call contract."""
+    problems: list[str] = []
+    parameters = spec.get("parameters")
+    declared: dict[str, Mapping] = {}
+    if parameters is not None:
+        if not isinstance(parameters, Mapping) or not parameters:
+            problems.append("'parameters' must be a non-empty object when present")
+        else:
+            for name, declaration in parameters.items():
+                if not str(name or "").strip() or not re.fullmatch(
+                    r"[A-Za-z_][A-Za-z0-9_]*", str(name)
+                ):
+                    problems.append(f"parameters[{name!r}]: the name must be a plain identifier")
+                    continue
+                declared[str(name)] = declaration if isinstance(declaration, Mapping) else {}
+                if not isinstance(declaration, Mapping):
+                    problems.append(f"parameters[{name}]: must be an object")
+                    continue
+                kind = str(declaration.get("type", "") or "").strip()
+                if kind not in PARAMETER_TYPES:
+                    problems.append(
+                        f"parameters[{name}]: 'type' must be one of "
+                        f"{', '.join(PARAMETER_TYPES)} (got {kind or '(none)'})"
+                    )
+                    continue
+                default = declaration.get("default")
+                if default is not None and not _parameter_type_ok(kind, default):
+                    problems.append(
+                        f"parameters[{name}]: 'default' must match the declared type {kind}"
+                    )
+                for field in ("required", "optional"):
+                    if field in declaration and not isinstance(declaration[field], bool):
+                        problems.append(f"parameters[{name}]: '{field}' must be a boolean")
+                description = declaration.get("description")
+                if description is not None and not isinstance(description, str):
+                    problems.append(f"parameters[{name}]: 'description' must be a string")
+                arg_ref = declaration.get("arg_ref")
+                if arg_ref is not None and not str(arg_ref).strip():
+                    problems.append(f"parameters[{name}]: 'arg_ref' must not be empty")
+
+    # the call contract: every {{placeholder}} in the run-bearing sections must
+    # name a declared parameter — otherwise the stored flow is not callable
+    parameter_names = set(declared)
+    for section in ("actions", "preconditions", "anchors", "end_state"):
+        if section not in spec:
+            continue
+        for text in _walk_strings(spec.get(section)):
+            for name in _PLACEHOLDER_RE.findall(text):
+                if name not in parameter_names:
+                    problems.append(
+                        f"placeholder '{{{{{name}}}}}' in {section} is not a declared "
+                        "parameter (add it to 'parameters' so the call form is valid)"
+                    )
+
+    output_schema = spec.get("output_schema")
+    if output_schema is not None:
+        if not isinstance(output_schema, Mapping):
+            problems.append("'output_schema' must be an object")
+        elif "type" in output_schema and str(output_schema["type"]) != "object":
+            problems.append(
+                f"'output_schema.type' must be \"object\" (the run record is an object), "
+                f"got {output_schema['type']!r}"
+            )
+
+    timeout = spec.get("timeout")
+    if timeout is not None and not (
+        isinstance(timeout, (int, float)) and not isinstance(timeout, bool) and timeout > 0
+    ):
+        problems.append("'timeout' must be a positive number of seconds")
+
+    evidence = spec.get("evidence")
+    if evidence is not None:
+        if not isinstance(evidence, list):
+            problems.append("'evidence' must be a list of {ref, kind, note} objects")
+        else:
+            for index, entry in enumerate(evidence):
+                if not isinstance(entry, Mapping):
+                    problems.append(
+                        f"evidence[{index}] must be an object with a non-empty 'ref' "
+                        "(never a bare string — the envelope evidence rule)"
+                    )
+                    continue
+                if not str(entry.get("ref", "") or "").strip():
+                    problems.append(f"evidence[{index}]: 'ref' must name the source")
+                for field in ("kind", "note"):
+                    if field in entry and not isinstance(entry[field], str):
+                        problems.append(f"evidence[{index}]: '{field}' must be a string")
+
+    target = spec.get("target")
+    if target is not None and not isinstance(target, Mapping):
+        problems.append("'target' must be an object (the resources this flow acts on)")
+    return problems
+
+
 def subtool_errors(spec: Any) -> list[str]:
     """Every reason this sub-tool declaration is unusable (empty list ⇒ it is valid)."""
     problems: list[str] = []
@@ -2564,11 +2778,123 @@ def subtool_errors(spec: Any) -> list[str]:
         )
     if not str(spec.get("verification_contract", "") or "").strip():
         problems.append("'verification_contract' must not be empty")
+    problems.extend(_declaration_problems(spec))
     return problems
 
 
-def subtool_summary(spec: Mapping, *, origin: str, path: str = "") -> dict:
+def subtool_metadata(state: str | Path | None = None) -> list[dict]:
+    """Discovery metadata for every GUI sub-tool (saved plus the built-ins).
+
+    The rows are contract-metadata shaped — the shape
+    :func:`skaldir.capability_mining.contract_metadata` produces — so
+    ``tool_search`` can rank them next to the registry tools (VAL-TOOL-002/
+    SKILL-03). ``input_schema`` is derived ONLY from a declared ``parameters``
+    block (never guessed); ``validation`` is ``validated`` only when the record
+    cites an actual verified run (``evidence[].kind == "verified_run"``) — a
+    trajectory alone is history, not proof of a passing call.
+    """
+    rows: list[dict] = []
+    for spec, path in _saved_specs(state):
+        rows.append(_subtool_discovery_row(spec, "saved", path))
+    for _name, spec in sorted(builtin_subtools().items()):
+        rows.append(_subtool_discovery_row(spec, "builtin", ""))
+    return rows
+
+
+def _saved_specs(state: str | Path | None) -> list[tuple[dict, str]]:
+    """The saved sub-tool declarations with their stored path."""
+    directory = subtool_dir(state)
+    found: list[tuple[dict, str]] = []
+    if not directory.is_dir():
+        return found
+    for path in sorted(directory.glob("*.json")):
+        try:
+            spec = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue  # unreadable JSON is already reported by list_subtools
+        if isinstance(spec, Mapping):
+            found.append((dict(spec), str(path)))
+    return found
+
+
+def _subtool_discovery_row(spec: Mapping, origin: str, path: str) -> dict:
+    name = str(spec.get("name", "") or "")
+    parameters = _declared_parameters(spec)
+    input_schema: dict | None = None
+    if parameters:
+        properties: dict[str, dict] = {}
+        required: list[str] = []
+        for p_name, declaration in parameters.items():
+            if not isinstance(declaration, Mapping):
+                continue
+            properties[str(p_name)] = {
+                "type": str(declaration.get("type", "string") or "string"),
+                "description": str(declaration.get("description", "") or "")[:200],
+            }
+            if bool(declaration.get("required")) and declaration.get("default") is None:
+                required.append(str(p_name))
+        input_schema = {
+            "type": "object",
+            "properties": properties,
+            "required": required,
+            "additionalProperties": False,
+        }
+    evidence = [item for item in _as_list(spec.get("evidence")) if isinstance(item, Mapping)]
+    verified_run = any(str(item.get("kind", "")) == "verified_run" for item in evidence)
+    description = str(spec.get("description", "") or "")
     return {
+        "name": name,
+        "version": str(spec.get("version", "") or ""),
+        "type": "subtool",
+        "surface": "act_subtools",
+        "status": origin,
+        "scope": "global",
+        "project_id": "",
+        "effect": description,
+        "tasks": [],
+        "synonyms": [],
+        "phrases_de": [],
+        "phrases_en": [],
+        "inputs": [
+            f"{p_name}:{str(declaration.get('type', 'string'))}"
+            for p_name, declaration in parameters.items()
+            if isinstance(declaration, Mapping)
+        ],
+        "outputs": [],
+        "preconditions": [
+            f"{entry.get('source', '')}:{entry.get('text', '')}"
+            for entry in _as_list(spec.get("preconditions"))
+            if isinstance(entry, Mapping)
+        ],
+        "non_use_cases": [],
+        "examples": [],
+        "platforms": [],
+        "requires_services": [],
+        "tags": ["subtool", "gui"],
+        "description": description,
+        "validation": "validated" if verified_run else "",
+        "sources": {
+            "effect": "subtool.description",
+            "name": "subtool.name",
+            "preconditions": "subtool.preconditions",
+            **({"input_schema": "subtool.parameters"} if input_schema else {}),
+            **({"output_schema": "subtool.output_schema"}
+               if isinstance(spec.get("output_schema"), Mapping) else {}),
+            **({"validation": "subtool.evidence"} if verified_run else {}),
+        },
+        **({"input_schema": input_schema} if input_schema else {}),
+        **({"output_schema": dict(spec["output_schema"])}
+           if isinstance(spec.get("output_schema"), Mapping) else {}),
+        "path": str(path or ""),
+        "call": (
+            f"skaldir act subtool run {name}"
+            + (" --params '<json object matching input_schema>'" if input_schema else "")
+        ),
+    }
+
+
+def subtool_summary(spec: Mapping, *, origin: str, path: str = "") -> dict:
+    summary = {
         "name": str(spec.get("name", "")),
         "version": str(spec.get("version", "")),
         "description": str(spec.get("description", "")),
@@ -2581,6 +2907,11 @@ def subtool_summary(spec: Mapping, *, origin: str, path: str = "") -> dict:
         "verification_contract": str(spec.get("verification_contract", "")),
         "applicability": dict(spec.get("applicability") or {}),
     }
+    # the optional record fields surface in summaries too (VAL-TOOL-002)
+    for key in SUBTOOL_OPTIONAL_KEYS:
+        if key in spec and spec[key] not in (None, [], {}):
+            summary[key] = spec[key] if isinstance(spec[key], Mapping) else spec[key]
+    return summary
 
 
 def list_subtools(state: str | Path | None = None) -> list[dict]:
@@ -2665,6 +2996,11 @@ def save_subtool(
     # optional app-state readers travel with the declaration (never invented, never dropped)
     for key in APP_STATE_KEYS:
         if key in spec and spec[key]:
+            payload[key] = spec[key]
+    # the optional record fields travel too: parameters, output schema, timeout,
+    # evidence, target resources (VAL-TOOL-002)
+    for key in SUBTOOL_OPTIONAL_KEYS:
+        if key in spec and spec[key] not in (None, [], {}):
             payload[key] = spec[key]
     path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=False) + "\n",
@@ -3052,11 +3388,19 @@ def run_subtool(
     locale: str = "en",
     runtime: str | Path | None = None,
     timeout: float = 90.0,
+    params: Mapping | None = None,
     write_record: bool = True,
     allow_live_desktop: bool = False,
     live_target: str = "",
 ) -> dict:
     """Run one stored sub-tool: observe → check preconditions/anchors → act → check end state.
+
+    ``params`` (VAL-TOOL-002): the record's declared parameters, supplied as a
+    JSON object. Every name must be declared, every required one present, and
+    every value of the declared type — the substitution into the stored
+    actions/anchors/end-state happens BEFORE the preconditions are read, so the
+    state checks see exactly the shape this call is going to produce. A refusal
+    here is ``usage`` and happens before the first action.
 
     Two refusals are distinguished on purpose: a check whose **channel** does not exist is
     ``blocked`` (exit 3, the missing capability is named), a check whose channel works but
@@ -3081,6 +3425,7 @@ def run_subtool(
             locale=locale,
             runtime=runtime,
             timeout=timeout,
+            params=params,
             write_record=write_record,
             allow_live_desktop=allow_live_desktop,
             live_target=live_target,
@@ -3105,6 +3450,7 @@ def _execute_subtool(
     locale: str = "en",
     runtime: str | Path | None = None,
     timeout: float = 90.0,
+    params: Mapping | None = None,
     write_record: bool = True,
     allow_live_desktop: bool = False,
     live_target: str = "",
@@ -3113,7 +3459,13 @@ def _execute_subtool(
     """The sub-tool run itself; use :func:`run_subtool`, which adds the lifecycle rule."""
     from .system_one_subtools import check_applicability
 
-    base: dict[str, Any] = {"subtool": str(name), "origin": "", "path": "", "live": False}
+    base: dict[str, Any] = {
+        "subtool": str(name),
+        "origin": "",
+        "path": "",
+        "live": False,
+        "params_used": sorted(str(key) for key in (params or {})),
+    }
     try:
         spec, origin, path = load_subtool(name, state=state)
     except FileNotFoundError as exc:
@@ -3130,6 +3482,24 @@ def _execute_subtool(
             status="usage",
             reason="the stored sub-tool is not usable: " + "; ".join(problems),
         )
+    param_problems = parameter_errors(spec, params)
+    if param_problems:
+        # a call the record never declared: refused before the first action,
+        # exactly like an invalid stored declaration
+        return _stop(
+            base,
+            status="usage",
+            reason="; ".join(param_problems),
+            hint="the declared parameters and their types live in the sub-tool record",
+            record_to=_runtime_dir(runtime),
+            write_record=write_record,
+            goal=str(spec.get("name", "")),
+        )
+    if params:
+        # VAL-TOOL-002: the parameterized call substitutes BEFORE the preconditions
+        # are read — the state checks see the shape this call is going to produce,
+        # never the shape of an earlier run
+        spec = _apply_parameters(spec, {str(k): v for k, v in dict(params or {}).items()})
 
     resolved_runner = runner
     resolution: dict
@@ -3285,6 +3655,7 @@ def _execute_subtool(
             "applicability": base["applicability"],
             "precondition_check": base["precondition_check"],
             "app_state": base.get("app_state") or {},
+            "params_used": base.get("params_used") or [],
             "runner": outcome.get("runner", resolution),
         }
     )
@@ -3348,28 +3719,31 @@ def learn_subtool(
             "error": "not_found",
             "reason": f"no recorded session {session_id!r} with computer-use steps in the store",
         }
-    steps = [
-        (
-            f"{str(entry.payload.get('kind', '') or '')}+"
-            + str(entry.payload.get("anchor", "") or entry.payload.get("detail", "") or "").strip()
-        )
-        for entry in rows
-    ]
-    pattern = _longest_repeated_sequence(steps, min_repeats=int(min_repeats or 2))
+    working, attempts_removed = _mined_working_steps(rows)
+    kept, repeats_removed, waits_kept = _collapse_redundant_repeats(working)
+    pattern, occurrences = _repeated_pattern_with_places(
+        [step["token"] for step in kept], min_repeats=int(min_repeats or 2)
+    )
     if not pattern:
         return {
             "learned": False,
             "error": "nothing_repeated_to_learn",
             "reason": (
                 f"no sequence of kind+anchor steps repeats ≥{int(min_repeats or 2)}× in "
-                f"{len(steps)} recorded step(s) — nothing repeated to learn"
+                f"{len(kept)} mined step(s) — nothing repeated to learn"
             ),
             "session_id": str(session_id),
-            "steps_seen": len(steps),
+            "steps_seen": len(working),
+            "mining": {
+                "steps_seen": len(working),
+                "attempts_removed": attempts_removed,
+                "repeats_removed": repeats_removed,
+                "waits_kept": waits_kept,
+            },
         }
     actions: list[dict] = []
     anchors: list[dict] = []
-    payloads = [entry.payload for entry in rows]
+    parameters: dict[str, dict] = {}
     for index, step_token in enumerate(pattern):
         kind = step_token.split("+", 1)[0] or "cli"
         anchor_text = step_token.split("+", 1)[1]
@@ -3384,11 +3758,22 @@ def learn_subtool(
 
         declared = {
             "kind": kind if kind in DECLARED_KINDS else "cli",
-            "channel": str(payloads[steps.index(step_token)].get("channel", "") or "api"),
+            "channel": str(kept[(occurrences[0] + index)]["channel"] or "api"),
             "argv": ["true"],
             "description": f"learned step {index + 1}: {step_token}",
             "verify": {"expect_observe_contains": anchor_text or step_token},
         }
+        # the parameter first, THEN the declared action is validated: a type_text
+        # step's placeholder must already sit in payload.text, or action_error
+        # refuses "needs payload.text" and demotes the step to cli
+        parameters.update(
+            _mined_parameter(
+                [kept[start + index] for start in occurrences],
+                declared,
+                f"actions[{index}]",
+                existing=set(parameters),
+            )
+        )
         problem = action_error(index, declared)
         if problem:
             declared["kind"] = "cli"
@@ -3401,7 +3786,7 @@ def learn_subtool(
         "version": "0.1",
         "description": (
             f"draft learned from session {session_id}: the sequence "
-            f"{' → '.join(pattern)} repeated {min_repeats}×"
+            f"{' → '.join(pattern)} repeated {len(occurrences)}×"
         ),
         "applicability": {
             "app": "learned",
@@ -3431,8 +3816,32 @@ def learn_subtool(
         },
         "verification_contract": (
             f"replaying the learned sequence reproduces the end state observed "
-            f"{min_repeats}× in session {session_id}"
+            f"{len(occurrences)}× in session {session_id}"
         ),
+        # the record fields a reusable sub-tool carries (VAL-TOOL-002)
+        "timeout": 90.0,
+        "evidence": [
+            {
+                "ref": f"{root / 'events.db'}#{session_id}",
+                "kind": "trajectory",
+                "note": (
+                    f"{len(rows)} recorded events · {attempts_removed} failed attempt(s) "
+                    f"removed · {repeats_removed} redundant repeat(s) removed · "
+                    f"{waits_kept} wait step(s) kept · pattern seen {len(occurrences)}×"
+                ),
+            }
+        ],
+    }
+    if parameters:
+        spec["parameters"] = parameters
+    spec["output_schema"] = {
+        "type": "object",
+        "properties": {
+            "status": {"type": "string"},
+            "verified": {"type": "boolean"},
+            "reason": {"type": "string"},
+        },
+        "required": ["status", "verified", "reason"],
     }
     problems = subtool_errors(spec)
     if problems:
@@ -3456,8 +3865,210 @@ def learn_subtool(
         "subtool": summary,
         "session_id": str(session_id),
         "pattern": list(pattern),
-        "repeats": int(min_repeats or 2),
-        "steps_seen": len(steps),
+        "repeats": len(occurrences),
+        "steps_seen": len(working),
+        "mining": {
+            "events_seen": len(rows),
+            "steps_seen": len(working),
+            "attempts_removed": attempts_removed,
+            "repeats_removed": repeats_removed,
+            "waits_kept": waits_kept,
+            "pattern_steps": len(pattern),
+            "pattern_occurrences": len(occurrences),
+            "parameters_derived": sorted(parameters),
+        },
+    }
+
+
+# --------------------------------------------------------------------------- #
+# mining internals (VAL-TOOL-002): failed attempts out, redundancy out, waits in
+# --------------------------------------------------------------------------- #
+
+_WAIT_HINT_RE = re.compile(r"\b(sleep|wait)\b", re.IGNORECASE)
+
+#: Where a parameter value goes in an action of this kind — kind → (container,
+#: slot, parameter name). The slot names follow the core's own ``Action`` shape
+#: (``argv`` list / ``payload`` dict), so a parameter call substitutes where the
+#: kind's handler actually reads its input.
+PARAM_PRIMARY_SLOT: dict[str, tuple[str, object, str]] = {
+    "type_text": ("payload", "text", "text"),
+    "cli": ("argv", 0, "command"),
+    "key": ("payload", "key", "key"),
+    "launch": ("payload", "command", "command"),
+    "window": ("payload", "title", "window_title"),
+    "api_call": ("payload", "url", "url"),
+    "dom_fill": ("payload", "value", "value"),
+}
+
+#: Mining derives a parameter only for these kinds: here the recorded detail
+#: plausibly IS the input the action consumed. Everywhere else the recorded
+#: detail is the action's output (cli stdout etc.) and must not become an input.
+_MINED_PARAMETER_KINDS: frozenset[str] = frozenset(
+    {"type_text", "api_call", "dom_fill"}
+)
+
+
+def _mined_working_steps(rows: list) -> tuple[list[dict], int]:
+    """Turn recorded events into mineable steps; failed attempts are excluded.
+
+    Each ``cu_attempt`` contributes its declared description to the following
+    ``cu_action`` (that description is the stable step identity of a real run);
+    an action with ``ok: false`` is a FAILED attempt and is removed — its
+    successful retry in the recorded flow survives in its place.
+    """
+    working: list[dict] = []
+    attempts_removed = 0
+    pending_description = ""
+    for event in rows:
+        payload = event.payload
+        kind = str(payload.get("kind", "") or "").strip()
+        if event.kind == "cu_attempt":
+            pending_description = str(payload.get("description", "") or "").strip()
+            continue
+        if event.kind != "cu_action":
+            continue
+        if payload.get("ok", True) is False:
+            attempts_removed += 1
+            continue
+        anchor = str(payload.get("anchor", "") or "").strip()
+        identity = anchor or pending_description
+        channel = str(payload.get("channel", "") or "api")
+        description = str(payload.get("detail", "") or "").strip()
+        working.append(
+            {
+                "kind": kind,
+                "token": f"{kind}+{identity or '(anon)'}",
+                "channel": channel,
+                "detail": description,
+                "is_wait": bool(
+                    _WAIT_HINT_RE.search(identity) or kind == "wait"
+                ),
+            }
+        )
+    return working, attempts_removed
+
+
+def _collapse_redundant_repeats(steps: list[dict]) -> tuple[list[dict], int, int]:
+    """Drop immediate repeats, keep the wait steps whole.
+
+    The same declared step, immediately succeeded by itself, is the recorded
+    noise of a run (a second identical click adds nothing the first one already
+    verified). Wait steps are KEPT — a divided sleep is still the time the flow
+    needed; the learner cannot know better than the measured run.
+    """
+    kept: list[dict] = []
+    repeats_removed = 0
+    waits_kept = 0
+    for step in steps:
+        if step["is_wait"]:
+            kept.append(step)
+            waits_kept += 1
+            continue
+        if (
+            kept
+            and kept[-1]["token"] == step["token"]
+            and not kept[-1]["is_wait"]
+        ):
+            repeats_removed += 1
+            continue
+        kept.append(step)
+    return kept, repeats_removed, waits_kept
+
+
+def _pattern_occurrences(tokens: list[str], pattern: list[str]) -> list[int]:
+    """The non-overlapping start indices where ``pattern`` appears in order."""
+    occurrences: list[int] = []
+    cursor = 0
+    size = len(tokens)
+    length = len(pattern)
+    while cursor + length <= size:
+        if tokens[cursor : cursor + length] == pattern:
+            occurrences.append(cursor)
+            cursor += length
+        else:
+            cursor += 1
+    return occurrences
+
+
+def _repeated_pattern_with_places(
+    tokens: list[str], min_repeats: int
+) -> tuple[list[str], list[int]]:
+    """The longest ordered pattern that repeats in order, WITH its start indices."""
+    size = len(tokens)
+    floor = max(1, min_repeats)
+    for length in range(size // floor, 0, -1):
+        for start in range(size - length + 1):
+            candidate = tokens[start : start + length]
+            occurrences = _pattern_occurrences(tokens, candidate)
+            if len(occurrences) >= floor:
+                return candidate, occurrences
+    return [], []
+
+
+def _mined_parameter(
+    position_steps: list[dict],
+    declared_action: dict,
+    arg_base: str,
+    *,
+    existing: set[str],
+) -> dict:
+    """One parameter declaration for a mined step, when the recorded value varied.
+
+    The occurrences of the pattern differ at this position (different typed text,
+    different URL …): the varying value becomes a declared parameter and the
+    draft's action gets its ``{{placeholder}}`` at the kind's primary input slot
+    (:data:`PARAM_PRIMARY_SLOT` — the place the core's own ``Action`` handlers
+    read). A position whose value is constant across the pattern stays literal.
+
+    Only kinds whose recorded detail plausibly IS the input value derive a
+    parameter (``type_text``/``api_call``/``dom_fill`` — the typed text is what
+    the run recorded, the URL too). For ``cli``/``key``/``launch``/``window``
+    the recorded detail is the action's OUTPUT, not its input — inventing a
+    command or a key from it would be a lie, so those stay literal.
+    """
+    values = [str(step.get("detail", "") or "") for step in position_steps]
+    if len(set(values)) <= 1 or not position_steps:
+        return {}
+    kind = str(declared_action.get("kind", "") or "")
+    if kind not in _MINED_PARAMETER_KINDS:
+        return {}
+    slot = PARAM_PRIMARY_SLOT.get(kind)
+    if slot is None:
+        return {}
+    container, key, base_name = slot
+    name = base_name
+    suffix = 1
+    while name in existing:
+        suffix += 1
+        name = f"{base_name}_{suffix}"
+    if container == "argv":
+        index = int(key)  # type: ignore[arg-type]
+        argv = [str(part) for part in (declared_action.get("argv") or ["true"])]
+        while len(argv) <= index:
+            argv.append("true")
+        argv[index] = "{{" + name + "}}"
+        declared_action["argv"] = argv
+        arg_ref = f"{arg_base}.argv[{index}]"
+    else:
+        payload = dict(declared_action.get("payload") or {})
+        payload[str(key)] = "{{" + name + "}}"
+        declared_action["payload"] = payload
+        arg_ref = f"{arg_base}.payload.{key}"
+    description = str(declared_action.get("description", "") or "")
+    declared_action["description"] = (
+        f"{description} (parameterized: the recorded value varied)"
+    )
+    return {
+        name: {
+            "type": "string",
+            "required": True,
+            "arg_ref": arg_ref,
+            "description": (
+                f"the value this step carried in the mined run "
+                f"(recorded values: {', '.join(repr(item) for item in sorted(set(values))[:4])})"
+            ),
+            "values_sample": sorted(set(values))[:6],
+        }
     }
 
 
@@ -3522,6 +4133,7 @@ __all__ = [
     "load_subtool",
     "learn_subtool",
     "observe_anchors",
+    "parameter_errors",
     "policy_record",
     "read_app_state",
     "resolve_runner",
@@ -3530,6 +4142,7 @@ __all__ = [
     "save_subtool",
     "subtool_dir",
     "subtool_errors",
+    "subtool_metadata",
     "subtool_summary",
     "to_core_action",
     "to_core_verification",
