@@ -1,0 +1,61 @@
+{
+  "id": "market-research-snapshot",
+  "kind": "cli-fixture",
+  "terms": ["market", "research", "snapshot", "equity"],
+  "verb": "snapshot",
+  "description": "market research snapshot from the dashboard container",
+  "output_protocol": "keyed",
+  "timeout_seconds": 60,
+  "argv_template": [
+    "python3",
+    "/srv/service.py",
+    "snapshot",
+    "--symbol",
+    "{symbol}",
+    {"flag": "--detail", "value": "{detail}", "when_given": "detail"}
+  ],
+  "inputs": {
+    "symbol": {"type": "string", "required": true, "pattern": "^[A-Z]{1,10}$"},
+    "detail": {"type": "enum", "values": ["brief", "full"]}
+  },
+  "outputs": {
+    "symbol": {"type": "string", "from": "stdout", "pattern": "^[A-Z]{1,10}$"},
+    "detail": {"type": "string", "from": "stdout"},
+    "sector": {"type": "string", "from": "stdout"},
+    "market_cap_band": {"type": "string", "from": "stdout"},
+    "risk_flags": {"type": "string", "from": "stdout"},
+    "sections": {"type": "string", "from": "stdout"},
+    "research_note": {"type": "string", "from": "stdout"},
+    "analysts_view": {"type": "string", "from": "stdout"},
+    "headquarters": {"type": "string", "from": "stdout"},
+    "dataset_version": {"type": "string", "from": "stdout"},
+    "source": {"type": "string", "from": "stdout"},
+    "as_of": {"type": "string", "from": "stdout"}
+  },
+  "sample_input": {"symbol": "AMD", "detail": "brief"},
+  "oracle": {
+    "kind": "fixture",
+    "note": "declared golden fixture from adapter-schema.json (NOT a host twin)",
+    "sample_input": {"symbol": "AMD", "detail": "brief"},
+    "expected": {
+      "symbol": "AMD",
+      "detail": "brief",
+      "sector": "Semiconductors",
+      "market_cap_band": "large",
+      "risk_flags": "competition,cyclic-demand",
+      "sections": "overview,risk",
+      "research_note": "Designs CPUs and GPUs; sells into the datacenter and client markets",
+      "analysts_view": "",
+      "headquarters": "",
+      "dataset_version": "2026.10",
+      "source": "skaldir-market-research-dataset",
+      "as_of": "2026-09-30"
+    }
+  },
+  "service": {
+    "purpose": "the interactive market-research dashboard of this capability",
+    "argv": ["python3", "/srv/service.py", "serve", "--port", "8080"],
+    "network": "bridge",
+    "ports": {"8080": 3400}
+  }
+}

@@ -1,0 +1,48 @@
+# skaldir-tool-market-research — the dashboard container of the
+# docker-tool-dashboard feature (VAL-TOOL-001)
+#
+# What lives here: a small, non-trivial RESEARCH tool (no trades, no live
+# prices) built by the Skaldir ToolBuilder's container path:
+#
+#   * one-shot CLI  `snapshot --symbol AMD --detail brief`
+#       → keyed output protocol `name=value` (what the container adapter speaks)
+#   * dashboard     `serve --port 8080`
+#       → interactive localhost dashboard, published on the host as port 3400
+#         via the adapter's declared service spec (network bridge + ports)
+#
+# The service is stdlib-only Python: the build is reproducible without a
+# network fetch beyond the base image, and the dataset is a static curated
+# RESEARCH reference (source: skaldir-market-research-dataset) — not market
+# data. Unknown symbols fail with exit code 2 (CLI) / HTTP 404 (dashboard).
+#
+# Build (pinned by digest, verified by the builder):
+#     docker build -t skaldir-tool-market-research:v1 \
+#         -f docker/market-research-dashboard/Containerfile \
+#         docker/market-research-dashboard/
+#
+# The base image is pinned by digest (pull first, then read the digest with
+# `docker images --digests python` / `docker inspect`), so a rebuild resolves
+# to the same image bytes.
+FROM python:3.12-alpine@sha256:1b668429b3511ab407d8e00648891631b0b1a4d7e15e3ca70f38ab5b91ad4ab4
+
+# oci metadata: who this container serves
+LABEL org.opencontainers.image.title="skaldir-tool-market-research"
+LABEL org.opencontainers.image.description="Market research snapshot CLI + interactive dashboard (static reference dataset, no trades)"
+LABEL org.opencontainers.image.source="skaldir-market-research-dataset"
+
+# the service runs as an unprivileged user; the dataset stays read-only to it
+RUN adduser -D -H -u 10001 skaldir
+COPY --chown=root:root service.py /srv/service.py
+COPY --chown=root:root dataset.json /srv/dataset.json
+# explicit modes: the build must not depend on the host's umask (a 600-mode
+# copy left the files unreadable to the runtime user — measured once here)
+RUN chmod 755 /srv && chmod 444 /srv/service.py /srv/dataset.json && \
+    printf '#!/bin/sh\nexec python3 /srv/service.py snapshot "$@"\n' \
+        > /usr/local/bin/snapshot && chmod 755 /usr/local/bin/snapshot
+USER 10001
+
+# the container adapter may clear this; the service spec's argv is the truth
+ENTRYPOINT ["python3", "/srv/service.py"]
+
+# build-time smoke: the CLI self-check must pass or the build fails
+RUN python3 /srv/service.py --selfcheck

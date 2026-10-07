@@ -99,3 +99,50 @@ result landing structured (no agent loop involved).
   (test `test_network_defaults_to_none`, `docker` docs likewise).
 - busybox `sh` as the keepalive CLI in a `-d --rm` container exits immediately;
   a `sleep N` keepalive is the right lifecycle idiom (live probe, §1).
+
+## 8. Nachtrag — feature docker-tool-dashboard / VAL-TOOL-001 (live_tested, 2026-10-07)
+
+A non-trivial Docker RESEARCH tool (market-research snapshot, static curated
+dataset, NO trades, no live prices) was built, mined, tested, registered and
+SERVED with an interactive localhost dashboard. Source revision: the commits
+`ad01f31`…`503eacc` (F07 wiring + warm service ports + side-effect class).
+Evidence files: `logs/docker-tool-dashboard/` (build.log, dashboard-interactions.txt,
+call-one-shot.json, call-warm.json, health.txt, adapter-show.txt, image-digest.txt).
+
+### F07 regression: the run's model client reaches ToolBuilder (live-stub-tested)
+
+| defect (measured, red test first) | fix | proof |
+|---|---|---|
+| `skill_expand_build_tool`'s handler captured `llm/budget/prompts/events` and dropped them — a fully configured run reported "no model client is configured" | handler forwards all four | unit test `test_expand_build_hands_the_runs_model_client_to_the_builder` |
+| `agent run --agent-tools` assembled the layer toolset WITHOUT the run's client | `build_agent_toolset(..., llm=client)` | e2e `test_agent_run_hands_the_runs_client_to_the_builder`: the builder's `tool_spec_draft` request reaches the run's own (stub) provider endpoint |
+
+### The tool chain (all live, real daemon)
+
+| step | command | result |
+|---|---|---|
+| build context | `docker/market-research-dashboard/` (Containerfile, service.py, dataset.json, adapter-schema.json, README) | stdlib-only service; base image pinned by digest `sha256:1b668429…` |
+| image build | `docker build -t skaldir-tool-market-research:v1 …` | exit 0, image digest `sha256:2dfd7fdaf745eb45992b173fc1f8e99700f5aa14cf7d23201ab6264e5f490811`, build log recorded; build fails on an unreadable copy (measured, then fixed with explicit chmod — build no longer depends on the host umask) |
+| mine | `tools mine --image skaldir-tool-market-research:v1 --capability "market research snapshot from the dashboard container" --verb snapshot --schema docker/market-research-dashboard/adapter-schema.json --test-input '{"symbol":"AMD","detail":"brief"}'` | 5 stages ok; the adapter test ran the REAL container and matched the declared golden fixture on all 12 outputs; staged, NOT registered |
+| register | `tools register market_research_snapshot` | v0.1.1 approved, health HEALTHY, rollback id recorded; registry entry: id 24, kind container, version, sample_input schema, provenance container-toolbuilder:cli; adapter carries permissions (network none, read-only rootfs, no-new-privileges, no mounts, no credentials, cpu 1 / ram 128m), timeout 60s, side_effect class |
+| call (one-shot) | `call_container_tool(... {"symbol":"NVDA","detail":"brief"})` | ok, exit 0, keyed output parsed (NVDA brief snapshot) |
+| call (warm-exec) | `… warm=True {"symbol":"MU","detail":"full"}` | ok, exit 0, through the ONE warm container |
+| health probe | `tools health market_research_snapshot --probe` | HEALTHY, selectable=True, digest_match=True |
+| warm start | `discovery.ensure_ready('market_research_snapshot')` | started EXACTLY one container, `published_ports {"8080": 3400}`; second call → `reused: true`, still one container |
+| dashboard | `curl http://localhost:3400/...` | action 1 GET /api/snapshot?symbol=AMD → AMD JSON; action 2 GET /api/dataset → different response (dataset inventory); action 3 POST /api/snapshot TSM full → different response (full note incl. headquarters); dashboard HTML page served at `/` with two buttons; unknown symbol → HTTP 404 |
+
+### Port publication went through the config layer's gate (policy as written)
+
+`ensure_container_started` first declared `network: bridge` + ports directly and
+the container policy refused it (live: `network-must-be-none-to-publish-ports`).
+The policy is kept AS WRITTEN: the sanctioned route declares the ports and lets
+`RunConfig.validate` promote the network (none → bridge; docker drops `-p`
+under `--network none` — measured on this host). A foreign network (host,
+container:…) together with ports is refused before the run
+(`test_a_serving_service_on_a_foreign_network_is_refused`).
+
+### Still not proven (honest)
+
+| item | state |
+|---|---|
+| live MODEL call driving `skill_expand_build` against a real provider | not_run here — the wiring is proven by the CLI e2e over the run's own stub endpoint; a live provider run needs the budget release |
+| VAL-TOOL-005 (a NEW run discovering and invoking this tool) | left for the dedicated feature |

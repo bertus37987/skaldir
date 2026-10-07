@@ -1,0 +1,56 @@
+{
+  "name": "skaldir-market-research-dataset",
+  "version": "2026.10",
+  "as_of": "2026-09-30",
+  "disclaimer": "Static curated RESEARCH reference data compiled for the Skaldir docker-tool-dashboard feature. No live prices, NO TRADES, no market actions. Fields describe published research facts and qualitative bands as of the as_of date only.",
+  "sections_brief": ["overview", "risk"],
+  "sections_full": ["overview", "risk", "financials", "competition", "outlook"],
+  "source": "skaldir-market-research-dataset",
+  "companies": {
+    "AMD": {
+      "sector": "Semiconductors",
+      "market_cap_band": "large",
+      "risk_flags": "competition,cyclic-demand",
+      "research_note_brief": "Designs CPUs and GPUs; sells into the datacenter and client markets",
+      "research_note_full": "Designs CPUs (Zen family) and datacenter GPUs; revenue is concentrated in server accelerators and client computing; competitive pressure comes from the incumbent CPU vendor and the dominant AI accelerator vendor; cyclic demand is the standing sector risk",
+      "analysts_view": "Datacenter share gains are the thesis; valuation is sensitive to AI-cycle sentiment",
+      "headquarters": "Santa Clara, USA"
+    },
+    "NVDA": {
+      "sector": "Semiconductors",
+      "market_cap_band": "mega",
+      "risk_flags": "concentration,export-controls",
+      "research_note_brief": "Designs AI accelerators and networking for datacenters",
+      "research_note_full": "Dominant supplier of AI training and inference accelerators; datacenter revenue is highly concentrated among a few cloud buyers; export controls on the China market are a structural policy risk; gaming and professional graphics are secondary",
+      "analysts_view": "Ecosystem lock via CUDA is the moat; the debate is how long the datacenter buildout sustains",
+      "headquarters": "Santa Clara, USA"
+    },
+    "INTC": {
+      "sector": "Semiconductors",
+      "market_cap_band": "large",
+      "risk_flags": "execution,foundry-transition",
+      "research_note_brief": "Integrated device maker pivoting into a contract foundry",
+      "research_note_full": "Designs and manufactures x86 CPUs and is rebuilding its process lead through the IDM 2.0 foundry transition; execution risk in process nodes and capital intensity dominate the research debate; AI PC demand is a secondary driver",
+      "analysts_view": "The foundry pivot is binary: either process execution recovers or cash burn continues",
+      "headquarters": "Santa Clara, USA"
+    },
+    "TSM": {
+      "sector": "Semiconductors",
+      "market_cap_band": "mega",
+      "risk_flags": "geopolitics,concentration",
+      "research_note_brief": "The leading contract chip manufacturer",
+      "research_note_full": "The world-lead contract manufacturer for advanced logic; geopolitical exposure of Taiwan is the standing tail risk; advanced packaging capacity is the newest bottleneck; customer concentration among AI accelerator buyers is rising",
+      "analysts_view": "Structural beneficiary of every AI accelerator, independent of whose chip wins",
+      "headquarters": "Hsinchu, Taiwan"
+    },
+    "MU": {
+      "sector": "Semiconductors",
+      "market_cap_band": "large",
+      "risk_flags": "cyclic-pricing,oversupply",
+      "research_note_brief": "Memory maker exposed to DRAM and NAND pricing cycles",
+      "research_note_full": "Pure-play memory; earnings swing with DRAM and NAND spot pricing; high-bandwidth memory for AI accelerators is the premium segment; oversupply phases historically compress margins to near breakeven",
+      "analysts_view": "Cycle timing plus HBM share decide the thesis, not unit growth",
+      "headquarters": "Boise, USA"
+    }
+  }
+}
