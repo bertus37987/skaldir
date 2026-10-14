@@ -1619,8 +1619,8 @@ def _execute_tool_step(
             return False, {}, result, "the tool returned a non-JSON string"
     if not isinstance(result, Mapping):
         return False, {}, result, f"the tool returned {type(result).__name__}, not a result object"
-    if "error" in result:
-        return False, {}, dict(result), str(result.get("error"))
+    if result.get("ok") is False or bool(result.get("error")):
+        return False, {}, dict(result), str(result.get("error") or "tool reported failure")
     outputs = {}
     missing = [name for name in step.outputs if name not in result]
     if missing:

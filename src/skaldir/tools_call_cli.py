@@ -329,7 +329,11 @@ def call_tool(
         )
         return _finalize(payload)
     result = _join_call(wrapper, dict(arguments or {}))
-    ok = not (isinstance(result, dict) and "error" in result)
+    ok = (
+        bool(result.get("ok", True))
+        and not bool(result.get("error"))
+        and not bool(result.get("__wrapper_error__"))
+    ) if isinstance(result, dict) else True
     payload.update(
         ok=ok,
         result=result,
