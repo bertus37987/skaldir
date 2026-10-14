@@ -32,7 +32,7 @@ __all__ = ["core_capability_tools", "CAPABILITY_INDEX"]
 #: What the shared set is for — kept next to the code so the two cannot drift apart.
 CAPABILITY_INDEX: dict[str, str] = {
     "run_code": "execute Python in the run's workspace",
-    "terminal": "run a shell command in the run's workspace",
+    "terminal": "run a shell command sequentially in the run's workspace (mutating, non-parallel)",
     "read_text": "read a file (bounded excerpt)",
     "write_text": "write a file",
     "search_files": "search file contents or names",
@@ -313,7 +313,7 @@ def _process_tool(ws: Path, rt: Path | None, run_id: str) -> Any | None:
             return found
 
     def handler(do: str = "start", argv: list | None = None, process_id: str = "",
-                data: str = "", timeout_s: float = 0.0, **_ignored: Any) -> Any:
+                data: str = "", timeout_s: float = 0.0, pty: bool = False, **_ignored: Any) -> Any:
 
         mgr = manager()
         action = str(do).lower()
@@ -328,6 +328,7 @@ def _process_tool(ws: Path, rt: Path | None, run_id: str) -> Any | None:
                 result = mgr.spawn(
                     [str(a) for a in argv], cwd=str(ws),
                     timeout_s=float(timeout_s) if timeout_s else None,
+                    pty=bool(pty),
                 )
             except Exception as exc:  # noqa: BLE001
                 return {"ok": False, "error": type(exc).__name__, "reason": str(exc)[:300]}
@@ -354,7 +355,7 @@ def _process_tool(ws: Path, rt: Path | None, run_id: str) -> Any | None:
         name="process",
         description=(
             "Start, poll and stop long-lived processes (a dev server, a watcher) without "
-            "blocking: {do: start|poll|cancel|stdin|list, argv, process_id, data}. "
+            "blocking: {do: start|poll|cancel|stdin|list, argv, process_id, data, pty}. "
             "Returns a stable process_id at once; output is streamed and bounded. "
             "Process state is not task success — decide that yourself."
         ),
@@ -366,6 +367,7 @@ def _process_tool(ws: Path, rt: Path | None, run_id: str) -> Any | None:
                 "process_id": {"type": "string"},
                 "data": {"type": "string"},
                 "timeout_s": {"type": "number"},
+                "pty": {"type": "boolean", "description": "run with a pseudo-terminal allocated"},
             },
             "required": ["do"],
             # BLOCK-M3-03: unknown arguments are refused at the gate, not swallowed

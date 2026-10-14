@@ -371,6 +371,34 @@ def input_schema_for_spec(spec: Any, *, base_dir: str | Path | None = None) -> d
             from_source = input_schema_from_source(text, entrypoint)
             if from_source:
                 return from_source
+        adapter_file = Path(base_dir) / "generated_tools" / name / "adapter.json"
+        if adapter_file.is_file():
+            try:
+                import json as _json
+                data = _json.loads(adapter_file.read_text(encoding="utf-8"))
+                inputs = (data.get("operation") or {}).get("inputs") or {}
+                if inputs:
+                    props = {}
+                    reqs = []
+                    for iname, info in inputs.items():
+                        itype = info.get("type", "string")
+                        if itype == "enum":
+                            props[iname] = {"type": "string", "enum": info.get("values", [])}
+                        else:
+                            val_type = (
+                                itype if itype in ("string", "integer", "boolean") else "string"
+                            )
+                            props[iname] = {"type": val_type}
+                        if info.get("required"):
+                            reqs.append(iname)
+                    return {
+                        "type": "object",
+                        "properties": props,
+                        "required": reqs,
+                        "additionalProperties": False,
+                    }
+            except Exception:
+                pass
     from_sample = input_schema_from_sample(getattr(spec, "sample_input", None))
     if from_sample:
         return from_sample
@@ -790,6 +818,39 @@ def registry_tools(
                 source_name=spec.name,
             )
         )
+    # Container tools (kind=container): callable through staged bin wrapper
+    from .tools import STATUS_APPROVED
+    seen_names = {s.name for s in specs}
+    effective_rt = Path(runtime) if runtime is not None else directory
+    if effective_rt is not None:
+        for spec in store.all():
+            if (
+                getattr(spec, "kind", "") == "container"
+                and getattr(spec, "status", "") == STATUS_APPROVED
+                and spec.name not in seen_names
+            ):
+                wrapper_path = effective_rt / "generated_tools" / spec.name / "bin" / spec.name
+                if not wrapper_path.is_file():
+                    continue
+                v_ok, _ = health_verdict(effective_rt, spec.name)
+                if not v_ok:
+                    continue
+                from .tools_call_cli import _run_container_wrapper
+                tools.append(
+                    AgentTool(
+                        name=spec.name,
+                        description=spec.description or spec.title or spec.name,
+                        input_schema=input_schema_for_spec(spec, base_dir=effective_rt),
+                        handler=partial(
+                            _call_registry_tool,
+                            partial(_run_container_wrapper, wrapper_path),
+                        ),
+                        parallel_safe=False,
+                        mutating=True,
+                        source="registry",
+                        source_name=spec.name,
+                    )
+                )
     return tools
 
 
@@ -830,6 +891,11 @@ def tool_set_for(
             run_id=str(project_id or ""),
             exclude=already,
         ))
+        from .agent_toolset import tool_search_tool
+
+        already = {getattr(t, "name", "") for t in tools}
+        if "tool_search" not in already:
+            tools.append(tool_search_tool(runtime=runtime, project_id=project_id))
     if selection in ("registry", "both"):
         # Deliberate: the *loop* surface refuses to invent a store. `store=None` here is a
         # caller bug, and the test that pins it is

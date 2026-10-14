@@ -137,6 +137,10 @@ OUTPUT_SCHEMA = {
         "spill": {"type": "array", "description": "paths of spilled full outputs"},
         "isolation": {"type": "object", "description": "the isolation that was really used"},
         "policy": {"type": "object", "description": "environment policy report (names, no values)"},
+        "error_kind": {
+            "type": "string",
+            "description": "named error category (none|timeout|signal|exit_non_zero)",
+        },
     },
     "required": ["command", "cwd", "exit_code", "timed_out", "duration_ms", "stdout", "stderr"],
     "additionalProperties": False,
@@ -379,12 +383,18 @@ def run(args: dict, ctx: ToolContext) -> ToolResult:
     spill = [item for item in (stdout["spill_path"], stderr["spill_path"]) if item]
     returncode = int(outcome["returncode"])
     signal_name = _signal_name(returncode)
+    error_kind = (
+        "timeout"
+        if outcome["timed_out"]
+        else ("signal" if signal_name else ("exit_non_zero" if returncode != 0 else "none"))
+    )
     data = {
         "command": command,
         "argv": argv,
         "cwd": str(cwd),
         "exit_code": -1 if outcome["timed_out"] and returncode < 0 else returncode,
         "signal": signal_name,
+        "error_kind": error_kind,
         "timed_out": bool(outcome["timed_out"]),
         "duration_ms": int(outcome["duration_ms"]),
         "stdout": stdout["text"],

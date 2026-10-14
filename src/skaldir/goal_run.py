@@ -533,6 +533,20 @@ def turn_tools(
         exclude=already,
     ):
         tools.append(cap_tool)
+
+    from .agent_toolset import (
+        knowledge_read_tool,
+        knowledge_search_tool,
+        tool_search_tool,
+    )
+
+    already = {getattr(t, "name", "") for t in tools}
+    if "tool_search" not in already:
+        tools.append(tool_search_tool(runtime=state_dir, project_id=str(session or "")))
+    if "knowledge_search" not in already:
+        tools.append(knowledge_search_tool(runtime=state_dir))
+    if "knowledge_read" not in already:
+        tools.append(knowledge_read_tool(runtime=state_dir))
     return tools
 
 
@@ -1873,9 +1887,10 @@ def _finish_goal(
     )
 
     try:
-        if state == VERIFIED_COMPLETE:
+        current_cstate = getattr(cstore, "state", None)
+        if state == VERIFIED_COMPLETE and current_cstate != VERIFIED_COMPLETE:
             cstore.transition(VERIFIED_COMPLETE, attempt_id="goal-run")
-        elif state == BLOCKED_EXTERNAL:
+        elif state == BLOCKED_EXTERNAL and current_cstate != BLOCKED_EXTERNAL:
             cstore.transition(
                 BLOCKED_EXTERNAL, reason=blocked_reason, attempt_id="goal-run"
             )

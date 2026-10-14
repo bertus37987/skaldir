@@ -770,18 +770,22 @@ def tool_search_tool(
 ) -> AgentTool:
     """TOOL-01: discover tools by capability need instead of listing the full catalog."""
     def _handler(**kw: Any) -> dict:
-        from .discovery import discover
+        from .capability import project_id_for
+        from .discovery import default_runtime_dir, discover
 
+        effective_runtime = kw.get("runtime") or runtime or default_runtime_dir()
+        effective_project_id = str(kw.get("project_id", "") or project_id or project_id_for("."))
         result = discover(
             str(kw.get("need", "")),
-            runtime=kw.get("runtime") or runtime,
-            project_id=str(kw.get("project_id", "") or project_id),
+            runtime=effective_runtime,
+            project_id=effective_project_id,
             limit=int(kw.get("limit", 5) or 5),
         )
         # Enrich matches with input_schema so the model knows how to call them
-        for match in result.get("matches", []):
-            tool_id = match.get("id") or match.get("tool_id") or ""
-            if tool_id:
+        items = result.get("matches", []) or result.get("results", [])
+        for match in items:
+            tool_id = match.get("id") or match.get("tool_id") or match.get("name") or ""
+            if tool_id and "input_schema" not in match:
                 try:
                     from .tools_core.registry import descriptor as _descriptor
 
@@ -790,6 +794,22 @@ def tool_search_tool(
                         match["input_schema"] = desc["input_schema"]
                 except Exception:  # noqa: BLE001
                     pass
+                if "input_schema" not in match:
+                    try:
+                        from .agent_loop import input_schema_for_spec
+                        from .tools import ToolStore
+
+                        tools_db = Path(effective_runtime) / "tools.db"
+                        if tools_db.is_file():
+                            store = ToolStore(str(tools_db))
+                            spec = store.get(tool_id)
+                            store.close()
+                            if spec:
+                                match["input_schema"] = input_schema_for_spec(
+                                    spec, base_dir=effective_runtime
+                                )
+                    except Exception:  # noqa: BLE001
+                        pass
         return result
 
     return AgentTool(
