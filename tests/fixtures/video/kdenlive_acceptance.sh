@@ -64,7 +64,7 @@ cat > "$PROJ" <<XML
     <track producer="1"/>
     <track producer="2"/>
   </tractor>
-</kdenliveDocument>
+</kdenlive>
 XML
 echo "  $PROJ"
 

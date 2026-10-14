@@ -641,16 +641,18 @@ def _cmd_stop_report(args: argparse.Namespace) -> int:
 def _cmd_stop_detect(args: argparse.Namespace) -> int:
     """Feed a press sequence through the detector. ``--gap-ms`` repeats = the gaps."""
     gaps = [float(g) for g in (getattr(args, "gap_ms", []) or [])]
-    origins = [str(o) for o in (getattr(args, "origin", []) or [])] or ["user"] * (len(gaps) + 1)
+    origins_raw = [str(o) for o in (getattr(args, "origin", []) or [])]
+    origins = origins_raw if origins_raw else ["user"]
     repeats = {int(i) for i in (getattr(args, "autorepeat_at", []) or [])}
     events: list[SS.InputEvent] = []
     clock = 0.0
     for index in range(len(gaps) + 1):
         if index > 0:
             clock += gaps[index - 1] / 1000.0
+        orig_val = origins[index] if index < len(origins) else origins[-1]
         events.append(SS.InputEvent(
             key="esc", at=clock,
-            origin=SS.Origin(origins[index]) if origins[index] in SS.Origin._value2member_map_
+            origin=SS.Origin(orig_val) if orig_val in SS.Origin._value2member_map_
             else SS.Origin.UNKNOWN,
             autorepeat=index in repeats,
         ))
