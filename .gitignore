@@ -51,3 +51,6 @@ chromium-profile/
 # descends into a directory it has excluded.
 !tests/fixtures/long_project/**/.godsv/
 !tests/fixtures/long_project/**/.godsv/**
+
+# live-desktop capture evidence (host screenshots, never commit)
+cu-screenshots/
