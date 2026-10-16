@@ -1113,8 +1113,11 @@ def action_error(index: int, item: Any) -> str:
         return (
             f"action {index}: unknown kind {kind!r} — known: {', '.join(DECLARED_KINDS)}"
         )
-    channel = str(item.get("channel", "") or "").strip()
-    if channel and channel not in CHANNEL_ORDER:
+    channel = str(item.get("channel", "") or "").strip().lower()
+    _KNOWN_CHANNEL_ALIASES = frozenset(
+        {"direct", "host", "desktop", "gui", "input", "keyboard", "mouse", "cli", "system"}
+    )
+    if channel and channel not in CHANNEL_ORDER and channel not in _KNOWN_CHANNEL_ALIASES:
         return f"action {index}: unknown channel {channel!r} — known: {', '.join(CHANNEL_ORDER)}"
     verify = item.get("verify")
     if not isinstance(verify, Mapping):
@@ -1308,7 +1311,9 @@ def to_core_verification(item: Mapping) -> Verification:
 
 def action_channel(item: Mapping) -> str:
     """The report channel of a declaration — the attempt is ordered by the core."""
-    channel = str(item.get("channel", "") or "").strip()
+    channel = str(item.get("channel", "") or "").strip().lower()
+    if channel not in CHANNEL_ORDER:
+        return "api"
     return channel or "api"
 
 

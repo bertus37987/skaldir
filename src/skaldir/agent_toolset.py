@@ -452,6 +452,9 @@ def skill_act(
     normalized_actions: list[dict[str, Any]] = []
     for item in (actions or []):
         act_dict = dict(item)
+        ch = str(act_dict.get("channel", "") or "").strip().lower()
+        if ch not in ("api", "dom", "vision"):
+            act_dict["channel"] = "api"
         verify = act_dict.get("verify")
         if not isinstance(verify, Mapping) or not verify:
             act_dict["verify"] = {"expect_ok": True}
