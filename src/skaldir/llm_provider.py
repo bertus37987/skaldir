@@ -138,7 +138,7 @@ PROVIDERS = ("openai-compatible", "scripted", "none")
 
 DEFAULT_TIMEOUT_S = 30.0
 DEFAULT_MAX_RETRIES = MAX_ATTEMPTS - 1  # §43: MAX_ATTEMPTS total attempts
-DEFAULT_MAX_TOKENS = 900
+DEFAULT_MAX_TOKENS = 4096
 DEFAULT_MAX_TOKENS_FIELD = "max_tokens"
 
 #: The reasoning-budget guard's two bounds. One bounded retry only: the budget is doubled, and

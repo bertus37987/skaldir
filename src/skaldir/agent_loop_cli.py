@@ -223,6 +223,9 @@ def _answer_renderer(args: argparse.Namespace) -> Any:
     requested = getattr(args, "stream", None)
     if requested is False:
         return None
+    chat_output = bool(getattr(args, "chat_output", False))
+    if requested is None and chat_output:
+        requested = True
     stream = sys.stdout
     if not _streaming_enabled_for(
         stream, quiet=bool(getattr(args, "quiet", False)), requested=requested
@@ -234,6 +237,8 @@ def _answer_renderer(args: argparse.Namespace) -> Any:
         tty = bool(stream.isatty())
     except Exception:  # noqa: BLE001 — a stream without isatty is not a terminal
         tty = False
+    if chat_output:
+        tty = True
     # The markdown-lite sink (`MVP/69-streaming-look.md`): the same renderer, with the
     # answer written a *line* at a time — bold, inline code, lists and a ruled code block on
     # a terminal; and the model's own bytes, once, on a pipe (``MarkdownStream.plain``), so
@@ -244,8 +249,8 @@ def _answer_renderer(args: argparse.Namespace) -> Any:
         tty=tty,
         columns=None,
         label="streaming",
-        footer=not bool(getattr(args, "chat_output", False)),
-        incremental=bool(getattr(args, "chat_output", False)),
+        footer=not chat_output,
+        incremental=chat_output,
     )
 
 
@@ -335,7 +340,7 @@ def _begin_progress(progress: RunProgress, args: argparse.Namespace) -> None:
     progress.begin(f'{GROUP} run · "{truncate(task, 80)}"', **facts)
 
 
-def _chat_progress(progress: RunProgress, *, chat_output: bool):
+def _chat_progress(progress: RunProgress, *, chat_output: bool, streamed: bool = False):
     """``progress.event`` plus one **history line per step** in the chat.
 
     The owner's ask: "streams and outputs each step, so there is an actual chat
@@ -385,7 +390,7 @@ def _chat_progress(progress: RunProgress, *, chat_output: bool):
                         chars = int(data.get("text_chars") or 0)
                         if calls:
                             _human(f"  ⋯ {calls} tool call(s) requested")
-                        elif chars:
+                        elif chars and not streamed:
                             _human(f"  ⋯ answer {chars} chars")
                     # live-row updates
                     if kind == "tool.start":
@@ -431,7 +436,7 @@ def _chat_progress(progress: RunProgress, *, chat_output: bool):
                 chars = int(data.get("text_chars") or 0)
                 if calls:
                     _human(f"  ⋯ {calls} tool call(s) requested")
-                elif chars:
+                elif chars and not streamed:
                     _human(f"  ⋯ answer {chars} chars")
             handle = getattr(__import__("os"), "_skaldir_chat_front", None)
             front = handle() if callable(handle) else handle
@@ -666,7 +671,9 @@ def cmd_run(args: argparse.Namespace) -> int:
         policy=not bool(getattr(args, "no_policy", False)),
         cancel_path=str(getattr(args, "cancel_file", "") or "") or None,
         max_result_chars=int(getattr(args, "max_result_chars", 4000)),
-        progress=_chat_progress(progress, chat_output=chat_output),
+        progress=_chat_progress(
+            progress, chat_output=chat_output, streamed=renderer is not None
+        ),
         on_delta=renderer.delta if renderer is not None else None,
         on_request=renderer.arm if renderer is not None else None,
         on_answer=renderer.close_call if renderer is not None else None,
