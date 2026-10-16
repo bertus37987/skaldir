@@ -1228,6 +1228,10 @@ class HostSessionRunner(BaseRunner):
                         f"instead of sending a guessed code ({exc})"
                     ) from exc
                 return ["ydotool", "key", *pairs]
+            if backend == "wtype":
+                from .cu_platform import _wtype_key_argv
+
+                return _wtype_key_argv(name)
             if background and wid:
                 # The one shape a WM-less clipboard-style "type without stealing focus"
                 # needs. Measured caveat: `xdotool key --window` does *not* deliver to an
@@ -1265,6 +1269,8 @@ class HostSessionRunner(BaseRunner):
             # "we're using raw keycodes now"); a string inside a `key` call would be typed
             # as literal gibberish, so a string never enters this argv.
             return ["ydotool", "key", *pairs]
+        if backend == "wtype":
+            return ["wtype", "--", text]
         if background and wid:
             return ["xdotool", "type", "--window", wid, "--delay", "12", "--", text]
         if wid:
@@ -1279,6 +1285,13 @@ class HostSessionRunner(BaseRunner):
         not be set up (`PROBE_MISCONFIGURED`) is unknown rather than a defect.
         """
         backend = self._delivering_input_backend()
+        if not backend and self._full_desktop():
+            from .input_backend import backend_available
+
+            for candidate in ("ydotool", "wtype", "xdotool"):
+                available, _ = backend_available(candidate)
+                if available:
+                    return candidate
         if not backend:
             raise TargetScopeRefused(self._input_block_detail())
         return backend
@@ -2042,6 +2055,25 @@ class HostSessionRunner(BaseRunner):
             return ActionResult(ok=False, detail=str(exc))
         if not argv:
             return ActionResult(ok=False, detail=f"no argv for kind '{action.kind}'")
+        if action.kind == "launch":
+            try:
+                proc = self.launch(argv)
+                import time
+
+                time.sleep(0.5)
+                poll = proc.poll()
+                if poll is not None and poll != 0:
+                    return ActionResult(
+                        ok=False,
+                        detail=f"launch process exited immediately with code {poll}",
+                    )
+                return ActionResult(
+                    ok=True,
+                    stdout=f"launched pid {proc.pid}",
+                    detail=f"launched pid {proc.pid}",
+                )
+            except Exception as exc:  # noqa: BLE001
+                return ActionResult(ok=False, detail=f"launch failed: {exc}")
         code, output = self._run(argv)
         return ActionResult(ok=code == 0, stdout=output,
                             detail=output[:200] or f"exit {code}")

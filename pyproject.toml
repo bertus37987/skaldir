@@ -32,6 +32,9 @@ dependencies = [
   # `cryptography` is therefore required (not only the `treasury`/`dev` extra), otherwise
   # the installed console script is dead on arrival. See MVP/20-shipping.md §D.
   "cryptography>=42",
+  # `python-xlib` is required for probe_target and cu_host_session receiver to create
+  # and inspect the probe window for live desktop computer use delivery confirmation.
+  "python-xlib>=0.33",
 ]
 
 [project.optional-dependencies]

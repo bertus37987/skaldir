@@ -1145,10 +1145,16 @@ def action_error(index: int, item: Any) -> str:
                 f"action {index}: kind 'api_call' needs payload.url "
                 "(it is an HTTP call, not a shell command)"
             )
-    if kind == "key" and not str((item.get("payload") or {}).get("key", "") or "").strip():
-        return f"action {index}: kind 'key' needs payload.key"
-    if kind == "type_text" and not str((item.get("payload") or {}).get("text", "") or ""):
-        return f"action {index}: kind 'type_text' needs payload.text"
+    if kind == "key":
+        p_key = str((item.get("payload") or {}).get("key", "") or "").strip()
+        t_key = str(item.get("key", "") or "").strip()
+        if not p_key and not t_key:
+            return f"action {index}: kind 'key' needs payload.key"
+    if kind == "type_text":
+        p_text = str((item.get("payload") or {}).get("text", "") or "")
+        t_text = str(item.get("text", "") or "")
+        if not p_text and not t_text:
+            return f"action {index}: kind 'type_text' needs payload.text"
     if kind == "window":
         operation = str((item.get("payload") or {}).get("op", "") or "").strip()
         if operation not in ("list", "focus"):
@@ -1221,6 +1227,14 @@ def to_core_action(item: Mapping) -> Action:
     """
     kind = str(item.get("kind", "")).strip()
     payload = dict(item.get("payload") or {})
+    for field in (
+        "key", "text", "op", "direction", "amount", "button",
+        "command", "url", "method", "window",
+    ):
+        if field in item and field not in payload:
+            payload[field] = item[field]
+    if "argv" in item and "argv" not in payload and kind == "launch":
+        payload["argv"] = [str(p) for p in item["argv"]]
     description = str(item.get("description", "") or "")[:200]
     if kind == "scroll":
         return Action(kind="mouse", argv=_scroll_argv(payload), payload=payload,
