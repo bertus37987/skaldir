@@ -321,3 +321,42 @@ def test_registry_tool_runs(tmp_path: Path):
         workspace=str(tmp_path), kind="both", runtime=str(tmp_path), store=store)}
     result = tools["pycalc"].handler(a=2, b=3)
     assert result["sum"] == 5
+
+
+def test_skill_act_subtool_preserves_actions_and_infers_end_state(tmp_path: Path, monkeypatch):
+    """skill_act preserves actions with subtool, normalizes values and infers end_state."""
+    import skaldir.agent_toolset as at
+
+    recorded_runs: list[dict] = []
+
+    def _fake_run_action_list(actions, **kwargs):
+        recorded_runs.append({"actions": actions, "kwargs": kwargs})
+        return {"status": "verified", "ok": True}
+
+    monkeypatch.setattr("skaldir.act_service.run_action_list", _fake_run_action_list)
+    monkeypatch.setattr("skaldir.cu_host_session.list_session_windows", lambda: {"windows": []})
+
+    # Call with subtool + actions with "value" in key/type_text and no end_state
+    res = at.skill_act(
+        actions=[
+            {"kind": "launch", "command": "google-chrome"},
+            {"kind": "type_text", "value": "https://x.com"},
+            {"kind": "key", "value": "enter"},
+        ],
+        subtool="open_browser",
+        workspace=str(tmp_path),
+    )
+    assert res["ok"] is True
+    assert len(recorded_runs) == 1
+    run = recorded_runs[0]
+    acts = run["actions"]
+    assert len(acts) == 3
+    assert acts[0]["kind"] == "launch"
+    assert acts[0]["payload"]["argv"] == ["google-chrome"]
+    assert acts[1]["kind"] == "type_text"
+    assert acts[1]["payload"]["text"] == "https://x.com"
+    assert acts[2]["kind"] == "key"
+    assert acts[2]["payload"]["key"] == "Return"
+    # End state was auto-inferred
+    assert run["kwargs"]["end_state"]["channel"] == "window_title"
+    assert "Chrome" in run["kwargs"]["end_state"]["expect_observe_contains"]

@@ -360,6 +360,63 @@ def _flow_key(goal: str, end_state: Mapping[str, Any] | None, actions: Sequence)
         return f"{goal}|{id(end_state)}"
 
 
+def _infer_end_state(actions: Sequence[Mapping[str, Any]], goal: str = "") -> dict[str, Any]:
+    for a in actions:
+        if str((a or {}).get("kind", "")) == "launch":
+            payload = (a.get("payload") or {}) if isinstance(a.get("payload"), Mapping) else {}
+            argv = payload.get("argv") or a.get("argv") or []
+            cmd = payload.get("command") or a.get("command") or ""
+            target = ""
+            if argv and isinstance(argv, (list, tuple)):
+                target = str(argv[0])
+            elif cmd:
+                target = str(cmd).split()[0]
+            target_base = target.lower().split("/")[-1]
+            if any(b in target_base for b in ("chrome", "chromium", "brave", "firefox", "zen")):
+                return {
+                    "channel": "window_title",
+                    "expect_observe_contains": "Zen|Firefox|Chromium|Chrome|Brave",
+                }
+            if "calc" in target_base or "localc" in target_base:
+                return {"channel": "window_title", "expect_observe_contains": "Calc|LibreOffice"}
+            if "writer" in target_base or "lowriter" in target_base:
+                return {"channel": "window_title", "expect_observe_contains": "Writer|LibreOffice"}
+            if "terminal" in target_base or "ptyxis" in target_base:
+                return {"channel": "window_title", "expect_observe_contains": "Terminal|Ptyxis"}
+            if target_base:
+                return {"channel": "window_title", "expect_observe_contains": target_base}
+    for a in actions:
+        if str((a or {}).get("kind", "")) == "window":
+            payload = (a.get("payload") or {}) if isinstance(a.get("payload"), Mapping) else {}
+            title = str(payload.get("title", "") or "").strip()
+            if title and title != ".":
+                return {"channel": "window_title", "expect_observe_contains": title}
+    for a in actions:
+        if str((a or {}).get("kind", "")) == "cli":
+            verify = (a.get("verify") or {}) if isinstance(a.get("verify"), Mapping) else {}
+            exp = str(verify.get("expect_stdout_contains") or "").strip()
+            if exp:
+                return {"channel": "stdout", "expect_observe_contains": exp}
+    if goal:
+        goal_l = goal.lower()
+        browser_kw = (
+            "chrome", "chromium", "brave", "firefox", "zen",
+            "browser", "youtube", "x.com", "twitter",
+        )
+        if any(b in goal_l for b in browser_kw):
+            return {
+                "channel": "window_title",
+                "expect_observe_contains": "Zen|Firefox|Chromium|Chrome|Brave",
+            }
+        if "calc" in goal_l:
+            return {"channel": "window_title", "expect_observe_contains": "Calc|LibreOffice"}
+        if "writer" in goal_l:
+            return {"channel": "window_title", "expect_observe_contains": "Writer|LibreOffice"}
+        if "terminal" in goal_l:
+            return {"channel": "window_title", "expect_observe_contains": "Terminal|Ptyxis"}
+    return {"expect_ok": True}
+
+
 def skill_act(
     actions: list[Mapping[str, Any]],
     *,
@@ -390,6 +447,53 @@ def skill_act(
     runner_kind = _prefer_live_runner(goal, runner)
     policy = default_policy()
     allowed = _act_policy_kinds(policy)
+
+    # Normalize actions: map value to key/text, normalize return, normalize launch argv
+    normalized_actions: list[dict[str, Any]] = []
+    for item in (actions or []):
+        act_dict = dict(item)
+        verify = act_dict.get("verify")
+        if not isinstance(verify, Mapping) or not verify:
+            act_dict["verify"] = {"expect_ok": True}
+        payload = dict(act_dict.get("payload") or {})
+        if "value" in payload and "key" not in payload and act_dict.get("kind") == "key":
+            payload["key"] = payload["value"]
+        if "value" in act_dict and "key" not in payload and act_dict.get("kind") == "key":
+            payload["key"] = act_dict["value"]
+        if "value" in payload and "text" not in payload and act_dict.get("kind") == "type_text":
+            payload["text"] = payload["value"]
+        if "value" in act_dict and "text" not in payload and act_dict.get("kind") == "type_text":
+            payload["text"] = act_dict["value"]
+        if act_dict.get("kind") == "key":
+            k = str(payload.get("key", "") or act_dict.get("key", "") or "").strip()
+            if k.lower() in ("enter", "return"):
+                payload["key"] = "Return"
+            elif k:
+                payload["key"] = k
+        if act_dict.get("kind") == "launch":
+            if "argv" in act_dict and "argv" not in payload:
+                if isinstance(act_dict["argv"], str):
+                    import shlex
+                    try:
+                        payload["argv"] = shlex.split(act_dict["argv"])
+                    except Exception:
+                        payload["argv"] = act_dict["argv"].split()
+                elif isinstance(act_dict["argv"], (list, tuple)):
+                    payload["argv"] = [str(x) for x in act_dict["argv"]]
+            if "command" in act_dict and "command" not in payload:
+                payload["command"] = str(act_dict["command"])
+            if not payload.get("argv") and payload.get("command"):
+                import shlex
+                try:
+                    payload["argv"] = shlex.split(str(payload["command"]))
+                except Exception:
+                    payload["argv"] = str(payload["command"]).split()
+        act_dict["payload"] = payload
+        normalized_actions.append(act_dict)
+    actions = normalized_actions
+
+    if not end_state:
+        end_state = _infer_end_state(actions, goal)
 
     # Fast path: the goal is already true on screen → do not repeat the action
     # (measured: the agent opened Firefox twice because it never looked first).
@@ -459,7 +563,8 @@ def skill_act(
         live_state = {}
 
     # Subtool fast path: one named flow (open_browser / open_youtube / …)
-    if subtool:
+    # If subtool is passed alone without actions, run it directly and return.
+    if subtool and not actions:
         record = run_subtool(
             subtool,
             runner_kind=runner_kind,
@@ -477,6 +582,20 @@ def skill_act(
         except Exception:  # noqa: BLE001
             record["live_state"] = live_state
         return record
+
+    # If subtool is passed WITH actions, launch via subtool first only if actions lacks launch
+    if subtool and actions:
+        has_launch = any(str((a or {}).get("kind", "")) == "launch" for a in actions)
+        if not has_launch:
+            run_subtool(
+                subtool,
+                runner_kind=runner_kind,
+                workdir=workspace,
+                runtime=workspace,
+                timeout=timeout,
+                write_record=False,
+                allow_live_desktop=runner_kind == "live-desktop",
+            )
     # If the owner's goal is on *their* machine but the opt-in is still closed,
     # open the approve bar BEFORE the first run (not after a refusal).
     from .cu_host_session import live_desktop_optin
@@ -986,9 +1105,11 @@ def skill_act_tool() -> AgentTool:
             "ACT: run declared actions on a real bridge. GO STRAIGHT TO skill_act — "
             "do not call skill_act_check first (it is cached; one call is enough). "
             "BATCH all GUI steps in ONE call (fast). "
+            "For multi-step flows (launch + navigate / type / key), declare all "
+            "steps in 'actions'. Only use 'subtool' alone (e.g. open_browser | open_youtube) "
+            "when you only need that single predefined operation. "
             "If end_state already holds (result.skipped) do NOTHING — the screen "
-            "already matches. Prefer subtool: open_browser | open_youtube for those "
-            "flows. "
+            "already matches. "
             'EACH action is {"kind":"cli"|"api_call"|"launch"|"key"|"type_text"|"mouse"|'
             '"scroll"|"drag"|"window", '
             '"channel":"api"|"dom"|"vision", "argv":["firefox"] or "payload":{…}, '
@@ -1000,8 +1121,10 @@ def skill_act_tool() -> AgentTool:
             'desktop windows). Example: {"actions":[{"kind":"cli","channel":"api",'
             '"argv":["curl","-s","https://example.com"],"verify":{"expect_stdout_contains":"Example"}}],'
             '"end_state":{"channel":"stdout","expect_observe_contains":"Example"}}. '
-            'GUI apps: {"actions":[{"kind":"cli","channel":"api",'
-            '"argv":["firefox"],"verify":{"expect_ok":true}}],'
+            'GUI apps: {"actions":[{"kind":"launch","channel":"api",'
+            '"payload":{"command":"firefox"},"verify":{"expect_ok":true}},'
+            '{"kind":"type_text","channel":"api","payload":{"text":"https://x.com"}},'
+            '{"kind":"key","channel":"api","payload":{"key":"Return"}}],'
             '"runner":"live-desktop","end_state":{"channel":"window_title",'
             '"expect_observe_contains":"Firefox"}}. '
             'IMPORTANT: to call a registered tool (web_search, web_fetch, terminal), '

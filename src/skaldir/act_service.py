@@ -1145,14 +1145,25 @@ def action_error(index: int, item: Any) -> str:
                 f"action {index}: kind 'api_call' needs payload.url "
                 "(it is an HTTP call, not a shell command)"
             )
+    if kind == "launch":
+        payload = item.get("payload") if isinstance(item.get("payload"), Mapping) else {}
+        argv = payload.get("argv") or item.get("argv")
+        cmd = payload.get("command") or item.get("command")
+        if not argv and not cmd:
+            return (
+                f"action {index}: kind 'launch' needs payload.argv or payload.command "
+                '(e.g. {"kind":"launch","payload":{"command":"zen"}})'
+            )
     if kind == "key":
-        p_key = str((item.get("payload") or {}).get("key", "") or "").strip()
-        t_key = str(item.get("key", "") or "").strip()
+        payload = item.get("payload") if isinstance(item.get("payload"), Mapping) else {}
+        p_key = str(payload.get("key", "") or payload.get("value", "") or "").strip()
+        t_key = str(item.get("key", "") or item.get("value", "") or "").strip()
         if not p_key and not t_key:
             return f"action {index}: kind 'key' needs payload.key"
     if kind == "type_text":
-        p_text = str((item.get("payload") or {}).get("text", "") or "")
-        t_text = str(item.get("text", "") or "")
+        payload = item.get("payload") if isinstance(item.get("payload"), Mapping) else {}
+        p_text = str(payload.get("text", "") or payload.get("value", "") or "")
+        t_text = str(item.get("text", "") or item.get("value", "") or "")
         if not p_text and not t_text:
             return f"action {index}: kind 'type_text' needs payload.text"
     if kind == "window":
@@ -1229,12 +1240,35 @@ def to_core_action(item: Mapping) -> Action:
     payload = dict(item.get("payload") or {})
     for field in (
         "key", "text", "op", "direction", "amount", "button",
-        "command", "url", "method", "window",
+        "command", "url", "method", "window", "value",
     ):
         if field in item and field not in payload:
             payload[field] = item[field]
-    if "argv" in item and "argv" not in payload and kind == "launch":
-        payload["argv"] = [str(p) for p in item["argv"]]
+    if kind == "key":
+        if "value" in payload and "key" not in payload:
+            payload["key"] = payload["value"]
+        k = str(payload.get("key", "") or "").strip()
+        if k.lower() in ("enter", "return"):
+            payload["key"] = "Return"
+    if kind == "type_text":
+        if "value" in payload and "text" not in payload:
+            payload["text"] = payload["value"]
+    if kind == "launch":
+        if "argv" in item and "argv" not in payload:
+            if isinstance(item["argv"], str):
+                import shlex
+                try:
+                    payload["argv"] = shlex.split(item["argv"])
+                except Exception:
+                    payload["argv"] = item["argv"].split()
+            elif isinstance(item["argv"], (list, tuple)):
+                payload["argv"] = [str(p) for p in item["argv"]]
+        if not payload.get("argv") and payload.get("command"):
+            import shlex
+            try:
+                payload["argv"] = shlex.split(str(payload["command"]))
+            except Exception:
+                payload["argv"] = str(payload["command"]).split()
     description = str(item.get("description", "") or "")[:200]
     if kind == "scroll":
         return Action(kind="mouse", argv=_scroll_argv(payload), payload=payload,
@@ -1371,6 +1405,18 @@ def check_end_state(
             if str(value).strip()
         ]
         if not expected:
+            if bool(end_state.get("expect_ok")):
+                return {
+                    "ok": True,
+                    "declared": True,
+                    "channel": channel,
+                    "description": str(end_state.get("description", "") or "expect_ok"),
+                    "expected": ["<ok>"],
+                    "missing": [],
+                    "observed": observation_text[:600],
+                    "verified": True,
+                    "retries_used": attempt,
+                }
             return {
                 "ok": False,
                 "declared": False,

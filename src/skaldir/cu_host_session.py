@@ -1206,7 +1206,12 @@ class HostSessionRunner(BaseRunner):
         decides.
         """
         if action.kind == "key":
-            name = str(action.payload.get("key", ""))
+            name = str(action.payload.get("key", "") or "").strip()
+            from .cu_platform import normalize_key
+
+            norm_tokens = normalize_key(name, "xdotool")
+            if norm_tokens:
+                name = "+".join(norm_tokens)
             if not _safe_key(name):
                 raise TargetScopeRefused(
                     f"the key {name!r} is not a keystroke name — refusing the live key action"
@@ -1488,7 +1493,12 @@ class HostSessionRunner(BaseRunner):
             payload = action.payload or {}
             argv = [str(part) for part in (payload.get("argv") or [])]
             if not argv and payload.get("command"):
-                argv = [str(payload["command"])]
+                cmd_str = str(payload["command"]).strip()
+                import shlex
+                try:
+                    argv = shlex.split(cmd_str)
+                except Exception:
+                    argv = cmd_str.split()
             if not argv and action.argv:
                 argv = [str(part) for part in action.argv]
             if not argv:
@@ -1496,12 +1506,32 @@ class HostSessionRunner(BaseRunner):
                     "a launch action needs payload.argv or payload.command "
                     '(e.g. {"kind":"launch","payload":{"command":"zen"}})'
                 )
-            return argv
+            from .cu_platform import resolve_app_command
+
+            return resolve_app_command(argv)
         if action.kind in ("mouse", "scroll"):
             x, y = int(action.payload.get("x", 0) or 0), int(action.payload.get("y", 0) or 0)
+            button = int(action.payload.get("button", 1) or 1)
+            backend = self._delivering_input_backend() or "xdotool"
+            if backend == "ydotool":
+                from .cu_platform import _ydotool_button_hex
+
+                btn_hex = _ydotool_button_hex(button, "click")
+                if action.kind == "scroll":
+                    direction = str(action.payload.get("direction", "down")).lower()
+                    amount = int(action.payload.get("amount", 3) or 3)
+                    delta = -amount if direction == "up" else amount
+                    return ["ydotool", "mousemove", "-w", "-y", str(delta)]
+                if action.payload.get("click"):
+                    return [
+                        "sh", "-c",
+                        'ydotool mousemove -a -x "$1" -y "$2"; ydotool click "$3"',
+                        "sh", str(x), str(y), btn_hex,
+                    ]
+                return ["ydotool", "mousemove", "-a", "-x", str(x), "-y", str(y)]
             argv = ["xdotool", "mousemove", "--sync", str(x), str(y)]
             if action.payload.get("click"):
-                argv += ["click", str(int(action.payload.get("button", 1) or 1))]
+                argv += ["click", str(button)]
             return argv
         if action.kind == "drag":
             # slider / drag: press → move → release (the shape a human uses on a slider)
@@ -1509,6 +1539,18 @@ class HostSessionRunner(BaseRunner):
             x0, y0 = int(payload.get("x", 0) or 0), int(payload.get("y", 0) or 0)
             x1, y1 = int(payload.get("to_x", x0) or x0), int(payload.get("to_y", y0) or y0)
             button = int(payload.get("button", 1) or 1)
+            backend = self._delivering_input_backend() or "xdotool"
+            if backend == "ydotool":
+                from .cu_platform import _ydotool_button_hex
+
+                down_hex = _ydotool_button_hex(button, "down")
+                up_hex = _ydotool_button_hex(button, "up")
+                return [
+                    "sh", "-c",
+                    'ydotool mousemove -a -x "$1" -y "$2"; ydotool click "$3"; '
+                    'ydotool mousemove -a -x "$4" -y "$5"; ydotool click "$6"',
+                    "sh", str(x0), str(y0), down_hex, str(x1), str(y1), up_hex,
+                ]
             return [
                 "sh", "-c",
                 "xdotool mousemove --sync $1 $2 mousedown $3; "
@@ -1666,7 +1708,7 @@ class HostSessionRunner(BaseRunner):
         trigger it.
         """
         env = dict(os.environ)
-        env["DISPLAY"] = self.display
+        env["DISPLAY"] = self.display or os.environ.get("DISPLAY", ":0")
         env.pop("GNOME_REMOTE_DESKTOP", None)
         env.pop("WAYLAND_DISPLAY", None)  # always: children are XWayland, never Wayland-native
         env["GDK_BACKEND"] = "x11"
@@ -1976,8 +2018,11 @@ class HostSessionRunner(BaseRunner):
         The process is returned so the caller can watch it or end it. Nothing here kills or
         closes a window the owner already has open.
         """
+        from .cu_platform import resolve_app_command
+
+        resolved = resolve_app_command(argv)
         return subprocess.Popen(  # nosec B603 — the owner's own argv from the plan
-            [str(part) for part in argv],
+            [str(part) for part in resolved],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             stdin=subprocess.DEVNULL, start_new_session=True,
             env=self._child_env(),
@@ -2060,13 +2105,28 @@ class HostSessionRunner(BaseRunner):
                 proc = self.launch(argv)
                 import time
 
-                time.sleep(0.5)
+                time.sleep(1.0)
                 poll = proc.poll()
                 if poll is not None and poll != 0:
                     return ActionResult(
                         ok=False,
                         detail=f"launch process exited immediately with code {poll}",
                     )
+                if argv:
+                    import os
+
+                    app_stem = (
+                        os.path.basename(argv[0])
+                        .replace("-browser", "")
+                        .replace("-stable", "")
+                    )
+                    if app_stem not in ("sh", "bash", "xdg-open"):
+                        try:
+                            self.act(
+                                Action(kind="window", payload={"op": "focus", "title": app_stem})
+                            )
+                        except Exception:
+                            pass
                 return ActionResult(
                     ok=True,
                     stdout=f"launched pid {proc.pid}",

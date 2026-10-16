@@ -380,3 +380,37 @@ def test_fedora_gnome_wayland_ydotool_syntax(monkeypatch):
     assert ["ydotool", "mousemove", "-a", "-x", "100", "-y", "200"] in calls
     assert ["ydotool", "click", "0x80"] in calls
 
+
+def test_resolve_app_command_and_launch_cross_distro(monkeypatch):
+    """Verify resolve_app_command aliases across distros and URL handling."""
+    import shutil
+
+    import skaldir.cu_platform as cp
+
+    # Direct URL
+    assert cp.resolve_app_command(["https://x.com"]) == ["xdg-open", "https://x.com"]
+
+    orig_which = shutil.which
+
+    def _fake_which(cmd):
+        if cmd == "google-chrome":
+            return None
+        if cmd == "chromium-browser":
+            return "/usr/bin/chromium-browser"
+        if cmd == "ptyxis":
+            return "/usr/bin/ptyxis"
+        if cmd == "libreoffice":
+            return "/usr/bin/libreoffice"
+        return orig_which(cmd)
+
+    monkeypatch.setattr(cp.shutil, "which", _fake_which)
+
+    res_chrome = cp.resolve_app_command(["google-chrome", "https://x.com"])
+    assert res_chrome == ["chromium-browser", "https://x.com"]
+
+    res_term = cp.resolve_app_command(["gnome-terminal"])
+    assert res_term == ["ptyxis"]
+
+    res_calc = cp.resolve_app_command(["calc"])
+    assert res_calc == ["libreoffice", "--calc"]
+

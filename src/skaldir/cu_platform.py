@@ -35,6 +35,7 @@ __all__ = [
     "install_omarchy_skills",
     "OMARCHY_HOTKEYS",
     "normalize_key",
+    "resolve_app_command",
 ]
 
 
@@ -213,6 +214,77 @@ _KEY_MAP_WTYPE: dict[str, str] = {
     "f6": "F6", "f7": "F7", "f8": "F8", "f9": "F9", "f10": "F10",
     "f11": "F11", "f12": "F12",
 }
+
+#: Well-known application binary aliases across Linux distributions
+#: (e.g. Fedora, Omarchy Hyprland, Debian/Ubuntu)
+APP_ALIASES: dict[str, list[str]] = {
+    "google-chrome": [
+        "google-chrome", "google-chrome-stable", "chromium-browser",
+        "chromium", "brave-browser", "zen-browser", "firefox",
+    ],
+    "chrome": [
+        "google-chrome", "google-chrome-stable", "chromium-browser",
+        "chromium", "brave-browser", "zen-browser", "firefox",
+    ],
+    "chromium": [
+        "chromium-browser", "chromium", "google-chrome", "brave-browser", "firefox",
+    ],
+    "brave": ["brave-browser", "brave"],
+    "zen": ["zen-browser", "zen"],
+    "firefox": ["firefox", "firefox-esr"],
+    "browser": [
+        "zen-browser", "firefox", "chromium-browser", "brave-browser", "google-chrome",
+    ],
+    "gnome-terminal": [
+        "ptyxis", "gnome-terminal", "foot", "kitty", "alacritty", "konsole", "xterm",
+    ],
+    "terminal": [
+        "ptyxis", "gnome-terminal", "foot", "kitty", "alacritty", "konsole", "xterm",
+    ],
+    "gedit": ["gnome-text-editor", "gedit", "kate", "xed", "mousepad"],
+    "text-editor": ["gnome-text-editor", "gedit", "kate", "xed", "mousepad"],
+    "calc": ["libreoffice", "localc", "gnumeric"],
+    "libreoffice-calc": ["libreoffice", "localc"],
+    "writer": ["libreoffice", "lowriter"],
+    "libreoffice-writer": ["libreoffice", "lowriter"],
+    "files": ["nautilus", "nemo", "thunar", "dolphin"],
+    "nautilus": ["nautilus", "nemo", "thunar", "dolphin"],
+}
+
+
+def resolve_app_command(argv: Sequence[str]) -> list[str]:
+    """Resolve application names to installed binaries across Linux distros.
+
+    E.g. on Fedora 'google-chrome' -> 'chromium-browser' / 'zen-browser',
+    'gnome-terminal' -> 'ptyxis', 'calc' -> ['libreoffice', '--calc'].
+    """
+    if not argv:
+        return []
+    parts = [str(p) for p in argv]
+    cmd = parts[0]
+    if shutil.which(cmd):
+        return parts
+    if cmd.startswith(("http://", "https://")):
+        return ["xdg-open", *parts]
+
+    candidates = APP_ALIASES.get(cmd.lower(), [])
+    for candidate in candidates:
+        if shutil.which(candidate):
+            new_parts = [candidate, *parts[1:]]
+            if (
+                cmd.lower() in ("calc", "libreoffice-calc")
+                and candidate == "libreoffice"
+                and "--calc" not in new_parts
+            ):
+                new_parts.insert(1, "--calc")
+            elif (
+                cmd.lower() in ("writer", "libreoffice-writer")
+                and candidate == "libreoffice"
+                and "--writer" not in new_parts
+            ):
+                new_parts.insert(1, "--writer")
+            return new_parts
+    return parts
 
 
 def normalize_key(key: str, tool: str = "xdotool") -> list[str]:
@@ -758,9 +830,15 @@ class HyprlandAdapter(PlatformAdapter):
 
     def launch_app(self, command: str | list[str]) -> bool:
         if isinstance(command, str):
-            argv = ["hyprctl", "dispatch", "exec", command]
+            import shlex
+            try:
+                cmd_parts = shlex.split(command)
+            except Exception:
+                cmd_parts = command.split()
         else:
-            argv = ["hyprctl", "dispatch", "exec", " ".join(command)]
+            cmd_parts = list(command)
+        resolved = resolve_app_command(cmd_parts)
+        argv = ["hyprctl", "dispatch", "exec", " ".join(resolved)]
         code, _ = _run(argv)
         return code == 0
 
@@ -987,13 +1065,19 @@ class GnomeAdapter(PlatformAdapter):
         return False
 
     def launch_app(self, command: str | list[str]) -> bool:
-        if isinstance(command, list):
-            command = " ".join(command)
-        if command.startswith(("http://", "https://", "file://")):
-            code, _ = _run(["xdg-open", command])
-        else:
+        if isinstance(command, str):
             import shlex
-            code, _ = _run(["sh", "-c", f"{shlex.quote(command)} >/dev/null 2>&1 &"])
+            try:
+                argv = shlex.split(command)
+            except Exception:
+                argv = command.split()
+        else:
+            argv = list(command)
+        if argv and argv[0].startswith(("http://", "https://", "file://")):
+            argv = ["xdg-open", *argv]
+        else:
+            argv = resolve_app_command(argv)
+        code, _ = _run(["sh", "-c", '"$@" >/dev/null 2>&1 &', "sh", *argv])
         return code == 0
 
     def hotkeys(self) -> dict[str, str]:
