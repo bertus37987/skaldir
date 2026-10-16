@@ -356,7 +356,7 @@ def test_screenshot_routes_through_xlib_capture_first(tmp_path, monkeypatch):
     def fake_capture(display, window_id=""):
         seen["display"] = display
         seen["window_id"] = window_id
-        return ScreenImage(width=4, height=4, rows=[[(255, 0, 0)] * 4 for _ in range(4)])
+        return ScreenImage(width=4, height=4, rows=(b"\xff\x00\x00" * 4,) * 4)
 
     monkeypatch.setattr("skaldir.xlib_capture.capture_window_image", fake_capture)
     out = tmp_path / "shot.png"

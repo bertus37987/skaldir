@@ -265,7 +265,69 @@ def ydotool_sockets() -> list[str]:
     return found
 
 
-def ydotool_reachable() -> tuple[bool, str]:
+def active_ydotool_socket() -> str:
+    """Return the first reachable ``ydotoold`` socket path, or ``""`` if none connects."""
+    for sock in ydotool_sockets():
+        if not Path(sock).exists():
+            continue
+        try:
+            client = _unix_connect(sock)
+        except OSError:
+            continue
+        try:
+            client.close()
+        except OSError:
+            pass
+        return sock
+    return ""
+
+
+def ensure_ydotoold() -> tuple[bool, str]:
+    """Ensure a user-owned ``ydotoold`` is running when ``/dev/uinput`` is writable.
+
+    Only auto-starts when no explicit ``YDOTOOL_SOCKET`` override is set, ``MISSION_SOCKET``
+    is at its standard path (never during isolated unit-test monkeypatches), ``ydotoold`` is
+    installed, and ``/dev/uinput`` is readable/writable by the current user.
+    """
+    sock = active_ydotool_socket()
+    if sock:
+        return True, f"ydotoold reachable at {sock}"
+    if (
+        not os.environ.get(SOCKET_ENV)
+        and MISSION_SOCKET == "/tmp/skaldir-ydotoold/ydotoold.sock"
+        and _have("ydotoold")
+        and os.access("/dev/uinput", os.R_OK | os.W_OK)
+    ):
+        import subprocess
+
+        sock_path = Path(MISSION_SOCKET)
+        try:
+            sock_path.parent.mkdir(parents=True, exist_ok=True)
+            if sock_path.exists():
+                sock_path.unlink(missing_ok=True)
+            subprocess.Popen(  # nosec B603 — fixed argv, no shell
+                [
+                    _have("ydotoold"),
+                    "--socket-path",
+                    str(sock_path),
+                    "--socket-own",
+                    f"{os.getuid()}:{os.getgid()}",
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            for _ in range(15):
+                time.sleep(0.05)
+                if active_ydotool_socket():
+                    break
+        except OSError:
+            pass
+    return ydotool_reachable(auto_start=False)
+
+
+def ydotool_reachable(*, auto_start: bool = True) -> tuple[bool, str]:
     """Kann dieser Prozess einen laufenden `ydotoold` erreichen?
 
     „Socket-Datei existiert, connect wird verweigert" ist ``BACKEND_MISSING``, nicht
@@ -286,6 +348,16 @@ def ydotool_reachable() -> tuple[bool, str]:
         except OSError:
             pass
         return True, f"ydotoold reachable at {sock}"
+    if (
+        auto_start
+        and not os.environ.get(SOCKET_ENV)
+        and MISSION_SOCKET == "/tmp/skaldir-ydotoold/ydotoold.sock"
+        and _have("ydotoold")
+        and os.access("/dev/uinput", os.R_OK | os.W_OK)
+    ):
+        ok, reason = ensure_ydotoold()
+        if ok:
+            return ok, reason
     return False, "; ".join(problems)
 
 
@@ -332,6 +404,16 @@ def backend_available(name: str) -> tuple[bool, str]:
         if not _have("xdotool"):
             return False, "xdotool is not installed"
         return True, "xdotool installed"
+    if name == "wtype":
+        if not _have("wtype"):
+            return False, "wtype is not installed"
+        return True, "wtype installed"
+    if name == "hyprctl":
+        if not _have("hyprctl"):
+            return False, "hyprctl is not installed"
+        if not os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+            return False, "HYPRLAND_INSTANCE_SIGNATURE is not set"
+        return True, "hyprctl reachable"
     if name == "portal":
         state, why = portal_path_state()
         return state == "ready", why
@@ -502,6 +584,8 @@ def send_argv(backend: str, marker: str, wid: int = 0, *, keymap: str = "") -> l
         # aussehen). This branch stays the legacy one deliberately: without a keymap it
         # measures backend capability, not the product's character accuracy.
         return ["ydotool", "type", "--key-delay", "40", marker]
+    if backend == "wtype":
+        return ["wtype", "-d", "40", "--", marker]
     if wid > 0:
         # Derselbe Bau wie im Zustellpfad (`_live_window_argv`): erst Fokus auf das eigene
         # Fenster, dann der Text. Ein Marker darf nie in einem fremden Fenster landen.
@@ -576,7 +660,9 @@ def probe(
     # started from a shell that still points at the host display would otherwise focus and
     # type into a window of the *user's* desktop. That is the one thing this probe must
     # never do, so the display travels with the command.
-    send_env = {**os.environ, "DISPLAY": display} if str(display or "") else None
+    send_env: dict[str, str] | None = (
+        {**os.environ, "DISPLAY": display} if str(display or "") else None
+    )
 
     def deliver(argv: Sequence[str], timeout: float) -> tuple[int, str]:
         """Send on the probe's own display (``send_env`` is None → the caller's, as before)."""
@@ -599,6 +685,12 @@ def probe(
         available, why = backend_available(backend)
         if not available:
             return ProbeResult(backend, ProbeState.BACKEND_MISSING, why, marker=token)
+        if backend == "ydotool" and not (send_env or os.environ).get(SOCKET_ENV):
+            sock = active_ydotool_socket() or (
+                MISSION_SOCKET if Path(MISSION_SOCKET).exists() else ""
+            )
+            if sock:
+                send_env = {**(send_env or os.environ), SOCKET_ENV: sock}
 
     own = window if window is not None else spawner(
         run=token, workdir=workdir, display=display, focus=focus,
@@ -734,6 +826,7 @@ def choose(
     *,
     timeout: float = 6.0,
     marker: str | None = None,
+    backends: Sequence[str] | None = None,
     **kwargs: Any,
 ) -> tuple[ProbeResult, list[ProbeResult]]:
     """Das erste Backend, das wirklich zustellt — oder der blockierte Befund.
@@ -742,8 +835,9 @@ def choose(
     die Suche. Wenn keines zustellt, trägt die Antwort den **sagenwirksamsten** Zustand der
     Einzelbefunde (siehe :data:`_AGGREGATE_ORDER`) und nie ein „Erfolg".
     """
+    candidates = tuple(backends) if backends is not None else BACKENDS
     findings = [
-        probe(name, timeout=timeout, marker=marker, **kwargs) for name in BACKENDS
+        probe(name, timeout=timeout, marker=marker, **kwargs) for name in candidates
     ]
     for found in findings:
         if found.delivers:
@@ -790,9 +884,11 @@ __all__ = [
     "ProbeState",
     "ProbeWindow",
     "SOCKET_ENV",
+    "active_ydotool_socket",
     "backend_available",
     "choose",
     "correlate_delivery",
+    "ensure_ydotoold",
     "focus_argv",
     "new_marker",
     "portal_path_state",

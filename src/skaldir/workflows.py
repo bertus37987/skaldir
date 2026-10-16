@@ -215,6 +215,7 @@ def screenshot(path: Path, *, xid: str = "", display: str = "") -> tuple[bool, s
     import os
 
     from .computer_use import encode_png
+    from .cu_platform import _xlib_root_screenshot
     from .xlib_capture import XlibCaptureError, capture_window_image
 
     disp = display or os.environ.get("DISPLAY", "")
@@ -228,6 +229,8 @@ def screenshot(path: Path, *, xid: str = "", display: str = "") -> tuple[bool, s
             return True, "xlib"
         except (XlibCaptureError, ImportError, OSError) as exc:
             xlib_err = str(exc)
+            if not xid and _xlib_root_screenshot(Path(path)):
+                return True, "xlib"
     if shutil.which("import") is None:
         return False, xlib_err or "no screenshot backend (import missing)"
     target = xid if xid else "root"

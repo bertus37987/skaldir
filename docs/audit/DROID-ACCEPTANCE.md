@@ -42,9 +42,13 @@ Seit Übernahme (`95b69d6`) wurden folgende produktive Commits auf `main` eingeb
    - Goal-Vertrag mit Verifikations-Gates (`UNKNOWN` wird nie `PASS`), JEV-Kompaktierung (52.3 % Median-Token-Reduktion bei 0 Round-Trip-Fehlern).
    - Projektkontext (`AGENTS.md` + `SOUL.md`) und Hybrid-Knowledge (`knowledge_search`/`knowledge_read`), 5-stufige Kontext-Kompaktierung.
    - 3 Approval-Modi (`Ask Everything`, `Approve for me`, `Approve Everything`), per `Tab` auf leerem Prompt umschaltbar, mit harten Schranken für Ausgaben/Destruktiv-Kommandos (`docs/audit/ABNAHME-M6-STEER-CU-KREATIV-UI.md`).
-5. **Steuerung, Computer-Use, Kreativ-Pipelines & TUI (`C`, `H`):**
+5. **Steuerung, Cross-Platform Computer-Use (Fedora Host, Omarchy Hyprland, Debian/Ubuntu), Kreativ-Pipelines & TUI (`C`, `H`):**
    - Doppel-Escape-Erkennung (`skaldir stop detect`, Wayland-libinput-Beleg), persistenter Pause-Store, Desktop-Lease mit Fencing (`skaldir desk status`).
-   - X11-Window-First Screenshot (`xlib_capture` + ImageMagick-Fallback), Blender-Headless-Pipeline (`desk_lamp.blend` + `desk_lamp.png`), Kdenlive/MLT-Video-Pipeline (`project.kdenlive` + `export.mp4`), 3-Pane-TUI-Cockpit (`skaldir tui preview`).
+   - **Cross-Platform Computer Use (`cu_platform.py`, `input_backend.py`, `cu_host_session.py`, `workflows.py`):**
+     - **Fedora Linux (Host — GNOME/Wayland + Xwayland):** Automatische `YDOTOOL_SOCKET`-Auflösung & `ydotoold`-Autostart (`ensure_ydotoold()`) liefern live `INPUT_OBSERVED_AT_TARGET` (`delivers=True`); `GnomeAdapter` mit Xlib/Xwayland-Fallback-Capture (`_xlib_root_screenshot`), `xdotool`/`wmctrl` Fenstersteuerung und `evdev`-Keycode-Übersetzung.
+     - **Omarchy Hyprland (Arch + Hyprland Wayland):** Erstklassige Unterstützung für Omarchy/Hyprland (`hyprctl clients -j` / `activewindow -j` inkl. `at`/`size`-Geometrie, `hyprctl dispatch movecursor <x> <y>`, `wlrctl pointer click` / `ydotool click 0xC0`, `wtype` / `hyprctl dispatch sendshortcut`, `grim -s 1` 1:1 logisches Screenshot-Scaling + `hyprshot` + `omarchy`).
+     - **Debian / Ubuntu (GNOME Wayland/X11 & X11):** Vollständiger Adapter- und Tool-Stack (`xdotool`, `wmctrl -lGpx`/`-ia`/`-ic`, `xlib_capture`, `scrot`, `maim`, `gnome-screenshot`, `import`, `wtype`, `ydotool`).
+   - Blender-Headless-Pipeline (`desk_lamp.blend` + `desk_lamp.png`), Kdenlive/MLT-Video-Pipeline (`project.kdenlive` + `export.mp4`), 3-Pane-TUI-Cockpit (`skaldir tui preview`).
 
 ---
 
@@ -59,7 +63,7 @@ Seit Übernahme (`95b69d6`) wurden folgende produktive Commits auf `main` eingeb
 | **Scheduling & Dedup (`VAL-TOOL-004`)** | `uv run skaldir schedule run --ticks 1 --json` (2×) + `uv run pytest tests/test_scheduler.py tests/test_scheduler_worker.py -q` | `0` | 43/43 Tests grün, Claim `exec-9d6e1e7f8c60` dedupliziert (`docs/audit/ABNAHME-SCHEDULING.md`) |
 | **Goal, Voice & JEV (`VAL-GOAL-001..003`)** | `uv run skaldir jev benchmark --json` + `uv run pytest tests/test_completion.py tests/test_goal_run.py tests/test_voice.py tests/test_jev.py -q` | `0` | 129 passed, JEV Median-Reduktion `52.3 %` (`passes_gate: true`) |
 | **Memory & Approvals (`VAL-MEM-001/002`, `VAL-APR-001/002`)** | `uv run skaldir context show --json` + `uv run pytest tests/test_project_context.py tests/test_knowledge.py tests/test_compaction.py tests/test_approvals.py tests/test_dangerous_commands.py tests/test_chatbar.py -q` | `0` | 272 passed, `AGENTS.md` + `SOUL.md` geladen |
-| **Steering, CU/Vision & Workflows (`VAL-STEER-001..003`, `VAL-CU-001/002`)** | `uv run skaldir stop detect --gap-ms 250 --origin user --json` + `uv run pytest tests/test_stop_signal.py tests/test_stop_dispatch.py tests/test_pause.py tests/test_desktop_lease.py tests/test_desktop_indicator.py tests/test_computer_use.py tests/test_cu_action_verify.py tests/test_vision.py tests/test_vision_service.py tests/test_xlib_capture.py tests/test_workflows.py -q` | `0` | 349 passed, Xlib-Window-Capture auf `DISPLAY=:0` (`ok: true, backend: xlib`) |
+| **Steering, Cross-Platform CU/Vision & Workflows (`VAL-STEER-001..003`, `VAL-CU-001/002`)** | `uv run skaldir stop detect --gap-ms 250 --origin user --json` + `uv run pytest tests/test_cu_platform.py tests/test_input_backend.py tests/test_stop_signal.py tests/test_stop_dispatch.py tests/test_pause.py tests/test_desktop_lease.py tests/test_desktop_indicator.py tests/test_computer_use.py tests/test_cu_action_verify.py tests/test_vision.py tests/test_vision_service.py tests/test_xlib_capture.py tests/test_workflows.py -q` | `0` | Alle grün; Live auf Fedora Host (`:0`): `input_backend.choose()` → `ydotool` (`INPUT_OBSERVED_AT_TARGET`, `delivers=True`), `GnomeAdapter.screenshot()` + `workflows.screenshot()` (`ok: true, backend: xlib`) |
 | **Blender Headless (`VAL-CREATIVE-001`)** | `blender --background --python tests/fixtures/blender/build_desk_lamp.py -- /tmp/blender_out` + Re-Open-Check | `0` | `/tmp/blender_out/desk_lamp.blend` (8 Objekte, 4 Materialien) + `desk_lamp.png` (256 KB) |
 | **Kdenlive / Video (`VAL-CREATIVE-002`)** | `bash tests/fixtures/video/kdenlive_acceptance.sh /tmp/kdenlive_out` | `0` | `ABNAHME_D_OK`, `/tmp/kdenlive_out/project.kdenlive` + `export.mp4` (`6.04s`, Video+Audio) |
 | **TUI & CLI-Envelopes (`VAL-UI-001..003`)** | `uv run pytest tests/test_tui_app.py tests/test_tui_layout.py tests/test_tui_feed.py tests/test_tui_live.py tests/test_palette.py tests/test_status_view.py tests/test_diff_view.py tests/test_cli_contract_envelope.py -q` | `0` | Alle grün (`docs/audit/ABNAHME-M6-STEER-CU-KREATIV-UI.md`) |
@@ -70,8 +74,8 @@ Seit Übernahme (`95b69d6`) wurden folgende produktive Commits auf `main` eingeb
 
 Kein offener P0/P1-Punkt wird als erledigt ausgegeben; externe Blocker und bekannte Feinheiten sind präzise abgegrenzt:
 
-1. **Externe Host-Blocker (keine Code-Lücken):**
-   - **Synthetische Tastatur-/Mauszustellung an Xwayland-Fenster (`CU-03/07`, `VAL-CALC-004/005`, `VAL-INPUT-007`):** Auf diesem Fedora-GNOME/Wayland-Host erreichen synthetische X11/uinput/ydotool-Events das Xwayland-Zielfenster nicht Deterministisch (`docs/audit/BACKEND-ENTSCHEIDUNG-TASTATUR.md`); der offizielle Wayland-Portal-/EIS-Weg (`org.gnome.Mutter.RemoteDesktop`) erfordert eine interaktive Nutzerzustimmung (`CONSENT_MISSING`).
+1. **Plattform- & Host-Besonderheiten:**
+   - **Tastatur-/Mauszustellung unter Wayland/X11 (`CU-03/07`, `VAL-INPUT-007`):** Durch automatische `YDOTOOL_SOCKET`-Erkennung (`/tmp/skaldir-ydotoold/ydotoold.sock`) und `ensure_ydotoold()` liefert `input_backend.choose()` auf dem Fedora-Host live `INPUT_OBSERVED_AT_TARGET` über `ydotool`/uinput. Der optionale Wayland-Portal-/EIS-Weg (`org.gnome.Mutter.RemoteDesktop`) erfordert weiterhin eine einmalige interaktive Nutzerzustimmung (`CONSENT_MISSING`), falls kein `/dev/uinput`-Zugriff besteht.
    - **Bare-Start vs. Vollbild-TUI (`UI-01`):** `skaldir` ohne Argument startet bewusst den zwei-zeiligen Chat (`repl.launch_from_bare_call`, Commit `d5ac4e3`); das Drei-Bereich-TUI liegt unter `skaldir tui`.
    - **Voice-Live-Verdrahtung (`VOICE-01`, `T-42/43`):** `voice_service` und `voice_rebrief` sind implementiert und unit-getestet, aber nicht als automatischer Hintergrund-Interventionsloop in `agent_loop` aktiv geschaltet.
 2. **Verifizierte Orchestrator-Residuals `(a)`–`(g)`:**
@@ -81,7 +85,7 @@ Kein offener P0/P1-Punkt wird als erledigt ausgegeben; externe Blocker und bekan
    - **(d) ToolBuilder Live-Provider Draft-Call:** Aus Budget-Gründen nicht gegen einen kostenpflichtigen Live-Provider geschossen; die `F07`-Client-Injektion ist Ende-zu-Ende über `agent run --agent-tools` gegen den Run-Stub-Endpunkt bewiesen (`BUILD-03`).
    - **(e) `RunConfig.validate` Port-Gate-Meldung:** Verweigert Port-Mappings unter `--network none` aktiv; der Hinweis könnte den erlaubten Weg (Ports ohne expliziten Network-Override deklarieren, sodass `none → bridge` promoviert wird) noch expliziter nennen.
    - **(f) `inspect_container_surface`:** Listet ausführbare Binaries im Container-`PATH`; Subcommand-basierte Werkzeuge benötigen ein Shim-Binary.
-   - **(g) Umgebungs- & Altbestands-Nuancen:** Nichtdeterministischer Input-Backend-Flip auf dem Host (`BACKEND-ENTSCHEIDUNG-TASTATUR.md`), optionale Wayland-Portal-/EIS-Zustimmung (`CONSENT_MISSING`), Laufzeitabhängigkeit `xmodmap`, Yahoo-Snapshot-Differenz `630.99` (Schlusskurs) vs. `630.63` (`regularMarketPrice`) in `QUELLENPRUEFUNG-AMD.md` sowie ~74 vorbestehende, bewusst ungegatete Ruff-Hinweise unter `tools/`.
+   - **(g) Umgebungs- & Altbestands-Nuancen:** Optionale Wayland-Portal-/EIS-Zustimmung (`CONSENT_MISSING`), Laufzeitabhängigkeit `xmodmap`, Yahoo-Snapshot-Differenz `630.99` (Schlusskurs) vs. `630.63` (`regularMarketPrice`) in `QUELLENPRUEFUNG-AMD.md` sowie ~74 vorbestehende, bewusst ungegatete Ruff-Hinweise unter `tools/`.
 
 ---
 

@@ -56,6 +56,10 @@ class WindowInfo:
     focused: bool = False
     xwayland: bool = False
     source: str = ""
+    x: int = 0
+    y: int = 0
+    width: int = 0
+    height: int = 0
 
 
 @dataclass
@@ -74,7 +78,10 @@ class PlatformInfo:
 
     @property
     def is_wayland(self) -> bool:
-        return self.compositor in ("hyprland", "gnome", "kde", "dwl") and self.os == "linux"
+        return (
+            self.compositor in ("hyprland", "sway", "gnome", "kde", "dwl")
+            and self.os == "linux"
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -84,8 +91,11 @@ class PlatformInfo:
 _OMARCHY_MARKERS = (
     "/etc/omarchy-release",
     os.path.expanduser("~/.config/omarchy"),
+    os.path.expanduser("~/.local/share/omarchy"),
     "/usr/bin/omarchy",
     "/usr/local/bin/omarchy",
+    "/usr/bin/omarchy-version",
+    "/usr/local/bin/omarchy-version",
 )
 
 
@@ -96,16 +106,24 @@ def _detect_distro() -> str:
     if _platform_mod.system() == "Windows":
         return "windows"
     # Omarchy first: it is Arch-based so /etc/os-release says "arch"
+    omarchy_env = (os.environ.get("OMARCHY_PATH") or "").strip()
+    if omarchy_env and Path(omarchy_env).exists():
+        return "omarchy"
     for marker in _OMARCHY_MARKERS:
         if Path(marker).exists():
             return "omarchy"
     os_release = Path("/etc/os-release")
     if os_release.exists():
         text = os_release.read_text(encoding="utf-8", errors="replace").lower()
-        for name in ("omarchy", "ubuntu", "fedora", "rhel", "centos", "rocky", "almalinux",
-                     "arch", "manjaro", "debian", "opensuse", "nixos", "gentoo", "void"):
-            if f"id={name}" in text or f"id=\"{name}\"" in text:
+        for name in (
+            "omarchy", "ubuntu", "debian", "fedora", "rhel", "centos", "rocky", "almalinux",
+            "arch", "manjaro", "opensuse", "nixos", "gentoo", "void",
+        ):
+            if re.search(rf'^id=["\']?{re.escape(name)}["\']?\s*$', text, re.MULTILINE):
                 return name if name not in ("centos", "rocky", "almalinux") else "rhel"
+        for name in ("ubuntu", "debian", "fedora", "rhel", "arch"):
+            if f"id_like={name}" in text or f'id_like="{name}' in text:
+                return name
     return "linux"
 
 
@@ -126,6 +144,10 @@ def _detect_compositor(distro: str) -> str:
         return "dwl"
     # GNOME / KDE via Wayland or X11
     desktop = (os.environ.get("XDG_CURRENT_DESKTOP") or "").lower()
+    if "hyprland" in desktop:
+        return "hyprland"
+    if "sway" in desktop:
+        return "sway"
     if "gnome" in desktop or os.environ.get("GNOME_DESKTOP_SESSION_ID"):
         return "gnome"
     if "kde" in desktop or "plasma" in desktop or os.environ.get("KDE_FULL_SESSION"):
@@ -142,11 +164,13 @@ def detect_platform() -> PlatformInfo:
     tools = {
         name: bool(shutil.which(name))
         for name in (
-            "hyprctl", "wtype", "ydotool", "wlrctl",
-            "xdotool", "xprop", "xwd", "import", "grim", "slurp",
+            "hyprctl", "wtype", "ydotool", "ydotoold", "wlrctl",
+            "xdotool", "wmctrl", "xprop", "xwd", "import",
+            "scrot", "maim", "gnome-screenshot",
+            "grim", "slurp", "hyprshot", "wl-copy", "wl-paste",
             "gdbus", "qdbus", "kdotool",
             "osascript", "cliclick",
-            "omarchy",
+            "omarchy", "omarchy-cmd-screenshot",
         )
     }
     return PlatformInfo(
@@ -224,23 +248,174 @@ def _wtype_key_argv(key: str) -> list[str]:
     return argv
 
 
+def _ydotool_key_argv(key: str) -> list[str]:
+    """Build ``ydotool key <evdev_code>:<press> ...`` argv using numeric evdev keycodes."""
+    try:
+        from .evdev_keys import key_event_argv
+
+        return ["ydotool", "key", *key_event_argv(key)]
+    except Exception:  # noqa: BLE001
+        tokens = normalize_key(key, "xdotool")
+        argv = ["ydotool", "key"]
+        for t in tokens[:-1]:
+            argv.append(t.lower() + ":1")
+        if tokens:
+            argv.append(tokens[-1])
+        for t in reversed(tokens[:-1]):
+            argv.append(t.lower() + ":0")
+        return argv
+
+
+def _ydotool_button_hex(button: int, mode: str = "click") -> str:
+    """Convert 1-based X11 mouse button (1=left, 2=middle, 3=right) to ydotool hex mask.
+
+    ``ydotool click --help``: 0x00=LEFT, 0x01=RIGHT, 0x02=MIDDLE; 0x40=down, 0x80=up, 0xC0=click.
+    """
+    btn_idx = {1: 0x00, 2: 0x02, 3: 0x01}.get(int(button or 1), 0x00)
+    mask = {"click": 0xC0, "down": 0x40, "up": 0x80}.get(mode, 0xC0)
+    return f"0x{mask | btn_idx:02X}"
+
+
+def _hyprctl_window_selector(wid: str) -> str:
+    """Normalize a window identifier into a Hyprland selector (``address:0x...``, ``pid:...``)."""
+    raw = (wid or "").strip()
+    if not raw:
+        return "activewindow"
+    if raw.startswith(("address:", "pid:", "class:", "title:", "initialclass:", "initialtitle:")):
+        return raw
+    if raw.startswith("0x") or all(c in "0123456789abcdefABCDEF" for c in raw):
+        addr = raw if raw.startswith("0x") else f"0x{raw}"
+        return f"address:{addr}"
+    return f"title:{raw}"
+
+
+def _hyprctl_sendshortcut_argv(key: str, window: str = "") -> list[str]:
+    """Build ``hyprctl dispatch sendshortcut "<mods>, <key>, <target>"`` argv."""
+    tokens = normalize_key(key, "wtype")
+    mod_map = {
+        "ctrl": "CTRL", "control": "CTRL",
+        "alt": "ALT",
+        "super": "SUPER", "meta": "SUPER", "win": "SUPER",
+        "shift": "SHIFT",
+    }
+    mods: list[str] = []
+    final = ""
+    for t in tokens:
+        low = t.lower()
+        if low in mod_map:
+            mods.append(mod_map[low])
+        else:
+            final = t
+    target = _hyprctl_window_selector(window) if window else "activewindow"
+    mod_str = " ".join(mods)
+    return ["hyprctl", "dispatch", "sendshortcut", f"{mod_str}, {final}, {target}"]
+
+
 # --------------------------------------------------------------------------- #
 # Adapter base                                                                 #
 # --------------------------------------------------------------------------- #
 
 
 def _run(argv: Sequence[str], *, timeout: float = 8.0) -> tuple[int, str]:
+    cmd = list(argv)
+    env: dict[str, str] | None = None
+    if cmd and cmd[0] == "ydotool" and not os.environ.get("YDOTOOL_SOCKET"):
+        try:
+            from .input_backend import MISSION_SOCKET, active_ydotool_socket, ensure_ydotoold
+
+            ensure_ydotoold()
+            sock = active_ydotool_socket() or (
+                MISSION_SOCKET if Path(MISSION_SOCKET).exists() else ""
+            )
+            if sock:
+                env = {**os.environ, "YDOTOOL_SOCKET": sock}
+        except Exception:  # noqa: BLE001
+            env = None
     try:
         proc = subprocess.run(  # nosec B603 — fixed argv, no shell
-            list(argv),
+            cmd,
             capture_output=True,
             text=True,
             timeout=timeout,
             check=False,
+            env=env,
         )
     except (OSError, subprocess.SubprocessError) as exc:
         return -1, f"{type(exc).__name__}: {exc}"
     return proc.returncode, ((proc.stdout or "") + (proc.stderr or "")).strip()
+
+
+def _xlib_root_screenshot(target: Path, window_id: str = "") -> bool:
+    """Capture root or window via python-xlib ``capture_window_image`` + ``encode_png``.
+
+    On pure X11 / Xvfb, capturing ``root`` (``window_id=""``) succeeds directly.
+    On Wayland + Xwayland (e.g. Fedora GNOME Wayland ``:0``), the Xwayland root surface
+    has no backing pixmap (``BadMatch``), so we fall back to the largest viewable
+    Xwayland window on the display.
+    """
+    display = str(os.environ.get("DISPLAY") or "").strip()
+    if not display:
+        return False
+    try:
+        from .computer_use import encode_png
+        from .xlib_capture import XlibCaptureError, capture_window_image
+    except Exception:  # noqa: BLE001
+        return False
+
+    img = None
+    try:
+        img = capture_window_image(display, window_id)
+    except XlibCaptureError:
+        if not window_id:
+            try:
+                from Xlib import X
+                from Xlib import display as xdisplay
+
+                conn = xdisplay.Display(display)
+                try:
+                    candidates: list[tuple[int, int]] = []
+                    stack = list(conn.screen().root.query_tree().children)
+                    while stack:
+                        w = stack.pop()
+                        try:
+                            attrs = w.get_attributes()
+                            geom = w.get_geometry()
+                            if (
+                                attrs.map_state == X.IsViewable
+                                and getattr(attrs, "win_class", X.InputOutput) == X.InputOutput
+                                and geom.width > 0
+                                and geom.height > 0
+                            ):
+                                candidates.append((geom.width * geom.height, w.id))
+                            children = w.query_tree().children
+                            if children:
+                                stack.extend(children)
+                        except Exception:  # noqa: BLE001
+                            continue
+                finally:
+                    conn.close()
+                for _area, cand_wid in sorted(candidates, reverse=True):
+                    try:
+                        img = capture_window_image(display, str(cand_wid))
+                        break
+                    except XlibCaptureError:
+                        continue
+            except Exception:  # noqa: BLE001
+                img = None
+    except Exception:  # noqa: BLE001
+        return False
+
+    if img is None:
+        return False
+    try:
+        png = encode_png(img)
+        if not png:
+            return False
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(png)
+        return target.is_file() and target.stat().st_size > 0
+    except Exception:  # noqa: BLE001
+        return False
 
 
 class PlatformAdapter(ABC):
@@ -356,7 +531,7 @@ OMARCHY_HOTKEYS: dict[str, str] = {
 
 
 class HyprlandAdapter(PlatformAdapter):
-    """Omarchy / Hyprland: ``hyprctl`` IPC + ``wtype`` / ``ydotool`` input + ``omarchy`` CLI.
+    """Omarchy / Hyprland: ``hyprctl`` IPC + ``wtype``/``wlrctl``/``ydotool`` + ``grim``.
 
     ``hyprctl clients -j`` lists **all** windows including Wayland-native ones — the
     exact gap that made xdotool-driven observe() report ``(no windows)`` while Zen
@@ -364,6 +539,8 @@ class HyprlandAdapter(PlatformAdapter):
     """
 
     def list_windows(self) -> list[WindowInfo]:
+        if not self.info.tools.get("hyprctl", True):
+            return []
         code, output = _run(["hyprctl", "clients", "-j"])
         if code != 0 or not output:
             return []
@@ -386,6 +563,12 @@ class HyprlandAdapter(PlatformAdapter):
                 continue
             addr = str(c.get("address") or "")
             ws = c.get("workspace") or {}
+            at = c.get("at") if isinstance(c.get("at"), (list, tuple)) else [0, 0]
+            size = c.get("size") if isinstance(c.get("size"), (list, tuple)) else [0, 0]
+            wx = int(at[0]) if len(at) >= 1 and isinstance(at[0], (int, float)) else 0
+            wy = int(at[1]) if len(at) >= 2 and isinstance(at[1], (int, float)) else 0
+            ww = int(size[0]) if len(size) >= 1 and isinstance(size[0], (int, float)) else 0
+            wh = int(size[1]) if len(size) >= 2 and isinstance(size[1], (int, float)) else 0
             windows.append(WindowInfo(
                 id=addr,
                 title=str(c.get("title") or ""),
@@ -396,10 +579,16 @@ class HyprlandAdapter(PlatformAdapter):
                 focused=(addr == active_id),
                 xwayland=bool(c.get("xwayland")),
                 source="hyprctl",
+                x=wx,
+                y=wy,
+                width=ww,
+                height=wh,
             ))
         return windows
 
     def get_active_window(self) -> WindowInfo | None:
+        if not self.info.tools.get("hyprctl", True):
+            return None
         code, output = _run(["hyprctl", "activewindow", "-j"])
         if code != 0 or not output:
             return None
@@ -410,6 +599,12 @@ class HyprlandAdapter(PlatformAdapter):
         if not isinstance(c, dict) or not c.get("address"):
             return None
         ws = c.get("workspace") or {}
+        at = c.get("at") if isinstance(c.get("at"), (list, tuple)) else [0, 0]
+        size = c.get("size") if isinstance(c.get("size"), (list, tuple)) else [0, 0]
+        wx = int(at[0]) if len(at) >= 1 and isinstance(at[0], (int, float)) else 0
+        wy = int(at[1]) if len(at) >= 2 and isinstance(at[1], (int, float)) else 0
+        ww = int(size[0]) if len(size) >= 1 and isinstance(size[0], (int, float)) else 0
+        wh = int(size[1]) if len(size) >= 2 and isinstance(size[1], (int, float)) else 0
         return WindowInfo(
             id=str(c["address"]),
             title=str(c.get("title") or ""),
@@ -420,14 +615,24 @@ class HyprlandAdapter(PlatformAdapter):
             focused=True,
             xwayland=bool(c.get("xwayland")),
             source="hyprctl",
+            x=wx,
+            y=wy,
+            width=ww,
+            height=wh,
         )
 
     def focus_window(self, wid: str) -> bool:
-        code, _ = _run(["hyprctl", "dispatch", "focuswindow", f"address:{wid}"])
+        if not wid:
+            return False
+        selector = _hyprctl_window_selector(wid)
+        code, _ = _run(["hyprctl", "dispatch", "focuswindow", selector])
         return code == 0
 
     def close_window(self, wid: str) -> bool:
-        code, _ = _run(["hyprctl", "dispatch", "closewindow", f"address:{wid}"])
+        if not wid:
+            return False
+        selector = _hyprctl_window_selector(wid)
+        code, _ = _run(["hyprctl", "dispatch", "closewindow", selector])
         return code == 0
 
     def send_key(self, key: str, window: str = "") -> bool:
@@ -435,18 +640,16 @@ class HyprlandAdapter(PlatformAdapter):
             self.focus_window(window)
         if self.info.tools.get("wtype"):
             code, _ = _run(_wtype_key_argv(key))
-            return code == 0
+            if code == 0:
+                return True
+        if self.info.tools.get("hyprctl"):
+            code, _ = _run(_hyprctl_sendshortcut_argv(key, window))
+            if code == 0:
+                return True
         if self.info.tools.get("ydotool"):
-            tokens = normalize_key(key, "xdotool")
-            argv = ["ydotool", "key"]
-            for t in tokens[:-1]:
-                argv.append(t.lower() + ":1")
-            if tokens:
-                argv.append(tokens[-1])
-            for t in tokens[:-1]:
-                argv.append(t.lower() + ":0")
-            code, _ = _run(argv)
-            return code == 0
+            code, _ = _run(_ydotool_key_argv(key))
+            if code == 0:
+                return True
         # last resort: XWayland via xdotool (only works for xwayland windows)
         code, _ = _run(_xdotool_key_argv(key))
         return code == 0
@@ -456,25 +659,44 @@ class HyprlandAdapter(PlatformAdapter):
             self.focus_window(window)
         if self.info.tools.get("wtype"):
             code, _ = _run(["wtype", "--", text])
-            return code == 0
+            if code == 0:
+                return True
         if self.info.tools.get("ydotool"):
-            code, _ = _run(["ydotool", "type", "--", text])
-            return code == 0
+            code, _ = _run(["ydotool", "type", "--key-delay", "20", "--", text])
+            if code == 0:
+                return True
+        if self.info.tools.get("wl-copy") and self.info.tools.get("hyprctl"):
+            c1, _ = _run(["wl-copy", "--", text])
+            if c1 == 0:
+                c2, _ = _run(_hyprctl_sendshortcut_argv("ctrl+v", window))
+                if c2 == 0:
+                    return True
         code, _ = _run(["xdotool", "type", "--delay", "12", "--", text])
         return code == 0
 
     def mouse_move(self, x: int, y: int) -> bool:
+        if self.info.tools.get("hyprctl"):
+            code, _ = _run(["hyprctl", "dispatch", "movecursor", str(x), str(y)])
+            if code == 0:
+                return True
         if self.info.tools.get("ydotool"):
-            code, _ = _run(["ydotool", "mousemove", "--absolute", str(x), str(y)])
-            return code == 0
+            code, _ = _run(["ydotool", "mousemove", "-a", "-x", str(x), "-y", str(y)])
+            if code == 0:
+                return True
         code, _ = _run(["xdotool", "mousemove", "--sync", str(x), str(y)])
         return code == 0
 
     def mouse_click(self, x: int, y: int, button: int = 1) -> bool:
         self.mouse_move(x, y)
+        if self.info.tools.get("wlrctl"):
+            btn_name = {1: "left", 2: "middle", 3: "right"}.get(button, "left")
+            code, _ = _run(["wlrctl", "pointer", "click", btn_name])
+            if code == 0:
+                return True
         if self.info.tools.get("ydotool"):
-            code, _ = _run(["ydotool", "click", str(button)])
-            return code == 0
+            code, _ = _run(["ydotool", "click", _ydotool_button_hex(button, "click")])
+            if code == 0:
+                return True
         code, _ = _run(["xdotool", "click", str(button)])
         return code == 0
 
@@ -483,29 +705,52 @@ class HyprlandAdapter(PlatformAdapter):
     ) -> bool:
         self.mouse_move(x0, y0)
         if self.info.tools.get("ydotool"):
-            _run(["ydotool", "mousedown", str(button)])
+            c_down, _ = _run(["ydotool", "click", _ydotool_button_hex(button, "down")])
             self.mouse_move(x1, y1)
-            _run(["ydotool", "mouseup", str(button)])
-            return True
+            c_up, _ = _run(["ydotool", "click", _ydotool_button_hex(button, "up")])
+            if c_down == 0 and c_up == 0:
+                return True
         _run(["xdotool", "mousedown", str(button)])
         self.mouse_move(x1, y1)
-        _run(["xdotool", "mouseup", str(button)])
-        return True
+        code, _ = _run(["xdotool", "mouseup", str(button)])
+        return code == 0
 
     def screenshot(self, path: str | Path) -> bool:
         target = Path(path)
         target.parent.mkdir(parents=True, exist_ok=True)
-        # Omarchy's own capture is the blessed path; grim is the wlroots fallback
+        # grim -s 1 captures at logical 1x scale so pixels align 1:1 with hyprctl coordinates
+        if self.info.tools.get("grim"):
+            code, _ = _run(["grim", "-s", "1", str(target)])
+            if code == 0 and target.is_file() and target.stat().st_size > 0:
+                return True
+            code, _ = _run(["grim", str(target)])
+            if code == 0 and target.is_file() and target.stat().st_size > 0:
+                return True
+        if self.info.tools.get("hyprshot"):
+            code, _ = _run([
+                "hyprshot", "-m", "output", "-s",
+                "-o", str(target.parent), "-f", target.name,
+            ])
+            if code == 0 and target.is_file() and target.stat().st_size > 0:
+                return True
         if self.info.tools.get("omarchy"):
             code, _ = _run(["omarchy", "capture", "screenshot", "fullscreen", "save"])
             if code == 0:
                 return True
-        if self.info.tools.get("grim"):
-            code, _ = _run(["grim", str(target)])
-            return code == 0
+        if _xlib_root_screenshot(target):
+            return True
+        if self.info.tools.get("scrot"):
+            code, _ = _run(["scrot", "--overwrite", str(target)])
+            if code == 0 and target.is_file():
+                return True
+        if self.info.tools.get("maim"):
+            code, _ = _run(["maim", str(target)])
+            if code == 0 and target.is_file():
+                return True
         if self.info.tools.get("import"):
             code, _ = _run(["import", "-window", "root", str(target)])
-            return code == 0
+            if code == 0 and target.is_file():
+                return True
         if self.info.tools.get("xwd"):
             code, _ = _run(["xwd", "-root", "-silent", "-out", str(target)])
             return code == 0
@@ -524,13 +769,13 @@ class HyprlandAdapter(PlatformAdapter):
 
 
 # --------------------------------------------------------------------------- #
-# GNOME (X11 + Wayland)                                                        #
+# GNOME / Debian / Ubuntu / Fedora (X11 + Wayland)                             #
 # --------------------------------------------------------------------------- #
 
 
 class GnomeAdapter(PlatformAdapter):
-    """Ubuntu / Fedora / RHEL GNOME: xdotool (X11) + gdbus Introspect (Wayland windows)
-    + ydotool/wtype (Wayland input) + xdg-open (launch).
+    """Ubuntu / Debian / Fedora / RHEL GNOME: xdotool/wmctrl (X11/XWayland) + gdbus Introspect
+    (Wayland windows) + ydotool/wtype (Wayland input) + xlib_capture/scrot/maim/grim (capture).
 
     The XWayland pin (``MOZ_ENABLE_WAYLAND=0`` etc. in ``_child_env``) still applies:
     forcing app children to XWayland keeps xdotool in the loop for key/text/pointer.
@@ -541,7 +786,7 @@ class GnomeAdapter(PlatformAdapter):
         if self.info.tools.get("xdotool"):
             code, output = _run(["xdotool", "search", "--name", ".*"])
             if code == 0:
-                active_code, active_out = _run(["xdotool", "getactivewindow"])
+                _, active_out = _run(["xdotool", "getactivewindow"])
                 active_id = active_out.strip().splitlines()[0] if active_out else ""
                 for line in output.splitlines():
                     wid = line.strip()
@@ -554,20 +799,61 @@ class GnomeAdapter(PlatformAdapter):
                         m = re.search(r'=\s*"([^"]*)"', cls_out)
                         if m:
                             cls = m.group(1)
+                    wx, wy, ww, wh = 0, 0, 0, 0
+                    g_code, g_out = _run(["xdotool", "getwindowgeometry", "--shell", wid])
+                    if g_code == 0 and g_out:
+                        g_vals: dict[str, int] = {}
+                        for g_line in g_out.splitlines():
+                            if "=" in g_line:
+                                k, _, v = g_line.partition("=")
+                                if v.strip().lstrip("-").isdigit():
+                                    g_vals[k.strip()] = int(v.strip())
+                        wx = g_vals.get("X", 0)
+                        wy = g_vals.get("Y", 0)
+                        ww = g_vals.get("WIDTH", 0)
+                        wh = g_vals.get("HEIGHT", 0)
                     windows.append(WindowInfo(
                         id=wid,
                         title=title.strip(),
                         app_class=cls,
                         focused=(wid == active_id),
                         source="xdotool",
+                        x=wx,
+                        y=wy,
+                        width=ww,
+                        height=wh,
+                    ))
+        elif self.info.tools.get("wmctrl"):
+            code, output = _run(["wmctrl", "-lGpx"])
+            if code == 0 and output:
+                for line in output.splitlines():
+                    parts = line.split(None, 9)
+                    if len(parts) < 9:
+                        continue
+                    if len(parts) == 10:
+                        wid, ws, pid_s, gx, gy, gw, gh, wm_cls, _host, title = parts
+                    else:
+                        wid, ws, pid_s, gx, gy, gw, gh, wm_cls, title = parts
+                    windows.append(WindowInfo(
+                        id=wid,
+                        title=title.strip(),
+                        app_class=wm_cls,
+                        pid=int(pid_s) if pid_s.isdigit() else 0,
+                        workspace=ws,
+                        source="wmctrl",
+                        x=int(gx) if gx.lstrip("-").isdigit() else 0,
+                        y=int(gy) if gy.lstrip("-").isdigit() else 0,
+                        width=int(gw) if gw.isdigit() else 0,
+                        height=int(gh) if gh.isdigit() else 0,
                     ))
         # Wayland-native windows via GNOME Shell Introspect
-        for title in _gdbus_window_titles():
-            if any(w.title == title for w in windows):
-                continue
-            windows.append(WindowInfo(
-                id="", title=title, source="gnome-introspect",
-            ))
+        if self.info.tools.get("gdbus", True):
+            for title in _gdbus_window_titles():
+                if any(w.title == title for w in windows):
+                    continue
+                windows.append(WindowInfo(
+                    id="", title=title, source="gnome-introspect",
+                ))
         return windows
 
     def get_active_window(self) -> WindowInfo | None:
@@ -582,32 +868,43 @@ class GnomeAdapter(PlatformAdapter):
     def focus_window(self, wid: str) -> bool:
         if not wid:
             return False
-        code, _ = _run(["xdotool", "windowfocus", "--sync", wid])
-        return code == 0
+        if self.info.tools.get("xdotool"):
+            code, _ = _run(["xdotool", "windowactivate", "--sync", wid])
+            if code == 0:
+                return True
+            code, _ = _run(["xdotool", "windowfocus", "--sync", wid])
+            if code == 0:
+                return True
+        if self.info.tools.get("wmctrl"):
+            code, _ = _run(["wmctrl", "-ia", wid])
+            if code == 0:
+                return True
+        return False
 
     def close_window(self, wid: str) -> bool:
         if not wid:
             return False
-        code, _ = _run(["xdotool", "windowclose", wid])
-        return code == 0
+        if self.info.tools.get("xdotool"):
+            code, _ = _run(["xdotool", "windowclose", wid])
+            if code == 0:
+                return True
+        if self.info.tools.get("wmctrl"):
+            code, _ = _run(["wmctrl", "-ic", wid])
+            if code == 0:
+                return True
+        return False
 
     def send_key(self, key: str, window: str = "") -> bool:
         if window:
             self.focus_window(window)
         if self.info.is_wayland and self.info.tools.get("wtype"):
             code, _ = _run(_wtype_key_argv(key))
-            return code == 0
+            if code == 0:
+                return True
         if self.info.is_wayland and self.info.tools.get("ydotool"):
-            tokens = normalize_key(key, "xdotool")
-            argv = ["ydotool", "key"]
-            for t in tokens[:-1]:
-                argv.append(t.lower() + ":1")
-            if tokens:
-                argv.append(tokens[-1])
-            for t in tokens[:-1]:
-                argv.append(t.lower() + ":0")
-            code, _ = _run(argv)
-            return code == 0
+            code, _ = _run(_ydotool_key_argv(key))
+            if code == 0:
+                return True
         code, _ = _run(_xdotool_key_argv(key))
         return code == 0
 
@@ -616,25 +913,29 @@ class GnomeAdapter(PlatformAdapter):
             self.focus_window(window)
         if self.info.is_wayland and self.info.tools.get("wtype"):
             code, _ = _run(["wtype", "--", text])
-            return code == 0
+            if code == 0:
+                return True
         if self.info.is_wayland and self.info.tools.get("ydotool"):
-            code, _ = _run(["ydotool", "type", "--", text])
-            return code == 0
+            code, _ = _run(["ydotool", "type", "--key-delay", "20", "--", text])
+            if code == 0:
+                return True
         code, _ = _run(["xdotool", "type", "--delay", "12", "--", text])
         return code == 0
 
     def mouse_move(self, x: int, y: int) -> bool:
         if self.info.is_wayland and self.info.tools.get("ydotool"):
-            code, _ = _run(["ydotool", "mousemove", "--absolute", str(x), str(y)])
-            return code == 0
+            code, _ = _run(["ydotool", "mousemove", "-a", "-x", str(x), "-y", str(y)])
+            if code == 0:
+                return True
         code, _ = _run(["xdotool", "mousemove", "--sync", str(x), str(y)])
         return code == 0
 
     def mouse_click(self, x: int, y: int, button: int = 1) -> bool:
         self.mouse_move(x, y)
         if self.info.is_wayland and self.info.tools.get("ydotool"):
-            code, _ = _run(["ydotool", "click", str(button)])
-            return code == 0
+            code, _ = _run(["ydotool", "click", _ydotool_button_hex(button, "click")])
+            if code == 0:
+                return True
         code, _ = _run(["xdotool", "click", str(button)])
         return code == 0
 
@@ -642,21 +943,44 @@ class GnomeAdapter(PlatformAdapter):
         self, x0: int, y0: int, x1: int, y1: int, button: int = 1
     ) -> bool:
         self.mouse_move(x0, y0)
-        tool = "ydotool" if (self.info.is_wayland and self.info.tools.get("ydotool")) else "xdotool"
-        _run([tool, "mousedown", str(button)])
+        if self.info.is_wayland and self.info.tools.get("ydotool"):
+            c_down, _ = _run(["ydotool", "click", _ydotool_button_hex(button, "down")])
+            self.mouse_move(x1, y1)
+            c_up, _ = _run(["ydotool", "click", _ydotool_button_hex(button, "up")])
+            if c_down == 0 and c_up == 0:
+                return True
+        _run(["xdotool", "mousedown", str(button)])
         self.mouse_move(x1, y1)
-        _run([tool, "mouseup", str(button)])
-        return True
+        code, _ = _run(["xdotool", "mouseup", str(button)])
+        return code == 0
 
     def screenshot(self, path: str | Path) -> bool:
         target = Path(path)
         target.parent.mkdir(parents=True, exist_ok=True)
-        if self.info.tools.get("import"):
-            code, _ = _run(["import", "-window", "root", str(target)])
-            return code == 0
+        # 1. python-xlib root capture (works out-of-the-box on Fedora, Debian, Ubuntu X11/XWayland)
+        if _xlib_root_screenshot(target):
+            return True
+        # 2. Wayland / Debian / Ubuntu / Fedora CLI tools
         if self.info.tools.get("grim"):
             code, _ = _run(["grim", str(target)])
-            return code == 0
+            if code == 0 and target.is_file() and target.stat().st_size > 0:
+                return True
+        if self.info.tools.get("scrot"):
+            code, _ = _run(["scrot", "--overwrite", str(target)])
+            if code == 0 and target.is_file() and target.stat().st_size > 0:
+                return True
+        if self.info.tools.get("maim"):
+            code, _ = _run(["maim", str(target)])
+            if code == 0 and target.is_file() and target.stat().st_size > 0:
+                return True
+        if self.info.tools.get("gnome-screenshot"):
+            code, _ = _run(["gnome-screenshot", "-f", str(target)])
+            if code == 0 and target.is_file() and target.stat().st_size > 0:
+                return True
+        if self.info.tools.get("import"):
+            code, _ = _run(["import", "-window", "root", str(target)])
+            if code == 0 and target.is_file() and target.stat().st_size > 0:
+                return True
         if self.info.tools.get("xwd"):
             code, _ = _run(["xwd", "-root", "-silent", "-out", str(target)])
             return code == 0

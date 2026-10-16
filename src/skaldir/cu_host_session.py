@@ -1541,17 +1541,32 @@ class HostSessionRunner(BaseRunner):
 
     def _window_geometry(self, wid: str) -> dict | None:
         code, output = self._run(["xdotool", "getwindowgeometry", "--shell", wid])
-        if code != 0:
-            return None
-        values: dict[str, int] = {}
-        for line in output.splitlines():
-            if "=" in line:
-                key, _, value = line.partition("=")
+        if code == 0 and output:
+            values: dict[str, int] = {}
+            for line in output.splitlines():
+                if "=" in line:
+                    key, _, value = line.partition("=")
+                    try:
+                        values[key.strip()] = int(value.strip())
+                    except ValueError:
+                        continue
+            if values:
+                return values
+        if self.attach_to_session:
+            adapter = self._platform_adapter()
+            if adapter is not None:
                 try:
-                    values[key.strip()] = int(value.strip())
-                except ValueError:
-                    continue
-        return values or None
+                    for w in adapter.list_windows():
+                        if w.id == wid and w.width > 0 and w.height > 0:
+                            return {
+                                "X": int(w.x),
+                                "Y": int(w.y),
+                                "WIDTH": int(w.width),
+                                "HEIGHT": int(w.height),
+                            }
+                except Exception:  # noqa: BLE001
+                    pass
+        return None
 
     def _list_app_window_titles(self) -> list[str]:
         """Real application window titles on this display (system windows filtered).
@@ -1642,17 +1657,13 @@ class HostSessionRunner(BaseRunner):
         return env
 
     def _pin_ydotoold_socket(self, env: dict) -> None:
-        """Name the daemon the probe measures, in this child env — only when it exists.
+        """Name the daemon the probe measures, in this child env — only when it exists."""
+        from .input_backend import MISSION_SOCKET, active_ydotool_socket
 
-        Only the mission's own socket is named (``/tmp/skaldir-ydotoold/ydotoold.sock``):
-        the default socket is the CLI's built-in guess, which measured rc 2 here, so
-        guessing it again for a child would not help. A socket file with no daemon behind
-        it would fail the send loudly — but the file only exists while the mission daemon
-        actually ran, so this is the honest approximation of "the probed daemon".
-        """
-        from .input_backend import MISSION_SOCKET
-
-        if Path(MISSION_SOCKET).exists():
+        sock = active_ydotool_socket()
+        if sock:
+            env["YDOTOOL_SOCKET"] = sock
+        elif Path(MISSION_SOCKET).exists():
             env["YDOTOOL_SOCKET"] = MISSION_SOCKET
 
     def _run(self, argv: list[str]) -> tuple[int, str]:

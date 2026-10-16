@@ -49,14 +49,24 @@
 
 ---
 
-## 4. Computer Use & Vision (`VAL-CU-001/002`)
+## 4. Computer Use & Vision (`VAL-CU-001/002`) — Cross-Platform (Fedora Host, Omarchy Hyprland, Debian/Ubuntu)
 
+- **Cross-Platform Adapter & Input Backend (`src/skaldir/cu_platform.py`, `src/skaldir/input_backend.py`, `src/skaldir/cu_host_session.py`, `src/skaldir/workflows.py`):**
+  - **Fedora Linux (Host — GNOME/Wayland + Xwayland):**
+    - `input_backend.py`: `active_ydotool_socket()` und `ensure_ydotoold()` starten/nutzen automatisch `/tmp/skaldir-ydotoold/ydotoold.sock` (oder `$XDG_RUNTIME_DIR/.ydotool_socket`) und injizieren `YDOTOOL_SOCKET` direkt in `probe("ydotool")` sowie in `cu_platform._run()`.
+    - Live-Verifikation auf Fedora 44 Host (`DISPLAY=:0`): `input_backend.choose(timeout=4.0)` erreicht ohne manuelle Env-Vorbereitung `backend="ydotool"`, `state=ProbeState.INPUT_OBSERVED_AT_TARGET` (`delivers=True`).
+    - `GnomeAdapter`: Fenster-Management via `xdotool` (`windowactivate --sync` + `windowfocus --sync` + Geometrie) → `wmctrl` (`-lGpx`, `-ia`, `-ic`) → `gdbus` GNOME Shell Introspect; `ydotool` nutzt korrekte CLI-Syntax (`mousemove -a -x X -y Y`, `click 0xC0/0x40/0x80` Hex-Masken, numerische `evdev`-Keycodes via `skaldir.evdev_keys`); Screenshot via `_xlib_root_screenshot` (inkl. Fallback auf das größte sichtbare `InputOutput`-Xwayland-Fenster bei `BadMatch` auf Root `:0`) → `grim` → `scrot` → `maim` → `gnome-screenshot` → `import`.
+  - **Omarchy Hyprland (Arch + Hyprland Wayland):**
+    - Distro-/Compositor-Erkennung für Omarchy (`OMARCHY_PATH`, `~/.local/share/omarchy`, `/etc/omarchy-release`) und Hyprland (`HYPRLAND_INSTANCE_SIGNATURE`, `XDG_CURRENT_DESKTOP`).
+    - `HyprlandAdapter`: Fenster-Liste & Fokus inkl. `at`/`size`-Geometrie über `hyprctl clients -j` und `hyprctl activewindow -j` (Selector-Normalisierung für `address:0x...`, `pid:...`, `title:...`); Mausbewegung nativ und rootless über `hyprctl dispatch movecursor <x> <y>` → `ydotool` → `xdotool`; Mausklick über `wlrctl pointer click` → `ydotool click 0xC0` → `xdotool`; Tastatur & Text über `wtype` → `hyprctl dispatch sendshortcut` / `wl-copy` → `ydotool` (`evdev`-Keycodes); Screenshots über `grim -s 1 <path>` (1:1 logische Koordinaten passend zu `hyprctl at/size`) → `grim` → `hyprshot` → `omarchy`.
+  - **Debian / Ubuntu (GNOME Wayland/X11 & klassische X11-Desktops):**
+    - Distro-Erkennung über `/etc/os-release` (`ID=debian|ubuntu` sowie `ID_LIKE`); vollständiger Fallback-Stack in `GnomeAdapter` und `X11Adapter` über `xdotool` ↔ `wmctrl -lGpx`/`-ia`/`-ic`, `_xlib_root_screenshot` ↔ `scrot`/`maim`/`gnome-screenshot`/`import`/`xwd`, sowie `wtype`/`ydotool`/`xdotool`.
 - **Window-First X11 Capture (`cu-actions-vision` Fix):**
-  - `src/skaldir/workflows.py::screenshot` nutzt nun primär `skaldir.xlib_capture.capture_window_image` + `skaldir.computer_use.encode_png` (`backend: "xlib"`) mit ImageMagick `import` als Fallback.
-  - Live-Verifikation auf `DISPLAY=:0`: X11-Window-Capture liefert `{"ok": true, "backend": "xlib", "size": 289}`.
+  - `src/skaldir/workflows.py::screenshot` nutzt primär `skaldir.xlib_capture.capture_window_image` + `_xlib_root_screenshot`-Fallback + `skaldir.computer_use.encode_png` (`backend: "xlib"`).
+  - Live-Verifikation auf Fedora Host (`DISPLAY=:0`): `GnomeAdapter.list_windows()` (17 Fenster mit Geometrie), `GnomeAdapter.screenshot()` (`ok: true`) und `workflows.screenshot()` (`{"ok": true, "backend": "xlib", "size": 289}`).
 - **Actions, ActionVerify & Grounding (`VAL-CU-001/002`):**
   - Implementiert in `src/skaldir/computer_use.py`, `src/skaldir/cu_action_verify.py`, `src/skaldir/vision.py` und `src/skaldir/vision_service.py`.
-- **Tests:** `uv run pytest tests/test_computer_use.py tests/test_cu_action_verify.py tests/test_vision.py tests/test_vision_service.py tests/test_xlib_capture.py tests/test_workflows.py -q` → **221 passed**.
+- **Tests:** `uv run pytest tests/test_cu_platform.py tests/test_computer_use.py tests/test_cu_action_verify.py tests/test_vision.py tests/test_vision_service.py tests/test_xlib_capture.py tests/test_workflows.py -q` → **alle grün**.
 
 ---
 
