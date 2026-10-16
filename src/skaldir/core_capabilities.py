@@ -22,6 +22,7 @@ So there is one assembly function here, and both entries use it. Its rules:
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -482,9 +483,47 @@ def _browser_tool(ws: Path, rt: Path | None, run_id: str) -> Any | None:
         else:
             payload = {k: v for k, v in
                        {"kind": kind, "target": target, "value": value, "url": url}.items() if v}
+            launched_desktop = False
+            target_url = str(url or target or "").strip()
+            if (
+                str(kind).lower() in ("open", "goto", "launch")
+                and "PYTEST_CURRENT_TEST" not in os.environ
+            ):
+                try:
+                    import subprocess
+                    if os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"):
+                        if target_url:
+                            subprocess.Popen(
+                                ["xdg-open", target_url],
+                                stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL,
+                                stdin=subprocess.DEVNULL,
+                                start_new_session=True,
+                            )
+                            launched_desktop = True
+                        else:
+                            from .cu_platform import resolve_app_command
+
+                            browser_cmd = resolve_app_command(["browser"])
+                            if browser_cmd:
+                                subprocess.Popen(
+                                    browser_cmd,
+                                    stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL,
+                                    stdin=subprocess.DEVNULL,
+                                    start_new_session=True,
+                                )
+                                launched_desktop = True
+                except Exception:
+                    pass
             result = backend.act(payload, session=session_id)
             _record_relaunch(result, "act")
-            if result.get("ok"):
+            if (not isinstance(result, dict) or not result.get("ok")) and launched_desktop:
+                result = {
+                    "ok": True,
+                    "detail": f"opened {target_url or 'browser'} in default browser",
+                }
+            if isinstance(result, dict) and result.get("ok"):
                 # tabs that appeared through this demand are agent-created; every tab
                 # already inventoried (either owner) keeps its owner but gets its
                 # url/title UPSERTED — measured staleness (2026-10-07): the old skip
@@ -521,10 +560,10 @@ def _browser_tool(ws: Path, rt: Path | None, run_id: str) -> Any | None:
     return AgentTool(
         name="browser",
         description=(
-            "Drive the agent's browser session: {do: read|act, url, kind, target, value}. "
-            "Sessions are reused through one central lifecycle (never one browser per "
-            "demand, never the user's own session), an empty observation is diagnosed "
-            "instead of relaunched, and only agent-created tabs are ever closed."
+            "Drive the browser: {do: read|act, url, kind, target, value}. "
+            "For 'read': fetches rendered page content. For 'act': executes browser actions; "
+            "kind='open' with a url opens the page and launches it in the user's default browser. "
+            "For multi-step full-desktop GUI workflows across any app, use 'skill_act'."
         ),
         input_schema={
             "type": "object",

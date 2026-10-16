@@ -230,3 +230,31 @@ def test_browser_tool_call_through_the_real_loop_answers_honest_state(
     # the CLI's resolution, one counted launch — and NOT the run's own runtime dir
     assert (home / "browser" / "browser-session.json").is_file()
     assert not (runtime / "browser").exists()
+
+
+def test_browser_act_open_launches_on_desktop(tmp_path: Path, stubbed_backend, monkeypatch):
+    """When browser tool is called with act open, it triggers desktop browser launch."""
+    import subprocess
+
+    launched: list[list[str]] = []
+
+    def _fake_popen(cmd, **kwargs):
+        launched.append(cmd)
+
+        class _FakeProc:
+            pid = 9999
+
+        return _FakeProc()
+
+    monkeypatch.setattr(subprocess, "Popen", _fake_popen)
+    # Temporarily remove PYTEST_CURRENT_TEST to simulate live agent run
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setenv("DISPLAY", ":0")
+
+    ws = tmp_path / "ws"
+    ws.mkdir(exist_ok=True)
+    tool = _browser_tool(ws, tmp_path / "runtime")
+    result = tool.handler(do="act", kind="open", url="https://www.youtube.com")
+    assert result["ok"] is True
+    assert ["xdg-open", "https://www.youtube.com"] in launched
+
