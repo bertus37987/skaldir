@@ -2326,7 +2326,22 @@ def chat_request_body(
     if streaming:
         body["stream"] = True
     if tools:
-        body["tools"] = [dict(tool) for tool in tools]
+        cleaned_tools: list[dict[str, Any]] = []
+        forbidden_top_level = ("anyOf", "oneOf", "allOf", "enum", "const", "not")
+        for tool in tools:
+            t = dict(tool)
+            func = dict(t.get("function") or {})
+            params = func.get("parameters")
+            if isinstance(params, Mapping):
+                p = dict(params)
+                if any(k in p for k in forbidden_top_level):
+                    p = {k: v for k, v in p.items() if k not in forbidden_top_level}
+                if p.get("type") != "object":
+                    p["type"] = "object"
+                func["parameters"] = p
+                t["function"] = func
+            cleaned_tools.append(t)
+        body["tools"] = cleaned_tools
         body["tool_choice"] = tool_choice if tool_choice is not None else "auto"
         model_name = str(body.get("model") or "").lower()
         reasoning_markers = ("luna", "sol", "terra", "astra", "gpt-5.6", "o1", "o3", "o4")

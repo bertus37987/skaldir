@@ -1068,7 +1068,6 @@ def skill_act_tool() -> AgentTool:
                 "workspace": {"type": "string", "default": "."},
             },
             "additionalProperties": False,
-            "anyOf": [{"required": ["actions"]}, {"required": ["subtool"]}],
         },
         handler=lambda **kw: skill_act(
             [dict(item) for item in (kw.get("actions") or [])],

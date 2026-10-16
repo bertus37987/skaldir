@@ -991,3 +991,42 @@ class TestIntegration:
             assert len(stub.requests) == 2
             assert stub.requests[1]["body"].get("reasoning_effort") == "none"
             assert len(res.tool_calls) == 1
+
+    def test_tool_schema_strips_forbidden_top_level_keywords(self):
+        cfg = resolve_provider_config(
+            {"base_url": "https://api.openai.com/v1", "model": "gpt-5.6-luna"},
+            env={},
+            config_path=ABSENT_CONFIG,
+        )
+        tool_with_anyof = {
+            "type": "function",
+            "function": {
+                "name": "example_tool",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"a": {"type": "string"}},
+                    "anyOf": [{"required": ["a"]}],
+                    "allOf": [{"required": ["a"]}],
+                    "not": {"type": "null"},
+                },
+            },
+        }
+        body = lp.chat_request_body(
+            cfg, [{"role": "user", "content": "hi"}], tier="main", tools=[tool_with_anyof]
+        )
+        params = body["tools"][0]["function"]["parameters"]
+        assert "anyOf" not in params
+        assert "allOf" not in params
+        assert "not" not in params
+        assert params.get("type") == "object"
+        assert "a" in params.get("properties", {})
+
+    def test_skill_act_tool_schema_is_openai_compliant(self):
+        from skaldir.agent_toolset import skill_act_tool
+
+        tool = skill_act_tool()
+        schema = tool.input_schema
+        assert schema.get("type") == "object"
+        for forbidden in ("anyOf", "oneOf", "allOf", "enum", "const", "not"):
+            assert forbidden not in schema, f"forbidden top-level {forbidden} found in skill_act"
+
