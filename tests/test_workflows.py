@@ -345,3 +345,24 @@ def test_cli_workflows_list_prints_contracts(capsys):
         "open_app_snapshot", "open_app_settings_snapshot",
         "verify_setting_persistence", "run_model_test",
     }
+
+
+def test_screenshot_routes_through_xlib_capture_first(tmp_path, monkeypatch):
+    """VAL-CU-002 / cu-actions-vision: workflows.screenshot uses xlib_capture first."""
+    from skaldir.computer_use import ScreenImage
+
+    seen = {}
+
+    def fake_capture(display, window_id=""):
+        seen["display"] = display
+        seen["window_id"] = window_id
+        return ScreenImage(width=4, height=4, rows=[[(255, 0, 0)] * 4 for _ in range(4)])
+
+    monkeypatch.setattr("skaldir.xlib_capture.capture_window_image", fake_capture)
+    out = tmp_path / "shot.png"
+    ok, backend = wf.screenshot(out, xid="0x2a", display=":0")
+    assert ok is True
+    assert backend == "xlib"
+    assert seen == {"display": ":0", "window_id": "0x2a"}
+    assert out.exists() and out.stat().st_size > 0
+

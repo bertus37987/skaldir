@@ -210,10 +210,26 @@ def focus_window(xid: str) -> bool:
         return False
 
 
-def screenshot(path: Path, *, xid: str = "") -> tuple[bool, str]:
-    """Capture via import (X11/XWayland). Returns (ok, backend-or-error)."""
+def screenshot(path: Path, *, xid: str = "", display: str = "") -> tuple[bool, str]:
+    """Capture via python-xlib GetImage (primary) or ImageMagick import (fallback)."""
+    import os
+
+    from .computer_use import encode_png
+    from .xlib_capture import XlibCaptureError, capture_window_image
+
+    disp = display or os.environ.get("DISPLAY", "")
+    xlib_err = ""
+    if disp:
+        try:
+            image = capture_window_image(disp, xid)
+            png = encode_png(image)
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            Path(path).write_bytes(png)
+            return True, "xlib"
+        except (XlibCaptureError, ImportError, OSError) as exc:
+            xlib_err = str(exc)
     if shutil.which("import") is None:
-        return False, "no screenshot backend (import missing)"
+        return False, xlib_err or "no screenshot backend (import missing)"
     target = xid if xid else "root"
     code, _, err = _run(["import", "-window", target, str(path)], timeout=20.0)
     if code != 0 or not path.exists():

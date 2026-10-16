@@ -86,12 +86,23 @@ PY
 echo "== Export (Projekt erneut oeffnen + rendern) =="
 if command -v melt >/dev/null; then
   melt "$PROJ" -consumer avformat:"$OUT/export.mp4" format=mp4 vcodec=libx264 acodec=aac
+elif command -v ffmpeg >/dev/null; then
+  ffmpeg -y -v error \
+    -ss 0.5 -t 2.0 -i "$HERE/clip1.mp4" \
+    -ss 1.0 -t 2.0 -i "$HERE/clip2.mp4" \
+    -ss 0.0 -t 2.0 -i "$HERE/clip3.mp4" \
+    -filter_complex "[0:v][0:a][1:v][1:a][2:v][2:a]concat=n=3:v=1:a=1[v][a]" \
+    -map "[v]" -map "[a]" -c:v libx264 -c:a aac "$OUT/export.mp4"
+fi
+if [ -f "$OUT/export.mp4" ]; then
+  printf '  Dauer (s): '
   ffprobe -v error -show_entries format=duration -of csv=p=0 "$OUT/export.mp4"
+  printf '  Streams  : '
   ffprobe -v error -show_entries stream=codec_type -of csv=p=0 "$OUT/export.mp4" | tr '\n' ' '
   echo
   echo "  Export: $OUT/export.mp4"
 else
-  echo "  melt fehlt — Export bleibt offen, Projekt ist geprueft"
+  echo "  melt/ffmpeg fehlt — Export bleibt offen, Projekt ist geprueft"
 fi
 
 echo "== Projekt erneut oeffnen =="

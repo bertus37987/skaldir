@@ -1289,6 +1289,21 @@ class ChatBar:
         self.menu = []
         self._menu_text = None
 
+    def cycle_approval_mode(self) -> str:
+        """Tab at an empty prompt cycles the approval mode (VAL-APR-001)."""
+        from .approval_modes import ApprovalMode, resolve_mode
+
+        current = resolve_mode(getattr(self, "approval_mode", ApprovalMode.APPROVE_FOR_ME))
+        nxt = current.next()
+        self.approval_mode = nxt.value
+        self.applied.append(f"approval:{nxt.value}")
+        if getattr(self, "_on_mode_change", None) is not None:
+            try:
+                self._on_mode_change(nxt.value)
+            except Exception:  # noqa: BLE001
+                pass
+        return nxt.label
+
     def open_menu(self) -> bool:
         """Ask the engine for the value slot's candidates and keep them for the frame.
 
@@ -1463,7 +1478,10 @@ class ChatBar:
         if key == "esc":
             return Action("redraw") if self.dismiss() else Action("none")
         if key == "tab":
-            self.complete()
+            if not self.text.strip() and not self.open:
+                self.cycle_approval_mode()
+            else:
+                self.complete()
             return Action("redraw")
         if key in ("up", "down"):
             self.move(-1 if key == "up" else 1)
