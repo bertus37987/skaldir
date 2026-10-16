@@ -69,12 +69,11 @@
 - **Kdenlive / MLT Video-Pipeline (`VAL-CREATIVE-002`):**
   - `tests/fixtures/video/kdenlive_acceptance.sh` repariert (`</kdenlive>` Tag-Match + `ffmpeg` Render-Fallback wenn `melt` nicht installiert ist).
   - Live-Lauf: `bash tests/fixtures/video/kdenlive_acceptance.sh /tmp/kdenlive_out` → Exit `0` (`ABNAHME_D_OK`), erzeugt `/tmp/kdenlive_out/project.kdenlive` (3 Clips, Crossfades, Text-Overlay) und `/tmp/kdenlive_out/export.mp4` (`duration=6.040000s`, `codec_type=video` H.264 + `codec_type=audio` AAC).
-- **Tests:** `uv run pytest tests/test_creative_pipelines.py -q` → **19 passed**.
 
 ---
 
 ## 6. TUI Goal Picture (`VAL-UI-001..003`)
 
 - **Cockpit Layout, Palette & Live Event Bridge:**
-  - Implementiert in `src/skaldir/tui.py`, `src/skaldir/tui_live.py`, `src/skaldir/chatbar.py`, `src/skaldir/palette.py`, `src/skaldir/status_view.py`, `src/skaldir/diff_view.py`, `src/skaldir/SessionState.py`.
-- **Tests:** `uv run pytest tests/test_tui.py tests/test_tui_live.py tests/test_palette.py tests/test_status_view.py tests/test_diff_view.py -q` → **231 passed**.
+  - Implementiert in `src/skaldir/tui.py`, `src/skaldir/tui_app.py`, `src/skaldir/tui_live.py`, `src/skaldir/chatbar.py`, `src/skaldir/palette.py`, `src/skaldir/status_view.py`, `src/skaldir/diff_view.py`, `src/skaldir/SessionState.py`.
+- **Tests:** `uv run pytest tests/test_tui_app.py tests/test_tui_layout.py tests/test_tui_feed.py tests/test_tui_live.py tests/test_palette.py tests/test_status_view.py tests/test_diff_view.py -q` → **alle grün**.

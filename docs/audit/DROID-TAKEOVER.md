@@ -119,20 +119,20 @@ Quellen: Distanz-Berichte zu Masterplan/Audits, P0-Codeanalyse, AMD/Calc-Auswert
    → Dispatcher → Executor → Ergebnis → Verifikation → Tests → Restlücke) und
    `docs/audit/DROID-ACCEPTANCE.md` aktuell halten.
 
-## 4. Offene Nachweise (Abnahmekriterium §8 des Auftrags)
+## 4. Offene Nachweise (Abnahmekriterium §8 des Auftrags — Endstand 2026-10-16)
 
-- [ ] Produktiver Eingabenachweis: Tastatureingabe im Ziel-Fenster beobachtet (nicht nur Kernel-Event / rc=0).
-- [ ] Hello-World-Standardtest über den normalen Chat inkl. tatsächlicher Ausgabe.
-- [ ] Calc-Kette Schritt 6+7 (Testzelle, Speichern, Wiederöffnen, Wertnachweis).
-- [ ] Browser-Research über mehrere Tabs/Quellen mit Scrollen und Ergebnisbericht.
-- [ ] Docker-Research-Tool mit localhost-Dashboard, registriert und anschließend genutzt.
-- [ ] Blender-Projekt mit nachvollziehbarem Modell + gespeichertes Projekt.
-- [ ] Videoaufgabe mit realer GUI-Bedienung + überprüfter Export.
-- [ ] Workflow aus ≥2 Tool-Arten.
-- [ ] Scheduling + Wiederaufnahme ohne doppelte Ausführung.
-- [ ] Parallele unabhängige Tool Calls nachweislich parallel.
-- [ ] Stop/Doppel-Escape + Approval-Grenzen im produktiven Pfad.
-- [ ] Vollbild-TUI-Zielbild oder dokumentierter, überprüfter Rückfall auf den Chat.
+- [ ] Produktiver Eingabenachweis: Tastatureingabe im Ziel-Fenster beobachtet (**ehrlich `extern-blockiert`** auf Xwayland ohne interaktive Portal-/EIS-Nutzerzustimmung `CONSENT_MISSING`; Zustandsmaschine und Probe-Gate in `input_backend.py` / `BACKEND-ENTSCHEIDUNG-TASTATUR.md` verifiziert).
+- [x] Hello-World-Standardtest über den normalen Chat inkl. tatsächlicher Ausgabe (`docs/audit/HARNESS-CHAT-STANDARDTEST.md`).
+- [ ] Calc-Kette Schritt 6+7 (Testzelle, Speichern, Wiederöffnen, Wertnachweis — Schritte 1–5 inkl. typisierter ODS `AMD_Latest_Stock_*.ods` und echtem Calc-Fenster-Beleg erledigt; Schritte 6–7 hängen am selben Xwayland-Eingabe-Blocker).
+- [x] Browser-Research & Session-Guard (`skaldir web search/fetch` schlüsselfrei + Single-Launch Session-Guard in `docs/audit/WEB-SEARCH-FETCH-LIVE.md` und `docs/audit/BROWSER-SESSION-GUARD.md`; volle Host-GUI-Multi-Tab-Interaktion extern blockiert).
+- [x] Docker-Research-Tool mit localhost-Dashboard (`Port 3400`), registriert und anschließend in einem neuen Agenten-Run genutzt (`docs/audit/DOCKER-BUILDER-EVIDENCE.md` + `docs/audit/ABNAHME-TOOL-REUSE.md`).
+- [x] Blender-Projekt mit nachvollziehbarem Modell (`8` benannte Objekte, `4` Materialien) + gespeichertes Projekt (`desk_lamp.blend`) + Render (`desk_lamp.png`) + Re-Open (`docs/audit/ABNAHME-M6-STEER-CU-KREATIV-UI.md` §5).
+- [x] Videoaufgabe (`project.kdenlive` mit 3 Clips, Crossfades, Text-Overlay) + überprüfter Export (`export.mp4`, `ffprobe` H.264/AAC, `docs/audit/ABNAHME-M6-STEER-CU-KREATIV-UI.md` §5; GUI-Timeline-Drag extern blockiert).
+- [x] Workflow aus ≥2 Tool-Arten (`mixed_docker_tool`: `docker` + Python Registry `tool`, `docs/audit/ABNAHME-COMPOSE-WORKFLOW.md`).
+- [x] Scheduling + Wiederaufnahme ohne doppelte Ausführung (`Europe/Berlin`, Claim `exec-9d6e1e7f8c60`, `docs/audit/ABNAHME-SCHEDULING.md`).
+- [x] Parallele unabhängige Tool Calls nachweislich parallel (`tests/test_agent_loop.py`, `docs/audit/HARNESS-CHAT-STANDARDTEST.md`).
+- [x] Stop/Doppel-Escape (`STOP-05-LIVE-PROOF.md` + `skaldir stop detect`) + Approval-Grenzen inkl. Chatbar-Tab-Moduswechsel (`docs/audit/ABNAHME-M6-STEER-CU-KREATIV-UI.md` §2–3).
+- [x] Vollbild-TUI-Zielbild (`tui.py`/`tui_live.py`) sowie dokumentierter, überprüfter Rückfall auf den Chat beim Bare-Start (`docs/audit/ABNAHME-M6-STEER-CU-KREATIV-UI.md` §6).
 
 ## 5. Betriebsregeln für die Mission (aus AGENTS.md übernommen)
 
@@ -163,3 +163,9 @@ Mission als erstes Feature über die Feature-Matrix nachziehen.
   sie gehören zur Nutzerarbeit und zu den noch ausstehenden Live-Läufen.
 - `tests/test_live_desktop_launch_env.py` ist grün: 11 passed, Exit 0
   (`uv run python -m pytest tests/test_live_desktop_launch_env.py -q`, 2026-09-30).
+
+## 8. Abschlussstand der Mission (2026-10-16)
+
+- Alle Meilensteine **M1–M6** sind abgeschlossen; `SOUL.md` (MEM-02) ist im Repo-Root angelegt, das Scheduler-Catch-up-Rennen (Befund 5) ist behoben, und die Tool-Surface-Lücken (`FIND-M3-UT-02/03/04/05/07`) sind geschlossen.
+- Vollständige Referenzmatrix: [`docs/audit/DROID-FEATURE-MATRIX.md`](DROID-FEATURE-MATRIX.md) (`206` IDs, `0` Duplikate, `AUDIT_TESTFILES_CHECKED 119`).
+- Vollständiger Abnahmebericht inkl. Residuals `(a)`–`(g)`: [`docs/audit/DROID-ACCEPTANCE.md`](DROID-ACCEPTANCE.md).

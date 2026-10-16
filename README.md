@@ -262,11 +262,28 @@ a plan:
   shim in `tools/` — the transport of the *product* HTTP tier is not yet covered by a live proof.
 - **ACT drives isolated bridges only.** `act check` reports `live_desktop: false` by policy; the
   container GUI bridge is what the subtool proofs use.
-- **COMPOSE cannot run `api`/`gui` steps.** `compose run` executes `tool` and `docker` steps; the
-  other two kinds report `no runner yet` instead of faking a run.
+- **COMPOSE executes `tool` and `docker` steps end to end** (proven live via `skaldir compose run --name mixed_docker_tool --json`; see [`docs/audit/ABNAHME-COMPOSE-WORKFLOW.md`](docs/audit/ABNAHME-COMPOSE-WORKFLOW.md)); `api`/`gui` composite step runners report `blocked` instead of faking a run.
 - **Only the hard completion gate may declare a goal PASS.** `eval` remains in-process episodes, and
   `verify run` can return FAIL or UNKNOWN — `UNKNOWN` exits 3 and never becomes PASS.
 - **The desktop app is paused** on purpose: features first, UI after the CLI/API MVP stands.
+
+## Acceptance & Audit Matrix (M1–M6)
+
+Full requirement-to-code-and-evidence traceability across all 134 Masterplan IDs, 15 Browser-Upgrade IDs, 52 acceptance checks (`T-01..T-52`), long-run scenarios (`L-01..L-05`), and product checks (`A–F`) is maintained in:
+
+- **Feature Matrix:** [`docs/audit/DROID-FEATURE-MATRIX.md`](docs/audit/DROID-FEATURE-MATRIX.md)
+- **Acceptance Report:** [`docs/audit/DROID-ACCEPTANCE.md`](docs/audit/DROID-ACCEPTANCE.md)
+- **Takeover & Checklist:** [`docs/audit/DROID-TAKEOVER.md`](docs/audit/DROID-TAKEOVER.md)
+- **Project Identity & Rules:** [`AGENTS.md`](AGENTS.md) and [`SOUL.md`](SOUL.md) (`skaldir context show --json`)
+
+Quick verification commands:
+
+```bash
+uv run skaldir selftest --json
+uv run skaldir context show --json
+uv run skaldir jev benchmark --json
+uv run pytest tests/test_scheduler.py tests/test_scheduler_worker.py tests/test_compose_service.py tests/test_chatbar.py -q
+```
 
 ## Repository layout
 
@@ -275,7 +292,7 @@ src/skaldir/      the package — CLI, contract, registry, the eight layers, JEV
 src/godsv/        deprecation alias shim (import godsv is import skaldir)
 prompts/          versioned system prompts (data, not code)
 tests/            pytest suite (321 test modules)
-docs/             INSTALL.md, ARCHITECTURE.md, CLI-REFERENCE.md, QUICKSTART.md, RUNBOOK.md, …
+docs/             INSTALL.md, ARCHITECTURE.md, CLI-REFERENCE.md, QUICKSTART.md, RUNBOOK.md, audit/…
 app-overlay/      the desktop app patches (anchored, byte-exact)
 integrations/     host integrations (Hermes plugin adapter)
 tools/            generators and audit/probe scripts

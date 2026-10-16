@@ -1,5 +1,7 @@
 # Vollständige Anforderungsmatrix
 
+> **Hinweis (Superseded):** Diese Planungs-Vorlage wurde durch die einzige verbindliche, code- und live-belegte Referenzmatrix [`docs/audit/DROID-FEATURE-MATRIX.md`](../audit/DROID-FEATURE-MATRIX.md) abgelöst (enthält alle 134 Masterplan-IDs, 15 Browser-Upgrade-IDs, 52 Abnahmepunkte T-01..T-52, L-01..L-05, Produktprüfungen A–F, GOAL-CORE A–I, Brief-Bereiche A–H sowie AMD→Calc mit `datei:zeile`, Test- und Live-Nachweisen).
+
 Generiert aus [01-MASTERPLAN.md](01-MASTERPLAN.md). Status `offen` bedeutet: durch den implementierenden Agenten am aktuellen Code zu prüfen, nicht zwingend fehlend. Testzuordnungen sind Startpunkte und bei Detailprüfung zu konkretisieren.
 
 Gesamt: 134 eindeutige Anforderungs-IDs.
