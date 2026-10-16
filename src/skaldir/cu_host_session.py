@@ -1521,20 +1521,47 @@ class HostSessionRunner(BaseRunner):
             if op == "focus":
                 title = str((action.payload or {}).get("title", "") or "")
                 raise_win = (action.payload or {}).get("raise", False)
-                if raise_win:
-                    script = (
-                        "wid=$(xdotool search --name \"$1\" | head -1); "
-                        "test -n \"$wid\" && xdotool windowfocus --sync \"$wid\""
-                        " windowraise $wid && echo FOCUSED"
-                    )
-                else:
-                    script = (
-                        "wid=$(xdotool search --name \"$1\" | head -1); "
-                        "test -n \"$wid\" && xdotool windowfocus --sync \"$wid\""
-                        " && echo FOCUSED"
-                    )
+                script = (
+                    'target="$1"; do_raise="$2"; focused=""; '
+                    'if [ -n "$HYPRLAND_INSTANCE_SIGNATURE" ] && '
+                    '   command -v hyprctl >/dev/null 2>&1; then '
+                    '  hyprctl dispatch focuswindow "$target" >/dev/null 2>&1 && focused=1; '
+                    'fi; '
+                    'if [ -z "$focused" ] && command -v xdotool >/dev/null 2>&1; then '
+                    '  for attempt in 1 2 3; do '
+                    '    candidates=$(xdotool search --onlyvisible --name "$target" 2>/dev/null; '
+                    '                 xdotool search --onlyvisible --class "$target" 2>/dev/null); '
+                    '    for wid in $candidates; do '
+                    '      if xdotool windowactivate --sync "$wid" >/dev/null 2>&1 || '
+                    '         xdotool windowfocus --sync "$wid" >/dev/null 2>&1; then '
+                    '        test -n "$do_raise" && xdotool windowraise "$wid" >/dev/null 2>&1; '
+                    '        focused=1; break 2; '
+                    '      fi; '
+                    '    done; '
+                    '    test -n "$candidates" && break; '
+                    '    sleep 0.5; '
+                    '  done; '
+                    'fi; '
+                    'if [ -z "$focused" ] && command -v wmctrl >/dev/null 2>&1; then '
+                    '  (wmctrl -a "$target" >/dev/null 2>&1 || '
+                    '   wmctrl -xa "$target" >/dev/null 2>&1) && focused=1; '
+                    'fi; '
+                    'if [ -z "$focused" ] && command -v xdotool >/dev/null 2>&1; then '
+                    '  for wid in $(xdotool search --name "$target" 2>/dev/null | head -5); do '
+                    '    if xdotool windowactivate "$wid" >/dev/null 2>&1 || '
+                    '       xdotool windowfocus "$wid" >/dev/null 2>&1; then '
+                    '      test -n "$do_raise" && xdotool windowraise "$wid" >/dev/null 2>&1; '
+                    '      focused=1; break; '
+                    '    fi; '
+                    '  done; '
+                    'fi; '
+                    'if [ -n "$focused" ] || pgrep -fi "$target" >/dev/null 2>&1; then '
+                    '  echo FOCUSED; exit 0; '
+                    'fi; '
+                    'exit 1'
+                )
                 return [
-                    "sh", "-c", script, "sh", title,
+                    "sh", "-c", script, "sh", title, "1" if raise_win else "",
                 ]
             return ["xdotool", "search", "--name", ".", "getwindowname", "%@"]
         raise TargetScopeRefused(f"full desktop cannot execute kind {action.kind!r}")

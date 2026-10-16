@@ -1160,17 +1160,20 @@ def _xdotool_window_argv(payload: Mapping) -> list[str]:
     title = str(payload.get("title", "") or "").strip()
     if str(payload.get("op", "")) == "list":
         return ["xdotool", "search", "--name", title or ".", "getwindowname", "%@"]
-    # focus: `windowactivate` needs a window manager (there is none in the image), so
-    # `windowfocus` is what actually moves the input focus — measured, not guessed.
-    # `shlex.quote` because the title is data: a title containing `'` used to end the
-    # quoted pattern and hand the rest of the line to the shell (see the security
-    # audit's SHELL-C-INTERPOLATION finding — the argv is executed by `sh -c`).
+    # focus: prefer visible window, activate with fallback to windowfocus
     pattern = shlex.quote(title or ".")
     return [
         "sh",
         "-c",
-        f"wid=$(xdotool search --name {pattern} | head -1); "
-        "test -n \"$wid\" && xdotool windowfocus --sync $wid && echo FOCUSED",
+        (
+            f"wid=$(xdotool search --onlyvisible --name {pattern} 2>/dev/null | head -1); "
+            f'test -z "$wid" && wid=$(xdotool search --name {pattern} 2>/dev/null | head -1); '
+            'test -n "$wid" && ('
+            'xdotool windowactivate --sync "$wid" 2>/dev/null || '
+            'xdotool windowfocus --sync "$wid" 2>/dev/null || '
+            'wmctrl -ia "$wid" 2>/dev/null'
+            ') && echo FOCUSED'
+        ),
     ]
 
 
