@@ -252,6 +252,7 @@ def test_the_frame_picker_asks_voice_then_llm_vs_jev(monkeypatch, fake_frame):
         return values[0] if values else ""
 
     monkeypatch.setattr(mp, "select_in_frame", recording_select)
+    monkeypatch.setattr(mp, "_ask_key_value", lambda *a, **k: "")
     plan, _key = mp._pick_in_frame(None, front, role="", env={})
     assert plan is not None and plan.role == sf.ROLE_TYPESAFE
     assert len(titles) >= 2, titles

@@ -935,3 +935,59 @@ class TestIntegration:
         ) == "main"
         with pytest.raises(LLMError):
             ScriptedLLM(responses={}).complete(prompt_id="none", prompt="p", tier="small")
+
+    def test_chat_request_body_reasoning_effort_for_luna_with_tools(self):
+        cfg = resolve_provider_config(
+            {"base_url": "https://api.openai.com/v1", "model": "gpt-5.6-luna"},
+            env={},
+            config_path=ABSENT_CONFIG,
+        )
+        tools = [{"type": "function", "function": {"name": "test_tool"}}]
+        body_with_tools = lp.chat_request_body(
+            cfg, [{"role": "user", "content": "hi"}], tier="main", tools=tools
+        )
+        assert body_with_tools.get("reasoning_effort") == "none"
+
+        body_without_tools = lp.chat_request_body(
+            cfg, [{"role": "user", "content": "hi"}], tier="main", tools=None
+        )
+        assert "reasoning_effort" not in body_without_tools
+
+    def test_chat_auto_retries_with_reasoning_effort_none_on_400(self):
+        err_400 = http_error(
+            400,
+            "Function tools with reasoning_effort are not supported for gpt-5.6-luna in "
+            "/v1/chat/completions. To use function tools, use /v1/responses or set "
+            "reasoning_effort to 'none'.",
+        )
+        ok_tool = Step(
+            body={
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": None,
+                            "tool_calls": [
+                                {
+                                    "id": "c1",
+                                    "type": "function",
+                                    "function": {"name": "f", "arguments": "{}"},
+                                }
+                            ],
+                        }
+                    }
+                ]
+            }
+        )
+        with StubProvider([err_400, ok_tool]) as stub:
+            cfg = resolve_provider_config(
+                {"base_url": stub.base_url, "model": "custom-reasoning-model"},
+                env={},
+                config_path=ABSENT_CONFIG,
+            )
+            client = OpenAICompatibleLLM(cfg)
+            tools = [{"type": "function", "function": {"name": "f"}}]
+            res = client.chat([{"role": "user", "content": "run tool"}], tools=tools)
+            assert len(stub.requests) == 2
+            assert stub.requests[1]["body"].get("reasoning_effort") == "none"
+            assert len(res.tool_calls) == 1

@@ -2566,6 +2566,9 @@ def _ask_key_value(
     """
     import getpass
 
+    if "PYTEST_CURRENT_TEST" in os.environ and not getattr(sys.stdin, "isatty", lambda: False)():
+        return ""
+
     action = "type"
     if where and where.get("available"):
         action = ask_existing_key(

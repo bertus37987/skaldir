@@ -1149,6 +1149,15 @@ class OpenAICompatibleLLM:
                 except ProviderTimeoutError as exc:
                     last, status, timed_out = exc, None, True
                 except LLMProviderError as exc:
+                    err_msg = str(exc).lower()
+                    if (
+                        getattr(exc, "status", None) == 400
+                        and "reasoning_effort" in err_msg
+                        and ("none" in err_msg or "not supported" in err_msg)
+                        and body.get("reasoning_effort") != "none"
+                    ):
+                        body["reasoning_effort"] = "none"
+                        continue
                     last, status, timed_out = exc, exc.status, False
                 decision = plan_retry(
                     status=status,
@@ -2319,6 +2328,10 @@ def chat_request_body(
     if tools:
         body["tools"] = [dict(tool) for tool in tools]
         body["tool_choice"] = tool_choice if tool_choice is not None else "auto"
+        model_name = str(body.get("model") or "").lower()
+        reasoning_markers = ("luna", "sol", "terra", "astra", "gpt-5.6", "o1", "o3", "o4")
+        if "reasoning_effort" not in body and any(m in model_name for m in reasoning_markers):
+            body["reasoning_effort"] = "none"
     if response_format:
         body["response_format"] = dict(response_format)
     return body
