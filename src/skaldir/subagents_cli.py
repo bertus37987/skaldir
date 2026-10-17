@@ -1071,9 +1071,10 @@ def _add_verbs(agent_sub: Any) -> Any:
                        help="parent for the per-child working directories")
     retry.add_argument("--context-chars", type=int, default=DEFAULT_CONTEXT_CHARS,
                        help="how much of its own transcript a child carries into the next turn")
-    retry.add_argument("--provider", choices=("auto", "stub"), default="auto",
+    retry.add_argument("--provider", default="auto", metavar="MODE_OR_PROVIDER",
                        help="auto = the configured OpenAI-compatible client; "
-                            "stub = deterministic offline provider (no model is called)")
+                            "stub = deterministic offline provider (no model is called); "
+                            "or a provider-catalog id (e.g. deepseek, openai)")
     retry.add_argument("--stub-latency", type=float, default=0.05, metavar="SECONDS",
                        help="--provider stub: simulated latency per call")
     retry.add_argument("--max-depth", type=int, default=DEFAULT_MAX_DEPTH, metavar="N",

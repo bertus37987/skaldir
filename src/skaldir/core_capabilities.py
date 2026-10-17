@@ -89,7 +89,7 @@ def core_capability_tools(
         )
 
     # -- terminal, patch and search come from the core registry ------------- #
-    for tool in _registry_capabilities(ws, rt, store=store, keep=keep):
+    for tool in _registry_capabilities(ws, rt, store=store, keep=keep, run_id=run_id):
         tools.append(tool)
 
 
@@ -134,7 +134,9 @@ _BRIDGE_WRAPPERS = {
 }
 
 
-def _registry_capabilities(ws: Path, rt: Path | None, *, store: Any, keep) -> list[Any]:
+def _registry_capabilities(
+    ws: Path, rt: Path | None, *, store: Any, keep, run_id: str = ""
+) -> list[Any]:
     """Terminal/patch/search/read as agent tools, bound to this run's workspace.
 
     These wrap the **existing** typed wrappers in :mod:`skaldir.tools_core.bridge` — not a
@@ -150,7 +152,7 @@ def _registry_capabilities(ws: Path, rt: Path | None, *, store: Any, keep) -> li
         wrapper = getattr(core_bridge, wrapper_name, None)
         if wrapper is None:
             continue
-        out.append(_bound_tool(capability, wrapper, ws, rt, run_id=""))
+        out.append(_bound_tool(capability, wrapper, ws, rt, run_id=run_id))
     return out
 
 

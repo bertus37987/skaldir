@@ -181,7 +181,7 @@ def approved_python_specs(
         for spec in store.all()
         if (
             spec.status == STATUS_APPROVED
-            and spec.kind == KIND_PYTHON
+            and spec.kind in (KIND_PYTHON, "http", "mcp")
             and spec.module
             and spec.entrypoint
         )

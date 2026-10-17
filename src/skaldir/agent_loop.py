@@ -2524,8 +2524,8 @@ class AgentLoop:
             for position in group:
                 call = calls[position]
                 # CTX-03: serve identical reads from cache
-                if call.name == "read_file":
-                    cache_key = json.dumps(
+                if call.name in ("read_file", "read_text"):
+                    cache_key = f"{call.name}:" + json.dumps(
                         dict(call.arguments or {}), sort_keys=True
                     )
                     if cache_key in read_cache:
@@ -2569,8 +2569,8 @@ class AgentLoop:
             # CTX-03: populate cache from fresh results
             for position in group:
                 call = calls[position]
-                if call.name == "read_file" and outcomes[position] is not None:
-                    cache_key = json.dumps(
+                if call.name in ("read_file", "read_text") and outcomes[position] is not None:
+                    cache_key = f"{call.name}:" + json.dumps(
                         dict(call.arguments or {}), sort_keys=True
                     )
                     if cache_key not in read_cache:
@@ -2693,7 +2693,6 @@ class AgentLoop:
                         schema=tool.input_schema,
                     )
                     outcome.decision = "repeated_invalid_arguments"
-                    return outcome
             else:
                 allowed = True
                 if self.policy:

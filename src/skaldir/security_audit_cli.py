@@ -110,12 +110,16 @@ def _text(message: str) -> None:
 
 
 def _roots(args: argparse.Namespace, base: Path) -> list[Path]:
-    """The roots to scan: ``--path`` as given, else ``src`` + ``integrations``."""
+    """The roots to scan: ``--path`` as given, else ``src`` + ``integrations`` (or pkg)."""
     explicit = [str(item) for item in (getattr(args, "path", None) or []) if str(item)]
     if explicit:
         return [Path(item).expanduser() for item in explicit]
     defaults = [base / "src", base / "integrations"]
-    return [candidate for candidate in defaults if candidate.exists()]
+    found = [candidate for candidate in defaults if candidate.exists()]
+    if found:
+        return found
+    pkg_dir = Path(__file__).resolve().parent
+    return [pkg_dir] if pkg_dir.is_dir() else []
 
 
 def _runtime(args: argparse.Namespace) -> Path | None:

@@ -166,3 +166,16 @@ def test_the_installed_package_does_not_need_the_checkout(tool):
     assert "skaldir-logo.png" in _field(out.stdout, "ASSETS"), out.stdout
     assert int(_field(out.stdout, "PROMPTS")) >= 10, out.stdout
     assert _field(out.stdout, "VERSION") == _version(), out.stdout
+
+
+def test_doctor_answers_from_another_cwd(tool):
+    out = _run([str(tool["binary"]), "doctor", "--json"], tool["env"], tool["cwd"])
+    assert out.returncode in (0, 2, 3), f"exit {out.returncode}\n{out.stdout}\n{out.stderr}"
+    assert "Traceback" not in out.stderr, out.stderr
+    envelope = json.loads(out.stdout)
+    assert envelope["command"] == "doctor", envelope
+    prompt_checks = [
+        c for c in envelope["data"].get("checks", []) if "Prompts" in str(c.get("check", ""))
+    ]
+    assert prompt_checks and prompt_checks[0]["ok"] is True, envelope["data"]
+

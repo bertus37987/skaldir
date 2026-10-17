@@ -750,10 +750,10 @@ def typesafe_status(runtime: str | Path | None = None) -> dict:
     """
     flags = armed_flags(runtime)
     why = ""
-    if flags.provider != "typesafe":
+    if flags.provider not in ("typesafe", "typesafe_jev"):
         why = (
             "system_one.provider is "
-            f"{flags.provider!r}: only provider='typesafe' can answer live_jev"
+            f"{flags.provider!r}: only provider='typesafe_jev' can answer live_jev"
         )
     else:
         from .decide import provider_binding

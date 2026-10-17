@@ -1571,6 +1571,12 @@ def run_gui_step(
                 runtime=runtime,
                 timeout=decl.timeout_s,
                 write_record=decl.write_record,
+                screenshot=decl.screenshot,
+                screenshot_dir=(
+                    (Path(runtime) / "compose-screenshots")
+                    if runtime not in (None, "")
+                    else None
+                ),
             )
     except RunnerRefused:
         raise

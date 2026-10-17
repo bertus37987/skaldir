@@ -1541,13 +1541,18 @@ def run_action_list(
                 "generation": lease_generation,
             }
         except Exception as exc:  # noqa: BLE001 — a held desktop is a named blocker
+            blocked_msg = f"DESK-01: the host desktop is not available to this run — {exc}"
             return {
                 "ok": False,
+                "status": "blocked",
+                "verified": False,
                 "verdict": "BLOCKED",
-                "blocked_reason": f"DESK-01: the host desktop is not available to this run "
-                                  f"— {exc}",
+                "reason": blocked_msg,
+                "blocked_reason": blocked_msg,
                 "desktop": {"acquired": False, "reason": str(exc)[:300]},
                 "actions": [],
+                "runner": {"kind": str(runner_kind or "live-desktop")},
+                "exit_code": EXIT_BLOCKED,
             }
     try:
         record = _execute_action_list(
@@ -1980,6 +1985,7 @@ def _execute_action_list(
     # status string (outcome.detail = "verified" etc.).
     end_channel = str(end_state.get("channel", "") or "") if isinstance(end_state, Mapping) else ""
     use_stdout = end_channel == "stdout"
+    observed_text = ""
 
     if use_stdout and results:
         cli_stdout = "\n".join(
@@ -3460,6 +3466,8 @@ def run_subtool(
     write_record: bool = True,
     allow_live_desktop: bool = False,
     live_target: str = "",
+    screenshot: bool = False,
+    screenshot_dir: str | Path | None = None,
 ) -> dict:
     """Run one stored sub-tool: observe → check preconditions/anchors → act → check end state.
 
@@ -3502,6 +3510,12 @@ def run_subtool(
     except BaseException:
         _teardown_resolved_runner(holder, owns=runner is None)
         raise
+    if screenshot and holder.get("runner") is not None:
+        capture = _capture_run_screenshot(
+            holder["runner"], record, screenshot_dir=screenshot_dir, runtime=runtime
+        )
+        if capture is not None:
+            record["screenshot"] = capture
     if holder.get("runner") is not None:
         record["cleanup"] = _teardown_resolved_runner(holder, owns=runner is None)
     return record

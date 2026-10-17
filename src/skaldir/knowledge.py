@@ -208,6 +208,12 @@ class KnowledgeStore:
         import json
 
         with self._connect() as conn:
+            # remove old FTS row before INSERT OR REPLACE assigns a new rowid
+            conn.execute(
+                "DELETE FROM entries_fts WHERE rowid IN "
+                "(SELECT rowid FROM entries WHERE id = ?)",
+                (entry.id,),
+            )
             conn.execute(
                 """INSERT OR REPLACE INTO entries
                    (id, title, kind, scope, status, path, revision,
@@ -219,12 +225,6 @@ class KnowledgeStore:
                     entry.valid_until, json.dumps(entry.sources),
                     json.dumps(entry.applies_to),
                 ),
-            )
-            # remove old FTS row and insert fresh
-            conn.execute(
-                "DELETE FROM entries_fts WHERE rowid IN "
-                "(SELECT rowid FROM entries WHERE id = ?)",
-                (entry.id,),
             )
             rowid = conn.execute(
                 "SELECT rowid FROM entries WHERE id = ?", (entry.id,)

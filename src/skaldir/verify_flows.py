@@ -1323,8 +1323,13 @@ def _run_desktop_flow(
                 check = _judge_desktop_anchor(runner, anchor, where="end_state")
                 end_checks.append(check)
                 if check.status != STATUS_PASSED:
-                    status = STATUS_FAILED
-                    reason = f"the end state was not reached: {anchor.describe()} — {check.reason}"
+                    status = check.status
+                    reason = (
+                        f"the end state was not reached: {anchor.describe()} — {check.reason}"
+                        if check.status == STATUS_FAILED
+                        else f"the end state could not be judged: {anchor.describe()} — "
+                             f"{check.reason}"
+                    )
                     break
         observation = runner.observe()
         observed = {"display": flow.desktop_display, "window_list": str(observation.text or "")}

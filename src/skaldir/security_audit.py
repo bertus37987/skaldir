@@ -1743,6 +1743,11 @@ def audit(
     repo_root = Path(base).resolve() if base is not None else Path(__file__).resolve().parents[2]
     scan_roots = list(roots) if roots else [repo_root / "src", repo_root / "integrations"]
     existing = [str(Path(item)) for item in scan_roots if Path(item).exists()]
+    if not existing and not roots and base is None:
+        pkg_dir = Path(__file__).resolve().parent
+        if pkg_dir.is_dir():
+            repo_root = pkg_dir.parent
+            existing = [str(pkg_dir)]
 
     findings, files_scanned = audit_paths(
         [Path(item) for item in existing],

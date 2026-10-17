@@ -1245,12 +1245,17 @@ class ApprovalEngine:
         prefix = parts.segments[0]
         grant: Grant | None = None
         rule: PrefixRule | None = None
-        if persist_rule:
-            rule = self.store.add_rule(
-                prefix, Decision.ALLOW.value, note=reason, source="amendment"
-            )
-        else:
-            grant = self.grants.add(prefix, wanted.value, command=command, actor=actor)
+        for seg in parts.segments:
+            if persist_rule:
+                seg_rule = self.store.add_rule(
+                    seg, Decision.ALLOW.value, note=reason, source="amendment"
+                )
+                if rule is None:
+                    rule = seg_rule
+            else:
+                seg_grant = self.grants.add(seg, wanted.value, command=command, actor=actor)
+                if grant is None:
+                    grant = seg_grant
         record = self.evidence.record(
             {
                 "kind": "approval",

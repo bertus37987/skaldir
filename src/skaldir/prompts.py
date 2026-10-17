@@ -45,11 +45,17 @@ class Prompt:
 
 
 def default_root() -> Path:
-    """Resolve the prompts directory: $SKALDIR_PROMPTS or the repo's ``prompts/``."""
+    """Resolve prompts dir: $SKALDIR_PROMPTS, repo ``prompts/``, or ``skaldir/prompts/``."""
     override = getenv("PROMPTS")
     if override:
         return Path(override)
-    return Path(__file__).resolve().parents[2] / "prompts"
+    repo_prompts = Path(__file__).resolve().parents[2] / "prompts"
+    if repo_prompts.is_dir():
+        return repo_prompts
+    pkg_prompts = Path(__file__).resolve().parent / "prompts"
+    if pkg_prompts.is_dir():
+        return pkg_prompts
+    return repo_prompts
 
 
 class PromptRegistry:

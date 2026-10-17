@@ -489,8 +489,8 @@ def authorize(risk_class: str, answer, *, profile: ThresholdProfile) -> Authoriz
         )
     threshold = profile.threshold_for(risk_class)
     if isinstance(answer, NoulAnswer):
-        passed = float(answer.value) >= float(profile.noul_threshold)
-        used = float(profile.noul_threshold)
+        used = max(float(profile.noul_threshold), float(threshold))
+        passed = float(answer.value) >= used
     elif isinstance(answer, ScoreAnswer):
         top = max(answer.probabilities.values()) if answer.probabilities else 0.0
         passed = float(answer.confidence) >= profile.score_threshold and top >= threshold
@@ -787,7 +787,7 @@ def propose_route(evaluation: SystemOneEvaluation | None) -> ProposedRoute:
     same_strategy = _reading(evaluation, "voice.loop.same_strategy")
     new_information = _reading(evaluation, "voice.loop.new_information")
     progress = _reading(evaluation, "voice.loop.measurable_progress")
-    if _high(same_strategy) and _low(new_information) and (progress is None or progress <= 1.0):
+    if _high(same_strategy) and _low(new_information) and (progress is None or _low(progress)):
         return ProposedRoute(
             ROUTE_PAUSE_AND_INVESTIGATE, RULE_LOOP_WITHOUT_PROGRESS, _present(evaluation, loop_ids)
         )

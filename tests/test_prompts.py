@@ -32,3 +32,16 @@ class TestPromptRegistry:
             assert prompt.meta.get("purpose"), f"{prompt.id} has no purpose"
             assert prompt.body, f"{prompt.id} has an empty body"
             assert int(prompt.meta.get("version", 0)) == prompt.version
+
+    def test_default_root_falls_back_to_package_prompts(self, tmp_path, monkeypatch):
+        import skaldir.prompts as prompts_mod
+
+        fake_pkg = tmp_path / "site-packages" / "skaldir"
+        pkg_prompts = fake_pkg / "prompts"
+        pkg_prompts.mkdir(parents=True)
+        (pkg_prompts / "foo.v1.md").write_text("---\npurpose: pkg\n---\nPKG\n", encoding="utf-8")
+        monkeypatch.delenv("SKALDIR_PROMPTS", raising=False)
+        monkeypatch.delenv("GODSV_PROMPTS", raising=False)
+        monkeypatch.setattr(prompts_mod, "__file__", str(fake_pkg / "prompts.py"))
+        assert prompts_mod.default_root() == pkg_prompts
+

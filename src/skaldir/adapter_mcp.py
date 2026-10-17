@@ -1427,6 +1427,8 @@ def map_surface(
         "transport": str(report.get("transport") or ""),
         "command": list((report.get("server") or {}).get("command") or []),
         "url": str((report.get("server") or {}).get("url") or ""),
+        "env": dict((report.get("server") or {}).get("env") or {}),
+        "headers": dict((report.get("server") or {}).get("headers") or {}),
         "protocol_version": str(report.get("protocol_version") or ""),
         "server_info": dict(report.get("server_info") or {}),
         "tools_listed": int(report.get("tools_count") or 0),
@@ -1673,6 +1675,8 @@ def call_mapped_tool(
         transport=str(server.get("transport") or "stdio"),
         command=command,
         url=str(server.get("url") or ""),
+        env={str(k): str(v) for k, v in (server.get("env") or {}).items()},
+        headers={str(k): str(v) for k, v in (server.get("headers") or {}).items()},
         timeout=float(timeout or adapter.get("timeout_seconds") or DEFAULT_TIMEOUT),
     )
     transcript = Transcript()

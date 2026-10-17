@@ -136,7 +136,24 @@ def register_cli(sub: Any) -> None:
     p_add.add_argument("--sources", nargs="*", default=None, help="evidence source ids")
     p_add.add_argument("--json", action="store_true", help="JSON output")
 
+    for sub_p in (p_list, p_show, p_search, p_add):
+        sub_p.set_defaults(func=_cmd_knowledge)
     p_knowledge.set_defaults(func=_cmd_knowledge)
+
+
+def _set_contract_data(payload: dict[str, Any]) -> None:
+    if _CONTRACT is not None and hasattr(_CONTRACT, "set_data"):
+        _CONTRACT.set_data(payload)
+        if hasattr(_CONTRACT, "add_evidence"):
+            _CONTRACT.add_evidence(
+                [{"ref": "src/skaldir/knowledge.py", "kind": "code", "note": "KnowledgeStore"}]
+            )
+
+
+def _in_envelope_mode() -> bool:
+    from . import cli_shared
+
+    return bool(cli_shared.envelope_mode())
 
 
 def _cmd_knowledge(args: argparse.Namespace) -> int:
@@ -149,8 +166,10 @@ def _cmd_knowledge(args: argparse.Namespace) -> int:
         entries = store.list_entries(
             scope=args.scope, kind=args.kind, status=args.status
         )
+        _set_contract_data({"entries": entries})
         if args.json:
-            print(json.dumps(entries, indent=2))
+            if not _in_envelope_mode():
+                print(json.dumps(entries, indent=2))
         else:
             for e in entries:
                 stale = " STALE" if e.get("valid_until", "") and e["valid_until"] < "2026" else ""
@@ -167,8 +186,10 @@ def _cmd_knowledge(args: argparse.Namespace) -> int:
             return 5
         data = entry.to_dict()
         data["body"] = entry.body
+        _set_contract_data(data)
         if args.json:
-            print(json.dumps(data, indent=2))
+            if not _in_envelope_mode():
+                print(json.dumps(data, indent=2))
         else:
             print(f"id: {entry.id}")
             print(f"title: {entry.title}")
@@ -187,8 +208,10 @@ def _cmd_knowledge(args: argparse.Namespace) -> int:
             statuses=args.statuses,
             limit=args.limit,
         )
+        _set_contract_data(result)
         if args.json:
-            print(json.dumps(result, indent=2))
+            if not _in_envelope_mode():
+                print(json.dumps(result, indent=2))
         else:
             for m in result["matches"]:
                 stale = " STALE" if m.get("is_stale") else ""
@@ -215,8 +238,11 @@ def _cmd_knowledge(args: argparse.Namespace) -> int:
             sources=args.sources or [],
         )
         stored = store.upsert(entry)
+        payload = stored.to_dict()
+        _set_contract_data(payload)
         if args.json:
-            print(json.dumps(stored.to_dict(), indent=2))
+            if not _in_envelope_mode():
+                print(json.dumps(payload, indent=2))
         else:
             print(f"stored: {stored.id} (revision {stored.revision[:16]}…)")
         return 0

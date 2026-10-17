@@ -447,7 +447,7 @@ def portal_path_state(
     runner = run_cmd or run_command
     missing = [
         name for name in PORTAL_LIBRARIES
-        if not any(Path(folder) / name for folder in _library_folders())
+        if not any((Path(folder) / name).exists() for folder in _library_folders())
     ]
     if missing:
         return PORTAL_UNAVAILABLE, (

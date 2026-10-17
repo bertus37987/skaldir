@@ -751,6 +751,22 @@ def _print_text(args: argparse.Namespace, payload: dict) -> None:
             print(f"{item['kind']:<9} {item['check_id']:<20} "
                   f"{str(item['certifiable']):<12} {item['criterion'][:60]}")
         return
+    if "results" in payload and (
+        command.endswith(("flow", "flows"))
+        or (payload.get("results") and "flow_id" in (payload["results"][0] or {}))
+    ):
+        verdict = payload.get("verdict")
+        reason = payload.get("verdict_reason")
+        if verdict is None and not payload.get("results"):
+            print("no flow runs recorded yet")
+            return
+        print(f"{verdict}: {reason}")
+        for item in payload.get("results") or []:
+            shots = item.get("screenshots") or []
+            print(f"  {str(item.get('status')):<8} {str(item.get('flow_id')):<34} "
+                  f"{item.get('duration_ms')}ms  {len(shots)} shot(s)  "
+                  f"{str(item.get('reason'))[:70]}")
+        return
     if "verdict" in payload and "results" in payload:
         print(f"{payload['verdict']}: {payload.get('verdict_reason')}")
         for item in payload.get("results") or []:
@@ -761,16 +777,6 @@ def _print_text(args: argparse.Namespace, payload: dict) -> None:
         for row in payload.get("evidence") or []:
             print(f"{row.get('run_id')}  {str(row.get('status')):<8} "
                   f"{str(row.get('check_id')):<18} {str(row.get('criterion'))[:50]}")
-        return
-    if "results" in payload and payload.get("results") and "flow_id" in (
-        payload["results"][0] or {}
-    ):
-        print(f"{payload.get('verdict')}: {payload.get('verdict_reason')}")
-        for item in payload.get("results") or []:
-            shots = item.get("screenshots") or []
-            print(f"  {str(item.get('status')):<8} {str(item.get('flow_id')):<34} "
-                  f"{item.get('duration_ms')}ms  {len(shots)} shot(s)  "
-                  f"{str(item.get('reason'))[:70]}")
         return
     for row in payload.get("runs") or []:
         counts = row.get("counts") or {}

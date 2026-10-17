@@ -1243,10 +1243,14 @@ class PermissionProfile:
         _row("network", net_by, self.network, net_detail)
         _row(
             "network_egress_ports",
-            "landlock (net)" if (self.network_egress_ports and landlock == "enforce") else
-            ("unenforced" if self.network_egress_ports else "metadata"),
+            "bwrap argv (--unshare-net)"
+            if (self.network_egress_ports and self.network == "off" and has_bwrap)
+            else ("landlock (net)" if (self.network_egress_ports and landlock == "enforce") else
+                  ("unenforced" if self.network_egress_ports else "metadata")),
             ", ".join(str(port) for port in self.network_egress_ports) or "(none declared)",
-            "LANDLOCK_ACCESS_NET_CONNECT_TCP for port(s) "
+            "superseded by network=off (--unshare-net blocks all egress)"
+            if (self.network_egress_ports and self.network == "off" and has_bwrap)
+            else "LANDLOCK_ACCESS_NET_CONNECT_TCP for port(s) "
             + ", ".join(str(port) for port in self.network_egress_ports)
             + " (ABI >= 4): a TCP connect to any other port is EACCES. UDP is not covered by "
             "Landlock at all, and a host allowlist cannot be expressed at this layer"

@@ -679,6 +679,10 @@ def verify_preserved(
     goal: str = "",
     criteria: Iterable[str] = (),
     system_prompt: str = "",
+    user_corrections: Iterable[str] = (),
+    unknown_effects: Iterable[str] = (),
+    cancel_state: str = "",
+    approval_state: str = "",
 ) -> list[PreservedCheck]:
     """Check every preserved item against the compacted history.
 
@@ -694,12 +698,23 @@ def verify_preserved(
     for position, digest in enumerate(digests):
         positions.setdefault(digest, []).append(position)
     criteria_list = [str(item) for item in criteria]
+    corrections_list = [str(item) for item in user_corrections if str(item).strip()]
+    effects_list = [str(item) for item in unknown_effects if str(item).strip()]
     checks: list[PreservedCheck] = []
     cursor = 0
     ordered = sorted(preserved, key=lambda entry: (entry.kind == "message", entry.index))
     for item in ordered:
         if item.kind == "out_of_band":
-            held, label = _held_value(item, goal, criteria_list, system_prompt)
+            held, label = _held_value(
+                item,
+                goal,
+                criteria_list,
+                system_prompt,
+                corrections_list=corrections_list,
+                effects_list=effects_list,
+                cancel_state=str(cancel_state),
+                approval_state=str(approval_state),
+            )
             if held is None:
                 checks.append(
                     PreservedCheck(item.label, item.kind, item.sha256, False, False, label)
@@ -738,7 +753,15 @@ def verify_preserved(
 
 
 def _held_value(
-    item: Preserved, goal: str, criteria: list[str], system_prompt: str
+    item: Preserved,
+    goal: str,
+    criteria: list[str],
+    system_prompt: str,
+    *,
+    corrections_list: list[str] = (),  # type: ignore[assignment]
+    effects_list: list[str] = (),  # type: ignore[assignment]
+    cancel_state: str = "",
+    approval_state: str = "",
 ) -> tuple[str | None, str]:
     """What the caller still holds for an out-of-band item, and what it is."""
     if item.label == "goal":
@@ -753,6 +776,26 @@ def _held_value(
         if 0 <= position < len(criteria):
             return criteria[position], f"criterion #{position}"
         return None, "a criterion nobody holds"
+    if item.label.startswith("user_correction:"):
+        try:
+            position = int(item.label.split(":", 1)[1])
+        except ValueError:
+            return None, "a user correction nobody holds"
+        if 0 <= position < len(corrections_list):
+            return corrections_list[position], f"user_correction #{position}"
+        return None, "a user correction nobody holds"
+    if item.label.startswith("unknown_effect:"):
+        try:
+            position = int(item.label.split(":", 1)[1])
+        except ValueError:
+            return None, "an unknown effect nobody holds"
+        if 0 <= position < len(effects_list):
+            return effects_list[position], f"unknown_effect #{position}"
+        return None, "an unknown effect nobody holds"
+    if item.label == "cancel_state":
+        return (cancel_state or None, "the abort state")
+    if item.label == "approval_state":
+        return (approval_state or None, "the approval state")
     return None, "an item with no holder"
 
 

@@ -3098,13 +3098,13 @@ class Shell:
         store = None
         try:
             store = rs.RunsStore(rs.run_store_path(self.session.runtime))
-            message = store.post_message(goal_id, body, kind=kind, origin=origin)
             if why:
                 # an unattached session is a refusal by name, never a silent write
                 store.record_refusal(goal_id, body, kind=kind, origin=origin,
                                      reason=rs.REFUSAL_NO_RUN)
                 self.say(self.paint(f"  refused (no-run): {why}", "warn"))
                 return EXIT_BLOCKED
+            message = store.post_message(goal_id, body, kind=kind, origin=origin)
             facts = [
                 f"{kind} #{message.message_id}",
                 f"run {str(message.goal_id)[:20]}",

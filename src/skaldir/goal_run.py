@@ -847,6 +847,7 @@ def run_goal(
 
         report["goal_id"] = goal_id
         report["goal"] = goal_text
+        report["criteria"] = criteria_to_wire(criteria)
         dod = _dod_for(criteria)
         if on_goal is not None:
             # the goal is durable *now*: whoever is waiting for the handle is told here, before
@@ -1887,10 +1888,19 @@ def _finish_goal(
     )
 
     try:
-        current_cstate = getattr(cstore, "state", None)
+        state_fn = getattr(cstore, "state", None)
+        state_obj = state_fn() if callable(state_fn) else state_fn
+        current_cstate = (
+            str(state_obj.get("state", ""))
+            if isinstance(state_obj, Mapping)
+            else str(state_obj or "")
+        )
         if state == VERIFIED_COMPLETE and current_cstate != VERIFIED_COMPLETE:
             cstore.transition(VERIFIED_COMPLETE, attempt_id="goal-run")
-        elif state == BLOCKED_EXTERNAL and current_cstate != BLOCKED_EXTERNAL:
+        elif (
+            state == BLOCKED_EXTERNAL
+            and current_cstate not in (BLOCKED_EXTERNAL, VERIFIED_COMPLETE)
+        ):
             cstore.transition(
                 BLOCKED_EXTERNAL, reason=blocked_reason, attempt_id="goal-run"
             )

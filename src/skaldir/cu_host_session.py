@@ -2174,7 +2174,7 @@ class HostSessionRunner(BaseRunner):
         ok, detail = self.start()
         if not ok:
             return None, detail
-        if self.attach_to_session:
+        if self.attach_to_session and not self._full_desktop():
             wid, problem = self.target_window()
             if problem:
                 return None, problem
@@ -2221,6 +2221,30 @@ class HostSessionRunner(BaseRunner):
                 ),
                 "",
             )
+        if not window_id and self.attach_to_session:
+            adapter = self._platform_adapter()
+            if adapter is not None:
+                shot = adapter.screenshot(target_path)
+                if shot.ok and target_path.is_file():
+                    data = target_path.read_bytes()
+                    if data:
+                        try:
+                            w, h = png_size(data)
+                        except Exception:  # noqa: BLE001
+                            w, h = shot.width, shot.height
+                        return (
+                            ScreenCapture(
+                                path=str(target_path),
+                                sha256=shot.sha256 or hashlib.sha256(data).hexdigest(),
+                                size_bytes=len(data),
+                                width=w,
+                                height=h,
+                                scope=scope,
+                                label=name,
+                                converter=shot.backend or "platform-adapter",
+                            ),
+                            "",
+                        )
         xwd = shutil.which("xwd")
         magick = shutil.which("import")
         if xwd:
@@ -2257,6 +2281,12 @@ class HostSessionRunner(BaseRunner):
                 ),
                 "",
             )
+        if not magick:
+            return None, (
+                f"no capture path for window {window_id or 'root'} on {self.display}: "
+                f"the X-server capture failed ({xlib_problem}) and neither 'xwd' nor "
+                "ImageMagick's 'import' is installed"
+            )
         args = [magick, "-silent", "-window", (window_id or "root"), str(target_path)]
         try:
             proc = subprocess.run(  # nosec B603 — fixed argv, no shell
@@ -2289,11 +2319,6 @@ class HostSessionRunner(BaseRunner):
                 converter="host-import",
             ),
             "",
-        )
-        return None, (
-            f"no capture path for window {window_id or 'root'} on {self.display}: "
-            f"the X-server capture failed ({xlib_problem}) and neither 'xwd' nor "
-            "ImageMagick's 'import' produced a usable capture"
         )
 
     def close(self) -> None:

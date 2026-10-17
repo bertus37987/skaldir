@@ -701,11 +701,13 @@ def run_model_test(
     result["evidence_refs"].append({"model_before": before})
     if model and model.lower() not in before.lower():
         # Selecting is UI navigation; a failed selection is reported, not faked.
+        model_needle = json.dumps(model.lower())
         opened = _cdp_eval(
             cdp_port,
             "(() => { const els = [...document.querySelectorAll('button,[aria-haspopup]')]"
             ".filter(e => e.getBoundingClientRect().width > 0); "
-            f"const hit = els.find(e => /{model}/i.test(e.textContent || '')); "
+            "const hit = els.find("
+            f"e => (e.textContent || '').toLowerCase().includes({model_needle})); "
             "const el = hit || els.find("
             "e => /(deepseek|gpt|claude|flash)/i.test(e.textContent || '')); "
             "if (!el) return 'no-trigger'; el.click(); return 'opened'; })()",
