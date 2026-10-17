@@ -473,10 +473,15 @@ class SessionManager:
             live, diagnosis = self._liveness_verdict(session_id)
             if live is False:
                 state = self._reconcile_dead(session_id, diagnosis)
+        elif state.get("state") == "unknown" and state.get("reconciled_diagnosis"):
+            live = False
+            diagnosis = str(state.get("reconciled_diagnosis") or "")
         return {
             "state": state.get("state", "unknown"),
             "live": live,
             "diagnosis": diagnosis,
+            "reconciled_dead_session": str(state.get("reconciled_dead_session") or ""),
+            "reconciled_diagnosis": str(state.get("reconciled_diagnosis") or ""),
             "session_id": session_id,
             "backend": state.get("backend", BackendKind.NONE.value),
             "tab_count": len(state.get("tabs", []) or []),
@@ -594,33 +599,21 @@ class SessionManager:
             state = self._read()
             current = state.get("state", "unknown")
             if current == "ready" and state.get("session_id"):
-                # A `ready` state is a CLAIM; the browser can have died out-of-band
-                # since (measured defect). The cheap liveness verdict (session info —
-                # launches nothing) reconciles it: live → reuse; gone → the recorded
-                # state is corrected and the launch below is this product's OWN
-                # observed start, counted like any other; cannot-say → the conservative
-                # reuse stands, with the caveat named.
-                session_id = str(state.get("session_id") or "")
-                verdict, diagnosis = self._liveness_verdict(session_id)
+                # Single liveness check via discover() — avoids the double-probe race
+                # where verdict was True and a second discover() saw False.
+                disc = self.discover()
+                verdict = disc.get("live")
+                diagnosis = str(disc.get("diagnosis") or "")
                 if verdict is True:
-                    return {"action": "reused", "live": True, **self.discover(),
+                    return {"action": "reused", **disc, "live": True,
                             "task": task, "run_id": run_id}
                 if verdict is None:
-                    return {"action": "reused", "live": None,
+                    return {"action": "reused", **disc, "live": None,
                             "liveness_note": diagnosis
                             or "liveness could not be measured",
-                            **self.discover(), "task": task, "run_id": run_id}
-                # verdict False: conclude the reconciliation under the lock we hold —
-                # the launch below is this product's OWN observed start (counted), not
-                # agent-browser's blind per-call relaunch.
-                data = self._read()
-                if data.get("state") == "ready":
-                    data["state"] = "unknown"
-                    data["reconciled_dead_session"] = session_id
-                    data["reconciled_diagnosis"] = str(diagnosis)[:300]
-                    data["reconciled_at"] = time.time()
-                    self._write(data)
-                state = data
+                            "task": task, "run_id": run_id}
+                # verdict False: discover() already reconciled the dead session.
+                state = self._read()
                 current = "unknown"
             if current == "unconfirmed":
                 # §6: a start timeout leads to diagnosis and state reconciliation, never to
@@ -778,17 +771,48 @@ class SessionManager:
             verdict, _diagnosis = self._liveness_verdict(sid)
         if verdict is not True or self._backend is None:
             return {"live": verdict, "source": "recorded",
+                    "tabs": recorded,
                     "tab_ids": [str(t.get("tab_id") or "") for t in recorded],
                     "tab_count": len(recorded)}
         tabs_fn = getattr(self._backend, "tabs", None)
         if tabs_fn is None:
             return {"live": True, "source": "recorded",
+                    "tabs": recorded,
                     "tab_ids": [str(t.get("tab_id") or "") for t in recorded],
                     "tab_count": len(recorded)}
         result = tabs_fn(session=sid) or {}
-        ids = [str(t.get("tab_id") or t.get("tabId") or "") for t in (result.get("tabs") or [])]
+        raw_tabs = [t for t in (result.get("tabs") or []) if isinstance(t, dict)]
+        ids = [str(t.get("tab_id") or t.get("tabId") or "") for t in raw_tabs]
         ids = [i for i in ids if i]
+        by_recorded = {str(t.get("tab_id") or ""): dict(t) for t in recorded}
+        merged_tabs: list[dict[str, Any]] = []
+        for t in raw_tabs:
+            tid = str(t.get("tab_id") or t.get("tabId") or "")
+            if not tid:
+                continue
+            rec = by_recorded.get(tid)
+            if rec is not None:
+                entry = dict(rec)
+                if t.get("url"):
+                    entry["url"] = str(t.get("url"))
+                if t.get("title"):
+                    entry["title"] = str(t.get("title"))
+                merged_tabs.append(entry)
+            else:
+                merged_tabs.append(
+                    TabInfo(
+                        tab_id=tid,
+                        url=str(t.get("url") or ""),
+                        title=str(t.get("title") or ""),
+                        owner="user",
+                        session_id=sid,
+                    ).to_dict()
+                )
+        for tid, rec in by_recorded.items():
+            if tid and tid not in ids:
+                merged_tabs.append(rec)
         return {"live": True, "source": "transport",
+                "tabs": merged_tabs,
                 "tab_ids": ids, "tab_count": len(ids)}
 
     def mark_unconfirmed(self, reason: str) -> dict[str, Any]:
@@ -903,13 +927,16 @@ class BrowserLayer:
         blocked = self._preflight(Operation.TABS.value)
         if blocked:
             return blocked
-        inventory = self.sessions.discover()
-        tabs = [dict(t) for t in (self.sessions._read().get("tabs") or [])]
+        truth = self.sessions.transport_truth()
+        tabs = list(truth.get("tabs") or [])
+        agent_tabs = [t for t in tabs if t.get("owner") == "agent"]
+        user_tabs = [t for t in tabs if t.get("owner") == "user"]
         return self._result(
             Operation.TABS.value, ok=True, status="ok",
             preview=f"{len(tabs)} tab(s)",
-            data={"tabs": tabs, "agent_tabs": inventory["agent_tabs"],
-                  "user_tabs": inventory["user_tabs"]})
+            data={"tabs": tabs, "agent_tabs": agent_tabs,
+                  "user_tabs": user_tabs,
+                  "inventory_source": truth.get("source", "recorded")})
 
     def observe(self, *, tab_id: str = "", kind: str = "dom") -> BrowserResult:
         """One reading, bound to (session, tab, revision) — §5."""

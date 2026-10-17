@@ -729,6 +729,7 @@ def run_goal(
         "completions": [],
         "checkpoints": [],
         "compactions": [],
+        "voice_rebriefs": [],
         "verify": {},
         "semantic_gate": {},
         "terminal_state": "",
@@ -1280,7 +1281,49 @@ def run_goal(
                 if decision.action == ACTION_STRATEGY_CHANGE:
                     # a REAL action: the directive becomes the next turn's task material,
                     # so the model is told what to change rather than being re-asked
-                    redirect = STRATEGY_CHANGE_DIRECTIVE
+                    from .voice_rebrief import Rebrief, validate_rebrief
+
+                    affected_criteria = tuple(
+                        str(c.get("id") or c.get("text") or f"c{idx + 1}")
+                        for idx, c in enumerate(criteria)
+                    ) or ("goal",)
+                    blockers = "; ".join(
+                        str(b) for b in (attempt.get("blocking_failures") or [])[:3]
+                    ) or str(attempt.get("verdict") or "unverified")
+                    concrete_step = (
+                        f"Run verification check ({criteria[0].get('check') or 'run_tests'}) "
+                        f"and address blocker: {blockers[:160]}"
+                        if criteria
+                        else f"Change tool strategy and resolve blocker: {blockers[:160]}"
+                    )
+                    rebrief_obj = validate_rebrief(
+                        Rebrief(
+                            finding=(
+                                f"Progress guard detected {decision.signal} on turn "
+                                f"{turn_name} ({decision.reason})."
+                            ),
+                            evidence=(
+                                f"verdict={attempt.get('verdict')}; "
+                                f"no_progress_streak={guard.state().no_progress_streak}; "
+                                f"blockers={blockers[:200]}"
+                            ),
+                            criteria=affected_criteria,
+                            next_step=concrete_step,
+                            goal=str(goal_text or "")[:1000],
+                        )
+                    )
+                    rebrief_wire = rebrief_obj.to_dict()
+                    row["voice_rebrief"] = rebrief_wire
+                    report.setdefault("voice_rebriefs", []).append(
+                        {"turn": turn_name, "index": index, **rebrief_wire}
+                    )
+                    redirect = (
+                        f"{STRATEGY_CHANGE_DIRECTIVE}\n"
+                        f"VOICE REBRIEF (finding): {rebrief_obj.finding}\n"
+                        f"VOICE REBRIEF (evidence): {rebrief_obj.evidence}\n"
+                        f"VOICE REBRIEF (criteria): {', '.join(rebrief_obj.criteria)}\n"
+                        f"VOICE REBRIEF (next_step): {rebrief_obj.next_step}"
+                    )
                     next_action = (
                         "the progress guard demanded a strategy change after "
                         f"{guard.state().no_progress_streak} stalled turn(s)"
@@ -1291,12 +1334,17 @@ def run_goal(
                             "action": decision.action,
                             "signal": decision.signal,
                             "delivered": True,
+                            "voice_rebrief": rebrief_wire,
                         }
                     )
                     if progress_bus is not None:
                         progress_bus.emit(
                             "progress_directive_delivered",
-                            {"turn": turn_name, "signal": decision.signal},
+                            {
+                                "turn": turn_name,
+                                "signal": decision.signal,
+                                "voice_rebrief": rebrief_wire,
+                            },
                         )
                 elif decision.action == ACTION_STOP:
                     reason = f"progress guard: {decision.reason}"

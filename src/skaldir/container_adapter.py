@@ -287,13 +287,13 @@ def _interpolate(name: str, text: str, context: dict, specs: dict) -> str:
             )
         return _token(key, context[key], spec)
 
-    rendered = re.sub(r"\{([A-Za-z_][A-Za-z0-9_]*)\}", swap, str(text))
-    if "{" in rendered or "}" in rendered:
+    stripped_template = re.sub(r"\{([A-Za-z_][A-Za-z0-9_]*)\}", "", str(text))
+    if "{" in stripped_template or "}" in stripped_template:
         raise AdapterRefusal(
             f"the argv part {name!r} still carries an unsubstituted placeholder: "
-            f"{rendered!r}"
+            f"{text!r}"
         )
-    return rendered
+    return re.sub(r"\{([A-Za-z_][A-Za-z0-9_]*)\}", swap, str(text))
 
 
 def _condition_holds(part: dict, resolved: dict, supplied: set) -> tuple[bool, str]:
@@ -342,15 +342,15 @@ def render(adapter: dict, payload: dict) -> list[str]:
             raise AdapterRefusal(f"an argv part is neither a string nor a mapping: {part!r}")
         transfer = part.get("transfer")
         if part.get("verb"):
-            # the resolved verb of the adapter (`magick` or `convert`, whichever
-            # the inspected surface really offered) is the command's own token
-            name = str(adapter.get("verb") or "")
+            # the resolved verb of the adapter (`magick` or `convert`, or a
+            # multi-word `binary subcommand` verb) becomes its argv token(s)
+            name = str(adapter.get("verb") or "").strip()
             if not name:
                 raise AdapterRefusal(
                     "this template places the verb in its argv and the adapter "
                     "resolves none"
                 )
-            rendered.append(name)
+            rendered.extend(name.split())
             continue
         if transfer:
             name = str(part.get("param") or "")

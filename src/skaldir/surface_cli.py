@@ -762,10 +762,13 @@ def _cmd_browser_ensure(args: argparse.Namespace) -> int:
 
 def _cmd_browser_tabs(args: argparse.Namespace) -> int:
     sessions = _browser_sessions(args)
-    inventory = sessions.discover()
-    tabs = [dict(t) for t in (sessions._read().get("tabs") or [])]
-    payload = {"tabs": tabs, "agent_tabs": inventory["agent_tabs"],
-               "user_tabs": inventory["user_tabs"],
+    truth = sessions.transport_truth()
+    tabs = [dict(t) for t in (truth.get("tabs") or [])]
+    agent_tabs = [t for t in tabs if t.get("owner") == "agent"]
+    user_tabs = [t for t in tabs if t.get("owner") == "user"]
+    payload = {"tabs": tabs, "agent_tabs": agent_tabs,
+               "user_tabs": user_tabs,
+               "inventory_source": truth.get("source", "recorded"),
                "rule": "only agent-created tabs may be closed; there is no close --all (§6)"}
     report_envelope(payload, COMMAND_EVIDENCE["browser.tabs"])
     dump(payload)

@@ -2988,6 +2988,17 @@ def _template_verbs(template: dict) -> tuple[str, ...]:
     return tuple(str(item) for item in candidates)
 
 
+def _verb_in_surface(verb: str, offered: set[str]) -> bool:
+    """True if ``verb`` (or the base binary of a ``binary subcommand`` verb) is in ``offered``."""
+    raw = str(verb or "").strip()
+    if not raw:
+        return False
+    if raw in offered:
+        return True
+    base = Path(raw.split()[0]).name
+    return bool(base) and base in offered
+
+
 def match_verb_template(capability: str, verbs: list[str] | set[str]) -> dict:
     """Resolve a capability to ONE verb template that the surface really offers.
 
@@ -2999,7 +3010,10 @@ def match_verb_template(capability: str, verbs: list[str] | set[str]) -> dict:
     text = (capability or "").lower()
     scored: list[tuple[int, dict]] = []
     for template in VERB_TEMPLATES:
-        resolved = next((name for name in _template_verbs(template) if name in offered), "")
+        resolved = next(
+            (name for name in _template_verbs(template) if _verb_in_surface(name, offered)),
+            "",
+        )
         if not resolved:
             continue
         hits = sum(1 for term in template["terms"] if term in text)
@@ -3046,7 +3060,7 @@ def generate_container_adapter(
         )
     verbs = list((surface.get("cli") or {}).get("verbs") or [])
     chosen = template or match_verb_template(capability, verbs)
-    if chosen["verb"] not in set(verbs):
+    if not _verb_in_surface(chosen["verb"], set(verbs)):
         raise AdapterRefusal(
             f"verb '{chosen['verb']}' does not exist in the inspected surface"
         )

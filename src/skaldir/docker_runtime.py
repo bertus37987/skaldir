@@ -240,6 +240,12 @@ def policy_refusal(problems: list[str]) -> StartResult:
     if not items:
         items = [policy]
     reason = POLICY_REASONS[policy]
+    if "network-must-be-none-to-publish-ports" in items:
+        reason = (
+            f"{reason} (declare port_bindings with default network='none' so the "
+            "config layer promotes none -> bridge; explicit network overrides with "
+            "published ports are refused)"
+        )
     return StartResult(
         ok=False,
         detail=f"policy refused ({policy}): {reason}; problems: {', '.join(items)}"[:300],
@@ -365,6 +371,7 @@ class RunConfig:
     #: would otherwise swallow it (``dpokidov/imagemagick`` declares
     #: ``ENTRYPOINT ["convert"]``, ``jrottenberg/ffmpeg`` ``["/bin/ffmpeg"]``).
     entrypoint: str | None = None
+    _network_promoted: bool = field(default=False, init=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.privileged:
@@ -390,7 +397,8 @@ class RunConfig:
         if not (self.image or self.image_digest):
             raise PolicyViolation("container config needs image or image_digest")
         if self.network != "none" and self.port_bindings:
-            return ["network-must-be-none-to-publish-ports"]
+            if not (self._network_promoted and self.network == "bridge"):
+                return ["network-must-be-none-to-publish-ports"]
         for _c, host in (self.port_bindings or {}).items():
             if not (0 < int(host) < 65536):
                 return ["bad-host-port"]
@@ -400,6 +408,7 @@ class RunConfig:
             self.network = self.network or "none"
             if self.network == "none":
                 self.network = "bridge"
+                self._network_promoted = True
         if self.privileged:
             raise PolicyViolation(
                 "privileged containers are forbidden (docker_runtime safety policy)"

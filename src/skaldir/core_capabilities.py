@@ -548,6 +548,24 @@ def _browser_tool(ws: Path, rt: Path | None, run_id: str) -> Any | None:
                     sessions.note_agent_tab(tab_id, url=str(tab.get("url") or ""),
                                             title=str(tab.get("title") or ""),
                                             run_id=run_id)
+                if launched_desktop and target_url:
+                    recorded_urls = {
+                        str(t.get("url") or "")
+                        for t in (tabs_seen.get("tabs") or []) + inventory["agent_tabs"]
+                    }
+                    if target_url not in recorded_urls:
+                        import hashlib
+
+                        desktop_tab_id = (
+                            "desktop-"
+                            + hashlib.sha256(target_url.encode("utf-8")).hexdigest()[:8]
+                        )
+                        sessions.note_agent_tab(
+                            desktop_tab_id,
+                            url=target_url,
+                            title="Desktop Browser",
+                            run_id=run_id,
+                        )
         if not isinstance(result, dict):
             result = {
                 "ok": bool(getattr(result, "ok", False)),
