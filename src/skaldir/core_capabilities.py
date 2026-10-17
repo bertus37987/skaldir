@@ -394,7 +394,7 @@ def _browser_tool(ws: Path, rt: Path | None, run_id: str) -> Any | None:
     from .agent_loop import AgentTool
 
     def handler(do: str = "read", url: str = "", kind: str = "", target: str = "",
-                value: str = "", **_ignored: Any) -> Any:
+                value: str = "", key: str = "", **_ignored: Any) -> Any:
         try:
             from .browser_layer import (
                 AgentBrowserBackend,
@@ -465,7 +465,13 @@ def _browser_tool(ws: Path, rt: Path | None, run_id: str) -> Any | None:
                                             title=str(tab.get("title") or ""),
                                             run_id=run_id)
 
-        if str(do).lower() in ("read", "observe"):
+        if str(do).lower() == "snapshot":
+            if hasattr(backend, "snapshot"):
+                result = backend.snapshot(session=session_id)
+            else:
+                result = backend.read(url=url, session=session_id)
+            _record_relaunch(result, "snapshot")
+        elif str(do).lower() in ("read", "observe"):
             # the transport's own signatures: read(url=...) renders, act(action) maps
             # one typed verb — BrowserLayer's not-yet-wired operations would answer
             # `unsupported` honestly, but drop the caller's url/tokens entirely.
@@ -482,9 +488,27 @@ def _browser_tool(ws: Path, rt: Path | None, run_id: str) -> Any | None:
                 )
                 result["state"] = "unconfirmed"
                 result["diagnosis"] = str(diag.get("unconfirmed_reason") or "")
+            elif result.get("ok") and hasattr(backend, "snapshot"):
+                content_text = str(result.get("content") or "")
+                page_url = str(result.get("url") or "").lower()
+                if (
+                    str(do).lower() == "observe"
+                    or "youtube.com" in page_url
+                    or len(content_text.strip()) < 300
+                ):
+                    snap = backend.snapshot(session=session_id)
+                    _record_relaunch(snap, "observe-snapshot")
+                    if snap.get("ok") and snap.get("content"):
+                        result["interactive_elements"] = snap.get("content")
         else:
-            payload = {k: v for k, v in
-                       {"kind": kind, "target": target, "value": value, "url": url}.items() if v}
+            raw_payload = {
+                "kind": kind,
+                "target": target,
+                "value": value or key,
+                "url": url,
+                "key": key,
+            }
+            payload = {k: v for k, v in raw_payload.items() if v}
             launched_desktop = False
             target_url = str(url or target or "").strip()
             if (
@@ -580,19 +604,22 @@ def _browser_tool(ws: Path, rt: Path | None, run_id: str) -> Any | None:
     return AgentTool(
         name="browser",
         description=(
-            "Drive the browser: {do: read|act, url, kind, target, value}. "
-            "For 'read': fetches rendered page content. For 'act': executes browser actions; "
+            "Drive the browser: {do: read|act|snapshot|observe, url, kind, target, value, key}. "
+            "For 'read': fetches rendered page content. "
+            "For 'snapshot' / 'observe': returns interactive elements tree with clickable refs. "
+            "For 'act': executes browser actions (click, type, fill, press, key, open, wait). "
             "kind='open' with a url opens the page and launches it in the user's default browser. "
             "For multi-step full-desktop GUI workflows across any app, use 'skill_act'."
         ),
         input_schema={
             "type": "object",
             "properties": {
-                "do": {"type": "string", "enum": ["read", "act"]},
+                "do": {"type": "string", "enum": ["read", "act", "snapshot", "observe"]},
                 "url": {"type": "string"},
                 "kind": {"type": "string"},
                 "target": {"type": "string"},
                 "value": {"type": "string"},
+                "key": {"type": "string"},
             },
             "required": ["do"],
             # BLOCK-M3-03: unknown arguments are refused at the gate, not swallowed

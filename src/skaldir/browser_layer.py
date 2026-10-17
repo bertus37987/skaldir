@@ -1092,6 +1092,41 @@ def _process_alive(pid: int) -> bool:
     return True
 
 
+def _normalize_browser_key(raw_key: str) -> str:
+    """Normalize keyboard shortcuts/key names for browser press actions."""
+    key = str(raw_key or "").strip()
+    if not key:
+        return ""
+    parts = [p.strip() for p in key.replace("-", "+").split("+") if p.strip()]
+    norm_parts = []
+    for p in parts:
+        low = p.lower()
+        if low in ("ctrl", "control"):
+            norm_parts.append("Control")
+        elif low in ("alt", "option"):
+            norm_parts.append("Alt")
+        elif low in ("shift",):
+            norm_parts.append("Shift")
+        elif low in ("cmd", "command", "super", "win", "meta"):
+            norm_parts.append("Meta")
+        elif low in ("enter", "return"):
+            norm_parts.append("Enter")
+        elif low in ("esc", "escape"):
+            norm_parts.append("Escape")
+        elif low in ("space", "spacebar"):
+            norm_parts.append("Space")
+        elif low in ("tab",):
+            norm_parts.append("Tab")
+        elif low in ("backspace",):
+            norm_parts.append("Backspace")
+        else:
+            if len(p) == 1 and p.isalpha():
+                norm_parts.append(p.lower())
+            else:
+                norm_parts.append(p.capitalize() if p.islower() else p)
+    return "+".join(norm_parts)
+
+
 class AgentBrowserBackend(BrowserBackend):
     """agent-browser over its CLI, pinned and versioned (§9.2).
 
@@ -1122,6 +1157,10 @@ class AgentBrowserBackend(BrowserBackend):
         "type": "type",
         "fill": "fill",
         "press": "press",
+        "key": "press",
+        "keypress": "press",
+        "hotkey": "press",
+        "shortcut": "press",
         "hover": "hover",
         "focus": "focus",
         "check": "check",
@@ -1163,6 +1202,31 @@ class AgentBrowserBackend(BrowserBackend):
     def _session_args(self, session: str) -> list[str]:
         return ["--session", session] if session else []
 
+    def dismiss_consent(self, *, session: str = "") -> bool:
+        """Attempt to dismiss standard cookie/consent modals (Google, YouTube, CMPs)."""
+        labels = (
+            "Reject all",
+            "Reject the use of cookies and other data for the purposes described",
+            "Reject",
+            "Alle ablehnen",
+            "Ablehnen",
+            "Accept all",
+            "Accept the use of cookies and other data for the purposes described",
+            "Accept",
+            "Alle akzeptieren",
+            "Akzeptieren",
+            "I agree",
+            "Ich stimme zu",
+        )
+        for label in labels:
+            res = self.run([
+                "find", "role", "button", "click", "--name", label,
+                *self._session_args(session), "--json",
+            ])
+            if res.get("ok"):
+                return True
+        return False
+
     def act(self, action: Mapping[str, Any], *, session: str = "") -> dict[str, Any]:
         """One typed browser action (§4 `browser.act`).
 
@@ -1195,7 +1259,10 @@ class AgentBrowserBackend(BrowserBackend):
         if verb in ("open", "goto"):
             argv.append(str(action.get("url", "") or target))
         elif verb == "press":
-            argv.append(str(value))
+            key_raw = str(value or action.get("key", "") or "")
+            if not key_raw and target.lower() not in ("body", "window", "document", "html", ""):
+                key_raw = target
+            argv.append(_normalize_browser_key(key_raw) or key_raw)
         elif verb == "scroll":
             argv += [str(value or "down")]
             if action.get("px"):
@@ -1215,6 +1282,23 @@ class AgentBrowserBackend(BrowserBackend):
 
         argv += self._session_args(session) + ["--json"]
         result = self.run(argv)
+        err_msg = (
+            (result.get("stderr") or "")
+            + " "
+            + (result.get("stdout") or "")
+            + " "
+            + (result.get("detail") or "")
+        ).lower()
+        if (
+            not result.get("ok")
+            and ("is covered by" in err_msg or "cb-header" in err_msg or "consent" in err_msg)
+        ):
+            if self.dismiss_consent(session=session):
+                result = self.run(argv)
+        if verb in ("open", "goto") and result.get("ok"):
+            opened_url = str(action.get("url", "") or target).lower()
+            if "youtube.com" in opened_url or "google.com" in opened_url:
+                self.dismiss_consent(session=session)
         envelope, _ = _unwrap_json(result.get("stdout") or "")
         return {
             "ok": bool(result.get("ok")),
@@ -1225,6 +1309,36 @@ class AgentBrowserBackend(BrowserBackend):
             "action": {"kind": kind, "verb": verb, "target": target},
             "preview": (result.get("stdout") or "")[:400],
             "relaunched": self._relaunch_flag(envelope),
+        }
+
+    def snapshot(self, *, interactive: bool = True, session: str = "") -> dict[str, Any]:
+        """`browser.snapshot`: accessibility / interactive elements tree with element refs."""
+        cap = self.probe()
+        if not cap.available:
+            return {"ok": False, "backend": self.kind.value,
+                    "error_class": ErrorClass.NOT_INSTALLED.value, "detail": cap.reason}
+        argv = ["snapshot"]
+        if interactive:
+            argv.append("-i")
+        argv += self._session_args(session) + ["--json"]
+        result = self.run(argv)
+        envelope, content = _unwrap_json(result.get("stdout") or "")
+        if envelope.get("success") is False:
+            return {
+                "ok": False,
+                "backend": self.kind.value,
+                "error_class": ErrorClass.BACKEND.value,
+                "detail": str(envelope.get("error") or "agent-browser snapshot failed")[:300],
+            }
+        return {
+            "ok": bool(result.get("ok")),
+            "backend": self.kind.value,
+            "error_class": result.get("error_class", ""),
+            "content": content[:12000],
+            "preview": content[:400],
+            "duration_ms": result.get("duration_ms"),
+            "relaunched": self._relaunch_flag(envelope),
+            "detail": result.get("stderr") or "",
         }
 
     def read(self, *, url: str = "", session: str = "") -> dict[str, Any]:
@@ -1251,6 +1365,20 @@ class AgentBrowserBackend(BrowserBackend):
                 "error_class": ErrorClass.BACKEND.value,
                 "detail": str(envelope.get("error") or "agent-browser reported failure")[:300],
             }
+        low_content = content.lower()
+        if (
+            "before you continue to youtube" in low_content
+            or "vor dem fortfahren zu youtube" in low_content
+        ):
+            if self.dismiss_consent(session=session):
+                reread = self.run(
+                    ["read"] + ([url] if url else [])
+                    + self._session_args(session) + ["--json"]
+                )
+                env2, cont2 = _unwrap_json(reread.get("stdout") or "")
+                if env2.get("success") is not False and cont2:
+                    envelope, content = env2, cont2
+                    data = envelope.get("data") if isinstance(envelope.get("data"), dict) else {}
         return {
             "ok": bool(result.get("ok")),
             "backend": self.kind.value,

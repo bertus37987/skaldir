@@ -69,6 +69,10 @@ class _StubBrowserBackend:
         return {"ok": True, "backend": self.kind.value, "state": "rendered",
                 "url": url, "session_id": session, "content": "stub page body"}
 
+    def snapshot(self, *, interactive: bool = True, session: str = "") -> dict[str, Any]:
+        return {"ok": True, "backend": self.kind.value, "state": "snapshot",
+                "session_id": session, "content": "- button \"Play\" [ref=e1]"}
+
     def act(self, action: dict[str, Any], *, session: str = "") -> dict[str, Any]:
         return {"ok": True, "backend": self.kind.value, "state": "acted",
                 "action": dict(action), "session_id": session}
@@ -257,4 +261,35 @@ def test_browser_act_open_launches_on_desktop(tmp_path: Path, stubbed_backend, m
     result = tool.handler(do="act", kind="open", url="https://www.youtube.com")
     assert result["ok"] is True
     assert ["xdg-open", "https://www.youtube.com"] in launched
+
+
+def test_browser_snapshot_returns_interactive_elements(tmp_path: Path, stubbed_backend):
+    """Calling browser with do=snapshot returns interactive element tree."""
+    tool = _browser_tool(tmp_path / "ws", tmp_path / "runtime")
+    result = tool.handler(do="snapshot")
+    assert result["ok"] is True
+    assert "- button \"Play\" [ref=e1]" in result["content"]
+
+
+def test_browser_act_key_verb_is_accepted_and_routed(tmp_path: Path, stubbed_backend):
+    """Calling browser with kind=key or kind=press routes key/value properly."""
+    tool = _browser_tool(tmp_path / "ws", tmp_path / "runtime")
+    result = tool.handler(do="act", kind="key", target="body", value="CTRL+L")
+    assert result["ok"] is True
+    assert result["action"]["kind"] == "key"
+    assert result["action"]["value"] == "CTRL+L"
+
+    result_press = tool.handler(do="act", kind="press", key="Enter")
+    assert result_press["ok"] is True
+    assert result_press["action"]["kind"] == "press"
+    assert result_press["action"]["value"] == "Enter"
+
+
+def test_browser_observe_includes_interactive_elements(tmp_path: Path, stubbed_backend):
+    """Calling browser with do=observe enriches read result with interactive elements."""
+    tool = _browser_tool(tmp_path / "ws", tmp_path / "runtime")
+    result = tool.handler(do="observe", url="https://www.youtube.com/watch?v=xyz")
+    assert result["ok"] is True
+    assert "interactive_elements" in result
+    assert "- button \"Play\" [ref=e1]" in result["interactive_elements"]
 

@@ -70,6 +70,26 @@ def test_the_action_vocabulary_is_the_tools_actual_verbs():
     assert "close" not in verbs, "closing is not an 'action', it is a separate, guarded call"
 
 
+def test_normalize_browser_key():
+    from skaldir.browser_layer import _normalize_browser_key
+
+    assert _normalize_browser_key("CTRL+L") == "Control+l"
+    assert _normalize_browser_key("ctrl+shift+r") == "Control+Shift+r"
+    assert _normalize_browser_key("ENTER") == "Enter"
+    assert _normalize_browser_key("return") == "Enter"
+    assert _normalize_browser_key("esc") == "Escape"
+    assert _normalize_browser_key("space") == "Space"
+    assert _normalize_browser_key("Alt+Tab") == "Alt+Tab"
+
+
+def test_key_action_verb_mapping():
+    b = AgentBrowserBackend(root="/nonexistent")
+    assert b.ACTION_VERBS["key"] == "press"
+    assert b.ACTION_VERBS["keypress"] == "press"
+    assert b.ACTION_VERBS["hotkey"] == "press"
+    assert b.ACTION_VERBS["shortcut"] == "press"
+
+
 # --------------------------------------------------------------------------- #
 # real invocation — the vertical prototype (§5)
 # --------------------------------------------------------------------------- #
