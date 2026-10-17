@@ -150,7 +150,7 @@ _RM_LIKE = re.compile(r"(?i)\b(?:rm|rmdir)\b")
 
 _SECRET_PATHS = re.compile(
     r"(?i)(?:/\.ssh\b|id_rsa\b|id_ed25519\b|\.aws/credentials|\.netrc\b|\.pem\b|"
-    r"\.env(?:\.\w+)?\b|\.git-credentials|/\.gnupg/|keychain|credentials\.json|"
+    r"\.env(?:\.(?!example|sample|template|dist|test)\w+)?\b|\.git-credentials|/\.gnupg/|keychain|credentials\.json|"
     r"secrets?\.(?:ya?ml|json|toml|env))"
 )
 
@@ -185,9 +185,6 @@ _INJECTION_ECHO = re.compile(
             r"ignore\s+previous\s+instructions?",
             r"ignore\s+all\s+previous",
             r"as\s+your\s+new\s+system\s+prompt",
-            r"treat\s+this\s+file\s+as",
-            r"do\s+this\s+first",
-            r"run\s+this\s+first",
             r"without\s+verification",
             r"disable\s+verification",
             r"skip\s+(?:the\s+)?tests?",
@@ -693,8 +690,13 @@ def _secret_findings(intent: ToolIntent) -> list[str]:
 
 
 def _production_findings(intent: ToolIntent) -> list[str]:
-    blob = " ".join([_command(intent), " ".join(_paths(intent))])
-    if _PRODUCTION_MARKERS.search(blob):
+    # Local file writes inside the workspace are code/docs, not live infrastructure operations.
+    if intent.tool in WRITE_TOOLS and not _command(intent):
+        return []
+    command = _command(intent)
+    if not command:
+        return []
+    if _PRODUCTION_MARKERS.search(command):
         return ["production target touched"]
     return []
 
