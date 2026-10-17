@@ -247,7 +247,7 @@ class KeyEvent:
         return f"{self.code}:{1 if self.pressed else 0}"
 
 
-def parse_x_keymap(text: str) -> dict[str, int]:
+def parse_x_keymap(text: str, *, group: int | None = None) -> dict[str, int]:
     """The unshifted keysym names of ``xmodmap -pke`` output, mapped to their X keycode.
 
     Only the **unshifted column** of each line is read — ``keycode 38 = a A a A a A a A``
@@ -255,6 +255,12 @@ def parse_x_keymap(text: str) -> dict[str, int]:
     that key's shifted symbols, which are a modifier question ('A' = shift + 'a'), not another
     key. Reading them here would hand out the key behind a shifted symbol as if it were its own.
     """
+    from .text_keys import _active_xkb_group, _keymap_depicts_multi_group_layout
+
+    active_group = _active_xkb_group() if group is None else int(group)
+    use_group_offset = active_group > 0 and _keymap_depicts_multi_group_layout(text or "")
+    col_idx = 3 + (active_group * 2) if use_group_offset else 3
+
     table: dict[str, int] = {}
     for line in (text or "").splitlines():
         parts = line.split()
@@ -264,7 +270,7 @@ def parse_x_keymap(text: str) -> dict[str, int]:
             code = int(parts[1])
         except ValueError:
             continue
-        symbol = parts[3]
+        symbol = parts[col_idx] if len(parts) > col_idx else parts[3]
         if symbol and symbol not in table:
             table[symbol] = code
     return table
@@ -306,9 +312,10 @@ def keycode_for(name: str, *, keymap: str = "") -> int:
     """The evdev code of ONE key name — no modifiers, no combos, no guessing.
 
     Two sources, in this order: :data:`EVDEV_KEYS` (the header table), then the session's own
-    keymap (``xmodmap -pke`` output) translated through :data:`X_KEYCODE_OFFSET`. A name that
-    is in neither is refused with :class:`UnknownKeyError` — the caller must say which key it
-    could not send, never press a code somebody hoped was right.
+    keymap (``xmodmap -pke`` output) translated through :data:`X_KEYCODE_OFFSET`. When the
+    session keymap carries a swapped letter layout (e.g. German QWERTZ where ``y`` and ``z``
+    swap physical keys), the single-letter keymap placement takes precedence so ``ctrl+z`` or
+    ``y`` presses the key that actually produces that letter on the active layout.
     """
     text = str(name or "").strip()
     if not text:
@@ -317,6 +324,10 @@ def keycode_for(name: str, *, keymap: str = "") -> int:
         raise UnknownKeyError(
             f"{text!r} is a combination, not one key — use translate() for its keycode sequence"
         )
+    if len(text) == 1 and text.isalpha() and keymap:
+        km_code = _keymap_code(text.lower(), keymap)
+        if km_code is not None:
+            return km_code
     code = _table_code(text)
     if code is not None:
         return code

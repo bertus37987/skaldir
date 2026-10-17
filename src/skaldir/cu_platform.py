@@ -994,9 +994,16 @@ class GnomeAdapter(PlatformAdapter):
             if code == 0:
                 return True
         if self.info.is_wayland and self.info.tools.get("ydotool"):
-            code, _ = _run(["ydotool", "type", "--key-delay", "20", "--", text])
-            if code == 0:
-                return True
+            try:
+                from .text_keys import text_event_argv
+
+                km_code, km_out = _run(["xmodmap", "-pke"])
+                pairs = text_event_argv(text, keymap=km_out if km_code == 0 else "")
+                code, _ = _run(["ydotool", "key", *pairs])
+                if code == 0:
+                    return True
+            except Exception:  # noqa: BLE001
+                pass
         code, _ = _run(["xdotool", "type", "--delay", "12", "--", text])
         return code == 0
 
@@ -1096,21 +1103,129 @@ class GnomeAdapter(PlatformAdapter):
         }
 
 
+def _decompress_mozlz4(data: bytes) -> bytes:
+    """Decompress Mozilla's custom ``mozLz40\\0`` raw LZ4 block format in pure Python."""
+    import struct
+
+    if len(data) < 12 or data[:8] != b"mozLz40\x00":
+        return b""
+    expected_len = struct.unpack("<I", data[8:12])[0]
+    src = data[12:]
+    out = bytearray()
+    i = 0
+    n = len(src)
+    while i < n:
+        token = src[i]
+        i += 1
+        lit_len = token >> 4
+        if lit_len == 15:
+            while i < n:
+                b = src[i]
+                i += 1
+                lit_len += b
+                if b != 255:
+                    break
+        out.extend(src[i : i + lit_len])
+        i += lit_len
+        if i >= n:
+            break
+        if i + 1 >= n:
+            break
+        offset = src[i] | (src[i + 1] << 8)
+        i += 2
+        if offset <= 0 or offset > len(out):
+            break
+        match_len = (token & 0x0F) + 4
+        if (token & 0x0F) == 15:
+            while i < n:
+                b = src[i]
+                i += 1
+                match_len += b
+                if b != 255:
+                    break
+        start = len(out) - offset
+        for j in range(match_len):
+            out.append(out[start + j])
+    return bytes(out[:expected_len])
+
+
+def _wayland_browser_session_titles() -> list[str]:
+    """Fallback for GNOME 45+ Wayland where ``GetWindows`` is restricted:
+    read active tab titles + URLs from running Wayland-native Zen / Firefox sessionstore."""
+    import glob
+    import json
+    import time
+
+    titles: list[str] = []
+    # Check if Zen or Firefox is running
+    code_zen, _ = _run(["pgrep", "-f", "zen-bin|zen-browser"])
+    code_ff, _ = _run(["pgrep", "-f", "firefox"])
+    if code_zen != 0 and code_ff != 0:
+        return []
+    browser_label = "Zen Browser" if code_zen == 0 else "Mozilla Firefox"
+    patterns = (
+        "~/.zen/*/sessionstore-backups/recovery.jsonlz4",
+        "~/.mozilla/firefox/*/sessionstore-backups/recovery.jsonlz4",
+        "~/.var/app/io.github.zen_browser.zen/.zen/*/sessionstore-backups/recovery.jsonlz4",
+        "~/.var/app/org.mozilla.firefox/.mozilla/firefox/*/sessionstore-backups/recovery.jsonlz4",
+    )
+    now = time.time()
+    for pat in patterns:
+        for path_str in glob.glob(str(Path(pat).expanduser())):
+            try:
+                p = Path(path_str)
+                if now - p.stat().st_mtime > 86400:
+                    continue
+                raw = _decompress_mozlz4(p.read_bytes())
+                if not raw:
+                    continue
+                data = json.loads(raw.decode("utf-8", errors="replace"))
+                for win in data.get("windows") or []:
+                    tabs = win.get("tabs") or []
+                    selected_idx = int(win.get("selected", len(tabs)) or len(tabs)) - 1
+                    ordered_tabs = []
+                    if 0 <= selected_idx < len(tabs):
+                        ordered_tabs.append(tabs[selected_idx])
+                    for idx, t in enumerate(tabs):
+                        if idx != selected_idx:
+                            ordered_tabs.append(t)
+                    for tab in ordered_tabs:
+                        entries = tab.get("entries") or []
+                        if not entries:
+                            continue
+                        raw_idx = int(tab.get("index", len(entries))) - 1
+                        e_idx = min(max(0, raw_idx), len(entries) - 1)
+                        last = entries[e_idx]
+                        t_title = str(last.get("title") or "").strip()
+                        t_url = str(last.get("url") or "").strip()
+                        if t_title and t_title not in ("New Tab", "about:blank", "None"):
+                            titles.append(f"{t_title} — {browser_label}")
+                        elif t_url and t_url != "about:blank":
+                            titles.append(f"{t_url} — {browser_label}")
+            except Exception:  # noqa: BLE001
+                continue
+    if not titles and (code_zen == 0 or code_ff == 0):
+        titles.append(browser_label)
+    return titles
+
+
 def _gdbus_window_titles() -> list[str]:
-    """Wayland-native window titles via org.gnome.Shell.Introspect.GetWindows."""
+    """Wayland-native window titles via org.gnome.Shell.Introspect.GetWindows, with
+    Wayland browser sessionstore fallback when GNOME 45+ restricts GetWindows."""
     code, output = _run([
         "gdbus", "call", "--session",
         "--dest", "org.gnome.Shell.Introspect",
         "--object-path", "/org/gnome/Shell/Introspect",
         "--method", "org.gnome.Shell.Introspect.GetWindows",
     ])
-    if code != 0:
-        return []
     titles: list[str] = []
-    for match in re.finditer(r"'title'\s*:\s*<'([^']*)'>", output):
-        title = match.group(1).strip()
-        if title:
-            titles.append(title)
+    if code == 0 and output:
+        for match in re.finditer(r"'title'\s*:\s*<'([^']*)'>", output):
+            title = match.group(1).strip()
+            if title:
+                titles.append(title)
+    if not titles:
+        titles.extend(_wayland_browser_session_titles())
     return titles
 
 

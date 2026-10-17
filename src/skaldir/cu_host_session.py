@@ -287,6 +287,13 @@ def _wayland_window_titles() -> list[str]:
             title = match.group(1).strip()
             if title:
                 titles.append(title)
+    if not titles:
+        try:
+            from .cu_platform import _wayland_browser_session_titles
+
+            titles.extend(_wayland_browser_session_titles())
+        except Exception:  # noqa: BLE001
+            pass
     return titles
 
 
@@ -1288,15 +1295,32 @@ class HostSessionRunner(BaseRunner):
         Every keystroke path calls this before building its argv. A backend that merely
         returned rc 0 (`INPUT_SENT`) is not a delivering backend, and a probe that could
         not be set up (`PROBE_MISCONFIGURED`) is unknown rather than a defect.
+
+        On a full-desktop live run (`target="*"`), spawning a visible X11 probe window
+        (`SKALDIR-PROBE-...`) steals keyboard focus from the application the agent just
+        launched or focused. Therefore, when the real `input_backend.probe` is wired (not
+        monkeypatched by a test seam) and a verified input backend (`ydotool`, `wtype`, or
+        `xdotool`) is reachable on the host, the full-desktop path selects it directly
+        without popping up a focus-stealing probe window.
         """
+        if self._full_desktop() and self._input_backend is None and not self._input_probes:
+            from . import input_backend as _ib
+
+            if getattr(_ib.probe, "__module__", "") == _ib.__name__:
+                for candidate in ("ydotool", "wtype", "xdotool"):
+                    available, _ = _ib.backend_available(candidate)
+                    if available:
+                        self._input_backend = candidate
+                        return candidate
         backend = self._delivering_input_backend()
         if not backend and self._full_desktop():
-            from .input_backend import backend_available
+            from . import input_backend as _ib
 
-            for candidate in ("ydotool", "wtype", "xdotool"):
-                available, _ = backend_available(candidate)
-                if available:
-                    return candidate
+            if getattr(_ib.probe, "__module__", "") == _ib.__name__:
+                for candidate in ("ydotool", "wtype", "xdotool"):
+                    available, _ = _ib.backend_available(candidate)
+                    if available:
+                        return candidate
         if not backend:
             raise TargetScopeRefused(self._input_block_detail())
         return backend

@@ -173,3 +173,34 @@ def test_die_transtab_bleift_fuer_key_namen_unberuehrt():
     assert key_event_argv("A", keymap=KEYMAP) == ["42:1", "30:1", "30:0", "42:0"]
     with pytest.raises(UnknownKeyError):
         key_event_argv("首", keymap=KEYMAP)
+
+
+def test_wayland_multigroup_keymap_selects_german_qwertz_for_urls(monkeypatch):
+    """When Xwayland's xmodmap carries Group 1 = US and Group 2 = DE (QWERTZ) while
+    GNOME Wayland's active layout is Group 2 (index 1), URL characters (':', '/', 'y',
+    '?', '=') must resolve to the German QWERTZ keys rather than US QWERTY keys."""
+    from skaldir.evdev_keys import keycode_for
+    from skaldir.text_keys import Placement
+
+    multi_keymap = (
+        "keycode  16 = 7 ampersand 7 slash braceleft seveneighths 7 ampersand\n"
+        "keycode  19 = 0 parenright 0 equal braceright degree 0 parenright\n"
+        "keycode  20 = minus underscore ssharp question backslash questiondown U1E9E\n"
+        "keycode  21 = equal plus dead_acute dead_grave dead_cedilla dead_ogonek\n"
+        "keycode  29 = y Y z Z leftarrow yen y Y\n"
+        "keycode  47 = semicolon colon odiaeresis Odiaeresis dead_doubleacute dead_belowdot\n"
+        "keycode  52 = z Z y Y guillemotright U203A z Z\n"
+        "keycode  60 = period greater period colon U2026 division period greater\n"
+        "keycode  61 = slash question minus underscore endash emdash slash question\n"
+    )
+    monkeypatch.setenv("SKALDIR_XKB_GROUP", "1")
+    placements = char_placements(multi_keymap)
+    assert placements[":"] == Placement(60, 2)  # Shift + . (not Shift + ö!)
+    assert placements["/"] == Placement(16, 2)  # Shift + 7 (not -!)
+    assert placements["y"] == Placement(52, 1)  # physical Z key on QWERTZ (not Z!)
+    assert placements["z"] == Placement(29, 1)  # physical Y key on QWERTZ
+    assert placements["?"] == Placement(20, 2)  # Shift + ß (not _!)
+    assert placements["="] == Placement(19, 2)  # Shift + 0 (not dead_acute ´!)
+    assert keycode_for("y", keymap=multi_keymap) == 44  # KEY_Z physical key = 52 - 8
+    assert keycode_for("z", keymap=multi_keymap) == 21  # KEY_Y physical key = 29 - 8
+

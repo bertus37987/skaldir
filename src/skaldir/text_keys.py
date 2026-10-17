@@ -73,7 +73,60 @@ def _keysym_char(name: str) -> str:
     return ""
 
 
-def char_placements(keymap: str) -> dict[str, Placement]:
+def _active_xkb_group() -> int:
+    """Return the 0-based active XKB group index when GNOME Wayland has multiple layouts.
+
+    On GNOME Wayland, Xwayland's ``xmodmap -pke`` prints Group 1 in columns 0..1 and Group 2
+    in columns 2..3 (with AltGr in 4..5), ordered by ``org.gnome.desktop.input-sources sources``
+    (e.g. ``[('xkb', 'us'), ('xkb', 'de')]``), whereas Mutter applies the layout at the front of
+    ``mru-sources`` (e.g. ``[('xkb', 'de'), ('xkb', 'us')]``) to uinput/ydotool events.
+    """
+    import os
+    import re
+    import subprocess
+
+    override = os.environ.get("SKALDIR_XKB_GROUP", "").strip()
+    if override.isdigit():
+        return int(override)
+    if not (os.environ.get("WAYLAND_DISPLAY") or os.environ.get("XDG_SESSION_TYPE") == "wayland"):
+        return 0
+    try:
+        mru_proc = subprocess.run(
+            ["gsettings", "get", "org.gnome.desktop.input-sources", "mru-sources"],
+            capture_output=True,
+            text=True,
+            timeout=1.5,
+            check=False,
+        )
+        src_proc = subprocess.run(
+            ["gsettings", "get", "org.gnome.desktop.input-sources", "sources"],
+            capture_output=True,
+            text=True,
+            timeout=1.5,
+            check=False,
+        )
+        if mru_proc.returncode == 0 and src_proc.returncode == 0:
+            mru = re.findall(r"\('xkb',\s*'([^']+)'\)", mru_proc.stdout or "")
+            srcs = re.findall(r"\('xkb',\s*'([^']+)'\)", src_proc.stdout or "")
+            if mru and srcs and mru[0] in srcs:
+                return srcs.index(mru[0])
+    except Exception:  # noqa: BLE001
+        pass
+    return 0
+
+
+def _keymap_depicts_multi_group_layout(keymap: str) -> bool:
+    """True only when the keymap is a full multi-group dump where Group 1 and Group 2 differ
+    on letter keys (e.g. QWERTY ``y`` vs QWERTZ ``z`` on keycode 29 or 52)."""
+    for line in str(keymap or "").splitlines():
+        parts = line.split()
+        if len(parts) >= 7 and parts[0] == "keycode" and parts[1] in ("29", "52"):
+            if parts[3].lower() != parts[5].lower():
+                return True
+    return False
+
+
+def char_placements(keymap: str, *, group: int | None = None) -> dict[str, Placement]:
     """The characters this keymap can type, and where: which key, which level.
 
     Only :data:`LEVELS` count — a line's columns 5+ are a second group the plain key
@@ -86,6 +139,10 @@ def char_placements(keymap: str) -> dict[str, Placement]:
     AltGr+Shift+0 and the marker comparison would have quietly compared against a
     mis-typed stand-in instead of the character.
     """
+    active_group = _active_xkb_group() if group is None else int(group)
+    use_group_offset = active_group > 0 and _keymap_depicts_multi_group_layout(keymap)
+    offset = active_group * 2 if use_group_offset else 0
+
     placements: dict[str, Placement] = {}
     for line in str(keymap or "").splitlines():
         parts = line.split()
@@ -95,7 +152,11 @@ def char_placements(keymap: str) -> dict[str, Placement]:
             code = int(parts[1])
         except ValueError:
             continue
-        columns = parts[3 : 3 + LEVELS]
+        rhs = parts[3:]
+        if offset and len(rhs) > offset + 1:
+            columns = rhs[offset : offset + LEVELS]
+        else:
+            columns = rhs[:LEVELS]
         for level, name in enumerate(columns, start=1):
             char = _keysym_char(name)
             if not char:
