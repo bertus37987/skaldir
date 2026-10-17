@@ -155,3 +155,17 @@ def test_the_refusal_of_the_judge_survives_every_mode(tmp_path):
                      state_dir=tmp_path / f"refuse-{mode.value}")
         loop.run(task="write the file")
         assert not ran, f"{mode} executed a call the judge refused"
+
+
+def test_agent_run_cli_parses_approval_mode():
+    from skaldir.agent_loop_cli import build_parser
+
+    parser = build_parser()
+    args = parser.parse_args(["run", "do task", "--approval-mode", "auto"])
+    assert args.approval_mode == "auto"
+
+    args = parser.parse_args(["run", "do task", "--approval-mode", "always"])
+    assert args.approval_mode == "always"
+
+    args = parser.parse_args(["run", "do task", "--approval-mode", "ask"])
+    assert args.approval_mode == "ask"

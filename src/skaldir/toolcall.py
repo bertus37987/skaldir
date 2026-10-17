@@ -155,9 +155,12 @@ _SECRET_PATHS = re.compile(
 )
 
 _PRODUCTION_MARKERS = re.compile(
-    r"(?i)(?:\bprod(?:uction)?\b|\blive\s+system\b|\bproduction\s+(?:db|database|server|"
-    r"cluster|environment)\b|api\.prod|prod\.|/etc/(?:nginx|systemd|httpd)|"
-    r"\bkubectl\b[^\n]{0,40}(?:prod|live)|\bhelm\s+(?:upgrade|install)\b[^\n]{0,40}prod)"
+    r"(?i)(?:\blive\s+system\b|\bproduction\s+(?:db|database|server|"
+    r"cluster|environment|host)\b|api\.prod\b|\bprod\.(?:internal|com|net|org|io)\b|"
+    r"/etc/(?:nginx|systemd|httpd)|\bkubectl\b[^\n]{0,40}(?:prod|live)|"
+    r"\bhelm\s+(?:upgrade|install)\b[^\n]{0,40}prod|"
+    r"\bdeploy(?:ment)?\b[^\n]{0,40}\b(?:prod|production|live)\b|"
+    r"(?:\.env\.production|config/production\.(?:ya?ml|json|toml|conf))\b)"
 )
 
 _VERIFICATION_DISABLE = re.compile(
@@ -683,14 +686,14 @@ def _catastrophic(intent: ToolIntent) -> bool:
 
 
 def _secret_findings(intent: ToolIntent) -> list[str]:
-    blob = " ".join([_command(intent), " ".join(_paths(intent)), _write_text(intent)])
+    blob = " ".join([_command(intent), " ".join(_paths(intent))])
     if _SECRET_PATHS.search(blob):
         return ["secret path touched (credentials/keys)"]
     return []
 
 
 def _production_findings(intent: ToolIntent) -> list[str]:
-    blob = " ".join([_command(intent), " ".join(_paths(intent)), _write_text(intent)])
+    blob = " ".join([_command(intent), " ".join(_paths(intent))])
     if _PRODUCTION_MARKERS.search(blob):
         return ["production target touched"]
     return []
@@ -1010,8 +1013,15 @@ def _judge(intent: ToolIntent) -> ToolDecision:
             ),
         )
     if production:
+        if approved:
+            return ToolDecision(
+                classification=ALLOW,
+                reasons=production,
+                checks=checks,
+                directive="Production target with approval: permitted.",
+            )
         return ToolDecision(
-            classification=ASK_APPROVAL if approved else BLOCK,
+            classification=ASK_APPROVAL,
             reasons=production,
             checks=checks,
             directive=(

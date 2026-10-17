@@ -658,6 +658,15 @@ def cmd_run(args: argparse.Namespace) -> int:
         jev_armed=decisions is not None and bool(getattr(decisions.flags, "enabled", False)),
     )
     explicit = str(getattr(args, "system_prompt", "") or "")
+    approval_mode_arg = str(getattr(args, "approval_mode", "") or "").strip()
+    approval_gate = None
+    resolved_approval_mode = None
+    if approval_mode_arg:
+        from .approval_gate import ApprovalGate
+        from .approval_modes import resolve_mode
+
+        resolved_approval_mode = resolve_mode(approval_mode_arg)
+        approval_gate = ApprovalGate(resolved_approval_mode)
     loop = AgentLoop(
         client,
         toolset,
@@ -680,6 +689,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         stream=True if renderer is not None else None,
         decisions=decisions,
         history=history,
+        approval_mode=resolved_approval_mode,
+        approval_gate=approval_gate,
     )
     try:
         result = loop.run(str(args.task), run_id=str(getattr(args, "run_id", "") or ""))
@@ -853,6 +864,9 @@ def _add_run_verb(sub: Any) -> Any:
     parser.add_argument("--system-prompt", default="", help="override the loop's system prompt")
     parser.add_argument("--tool-choice", choices=CHOICE_CHOICES, default="auto",
                         help="what the provider may do with the tools array")
+    parser.add_argument("--approval-mode", choices=("ask", "auto", "always"), default="",
+                        help="approval mode: ask (ask everything), auto (approve for me), "
+                             "always (approve everything)")
     parser.add_argument("--no-policy", action="store_true",
                         help="skip the pre-execution policy gate (records that it was skipped)")
     parser.add_argument("--no-jev-turns", dest="no_jev_turns", action="store_true",

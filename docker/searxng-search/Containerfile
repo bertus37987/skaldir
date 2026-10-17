@@ -1,0 +1,14 @@
+# skaldir-tool-searxng-search
+# Free web search through a self-hosted SearXNG instance.
+FROM python:3.12-alpine
+
+LABEL org.opencontainers.image.title="skaldir-tool-searxng-search"
+LABEL org.opencontainers.image.description="One-shot free web search client for SearXNG"
+
+RUN adduser -D -H -u 10001 skaldir
+COPY search.py /srv/search.py
+RUN chmod 755 /srv /srv/search.py && printf '#!/bin/sh\nexec python3 /srv/search.py "$@"\n' > /usr/local/bin/search && chmod 755 /usr/local/bin/search
+USER 10001
+ENV SEARXNG_URL=http://searxng:8080
+ENTRYPOINT ["python3", "/srv/search.py"]
+CMD ["--help"]

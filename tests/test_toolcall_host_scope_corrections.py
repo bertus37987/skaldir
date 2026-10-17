@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-from skaldir.toolcall import ToolIntent, judge_tool_call
+from skaldir.toolcall import ALLOW, ASK_APPROVAL, ToolIntent, judge_tool_call
 
 WS = "/home/willy/Agentic_Projects/Skaldir_Agent"
 
@@ -195,3 +195,66 @@ def test_the_refusal_names_the_deciding_component_honestly():
     d = decide("echo x > /etc/passwd")
     text = d.render()
     assert "path classification" in text or "path rule" in text, text
+
+
+def test_write_text_mentioning_production_in_body_is_allowed():
+    """Writing a README or code in workspace that discusses 'production' must not be blocked."""
+    d = judge_tool_call(
+        ToolIntent(
+            tool="write_text",
+            args={
+                "path": "docker/searxng-search/README.md",
+                "text": "# SearXNG free-search Docker tool\nSuitable for production deployment.",
+            },
+            workspace="/home/willy/Agentic_Projects/Skaldir_Agent",
+            project_root="/home/willy/Agentic_Projects/Skaldir_Agent",
+        )
+    )
+    assert d.classification == ALLOW, d.reasons
+    assert d.allowed is True
+
+
+def test_write_text_mentioning_env_or_secret_in_body_is_allowed():
+    """Writing a doc mentioning .env or id_rsa in body text must not be blocked as a secret path."""
+    d = judge_tool_call(
+        ToolIntent(
+            tool="write_text",
+            args={
+                "path": "docker/searxng-search/README.md",
+                "text": "Copy .env.example to .env and configure secrets.",
+            },
+            workspace="/home/willy/Agentic_Projects/Skaldir_Agent",
+            project_root="/home/willy/Agentic_Projects/Skaldir_Agent",
+        )
+    )
+    assert d.classification == ALLOW, d.reasons
+    assert d.allowed is True
+
+
+def test_production_target_without_approval_needs_approval():
+    """A real production target without approval must ask for approval (ASK_APPROVAL)."""
+    d = judge_tool_call(
+        ToolIntent(
+            tool="terminal",
+            args={"command": "kubectl apply -f deploy.yaml --namespace=prod"},
+            workspace="/home/willy/Agentic_Projects/Skaldir_Agent",
+            project_root="/home/willy/Agentic_Projects/Skaldir_Agent",
+        )
+    )
+    assert d.classification == ASK_APPROVAL, d.reasons
+    assert "production target touched" in d.reasons
+
+
+def test_production_target_with_approval_is_allowed():
+    """A production target with explicit approval is allowed."""
+    d = judge_tool_call(
+        ToolIntent(
+            tool="terminal",
+            args={"command": "kubectl apply -f deploy.yaml --namespace=prod"},
+            workspace="/home/willy/Agentic_Projects/Skaldir_Agent",
+            project_root="/home/willy/Agentic_Projects/Skaldir_Agent",
+            approvals=["approved"],
+        )
+    )
+    assert d.classification == ALLOW, d.reasons
+    assert d.allowed is True

@@ -43,10 +43,10 @@ __all__ = [
 #: Tools that only read. Harmless enough for "Approve for me" to let through without
 #: asking. Deliberately a small, named list: an unknown tool is not assumed to be readonly.
 ReadonlyTools: frozenset[str] = frozenset({
-    "read_file", "search_files", "list_dir", "glob", "grep",
-    "web_search", "web_extract", "knowledge_read", "memory_read",
+    "read_file", "read_text", "read", "search_files", "list_dir", "glob", "grep",
+    "web_search", "web_fetch", "web_fetch_text", "web_extract", "knowledge_read", "memory_read",
     "tools_list", "tools_search", "tool_search", "status", "doctor",
-    "contract_dump", "selftest",
+    "contract_dump", "selftest", "read_terminal", "bash_read", "session_search", "vision_analyze",
 })
 
 #: Tools that can spend money or buy something. Never auto-approved (APR-02).

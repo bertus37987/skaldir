@@ -1,0 +1,17 @@
+services:
+  searxng:
+    image: searxng/searxng:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - searxng-config:/etc/searxng
+  search:
+    build: .
+    depends_on:
+      - searxng
+    environment:
+      SEARXNG_URL: http://searxng:8080
+    profiles: ["client"]
+
+volumes:
+  searxng-config:
